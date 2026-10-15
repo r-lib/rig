@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Tutorials – rig</title>
+<title>Getting started – rig</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -285,7 +285,7 @@ ul.task-list li input[type="checkbox"] {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./tutorial.html">Tutorials</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./tutorial.html">Getting started</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -308,7 +308,7 @@ ul.task-list li input[type="checkbox"] {
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
             <a href="./tutorial.html" class="sidebar-item-text sidebar-link active">
- <span class="menu-text">Tutorials</span></a>
+ <span class="menu-text">Getting started</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
@@ -316,20 +316,26 @@ ul.task-list li input[type="checkbox"] {
       <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="./install.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Installing rig</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="./tutorial-user.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">User mode</span></a>
+ <span class="menu-text">As an R user</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="./tutorial-admin.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Admin mode</span></a>
+ <span class="menu-text">As an R admin</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="./tutorial-migrate.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Migrate to user mode</span></a>
+ <span class="menu-text">Migrating to user mode</span></a>
   </div>
 </li>
       </ul>
@@ -337,18 +343,12 @@ ul.task-list li input[type="checkbox"] {
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
             <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
- <span class="menu-text">Guide</span></a>
+ <span class="menu-text">Guides</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
       <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="./install.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Installing rig</span></a>
-  </div>
-</li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="./admin-vs-user-mode.html" class="sidebar-item-text sidebar-link">
@@ -532,7 +532,7 @@ ul.task-list li input[type="checkbox"] {
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Tutorials</h1>
+<h1 class="title">Getting started</h1>
 </div>
 
 
@@ -549,14 +549,14 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
-<p>These tutorials walk you through your first R installation with rig, to running R and installing packages.</p>
+<p>Start by <a href="./install.html"><strong>installing rig</strong></a>. Then pick the walkthrough that fits you; each one takes you from your first R installation with rig, to running R and installing packages.</p>
 <p>See <a href="./admin-vs-user-mode.html">Admin mode vs user mode</a> for more details on the two modes and how to pick between them.</p>
 <ol type="1">
-<li><p><a href="./tutorial-admin.html"><strong>Getting started in admin mode</strong></a><br>
-R is installed system-wide and shared by everyone on the machine. You need an administrator account to do this, and rig asks for your password when it needs to. This is rig’s default mode, and the better tested one.</p></li>
-<li><p><a href="./tutorial-user.html"><strong>Getting started in user mode</strong></a><br>
-rig installs everything into your home directory and does not need an administrator account. Use it if you have no administrator rights, or do not want R in system directories. It is a newer mode, and less tested than admin mode, especially on Linux.</p></li>
-<li><p><a href="./tutorial-migrate.html"><strong>Migrate to user mode</strong></a><br>
+<li><p><a href="./tutorial-user.html"><strong>As an R user</strong></a><br>
+rig installs everything into your home directory (user mode) and does not need an administrator account. Use it if you have no administrator rights, or do not want R in system directories. It is a newer mode, and less tested than admin mode, especially on Linux.</p></li>
+<li><p><a href="./tutorial-admin.html"><strong>As an R admin</strong></a><br>
+R is installed system-wide (admin mode) and shared by everyone on the machine. You need an administrator account to do this, and rig asks for your password when it needs to. This is rig’s default mode, and the better tested one.</p></li>
+<li><p><a href="./tutorial-migrate.html"><strong>Migrating to user mode</strong></a><br>
 You already have an admin-mode rig setup and want to move it into your home directory.</p></li>
 </ol>
 

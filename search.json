@@ -6,8 +6,8 @@
     "section": "",
     "text": "In admin mode R goes into the platform’s usual system-wide location, and the R and Rscript commands land in a directory that is already on everyone’s PATH. Operations that write to those places typically need admin privileges, and rig asks for your password when needed. Choose this on your own laptop, or on a server you administer.\nThis is rig’s default mode, and the one with the most mileage on it, so it is also the best tested. If you cannot use an administrator account, or would rather not touch system directories, follow Getting started in user mode instead. See Admin mode vs user mode for the trade-offs.",
     "crumbs": [
-      "Tutorials",
-      "Admin mode"
+      "Getting started",
+      "As an R admin"
     ]
   },
   {
@@ -17,8 +17,8 @@
     "section": "0. Before you start",
     "text": "0. Before you start\nInstall rig first. Check that rig works and see where it puts things:\nrig --version\nrig system dirs\nMode          admin\nArchitecture  arm64\nR root        /Library/Frameworks/R.framework/Versions\nBinary dir    /usr/local/bin\n...\nrig system dirs works before any R version is installed, so it is the quickest way to confirm which mode you are in and where R will land. The directories depend on your platform, so your output will differ.\nNow choose your platform to continue.\n\nmacOSWindowsLinux\n\n\n\n1. Install the latest release\nrig add release\nBecause admin mode installs into /Library/Frameworks/R.framework, rig needs administrator rights, and asks for your password:\nRunning `sudo` for adding new R versions. This might need your password.\nBesides unpacking R, rig add also configures the CRAN repository, installs pak for installing packages, sets R up to use a user package library, creates the quick links, and (if this is your first R version) makes the newly installed version the default.\n\n\n2. See what you have\nrig list\n* name   version  aliases\n-------------------------\n* 4.6.1           release\nThe * marks the default version. rig list --plain prints just the names, one per line, which is handy in shell scripts.\n\n\n3. Add a second version\nR versions can be named with a version spec, not just a version number:\nrig add 4.4.3      # an exact version\nrig add 4.4        # the latest patch release of 4.4.x\nrig add oldrel     # the previous minor release\nrig add oldrel/2   # two minor releases back\nrig add devel      # the current development version of R\nrig add next       # the current R patched / release candidate\nrig available lists everything you can install.\n\n\n\n\n\n\nNote\n\n\n\nIn admin mode on macOS you cannot have two patch releases of the same minor version at once. Installing R 4.6.1 removes R 4.6.0, because they share a directory in the R framework. Adding versions from different minor branches (release and oldrel, say) is fine. User mode does not have this restriction.\n\n\n\n\n4. Switch the default version\nrig default          # print the current default\nrig default 4.5.3    # set it\nThe default version is the one the plain R and Rscript commands start. rig also creates versioned quick links, so you can always reach a specific version without switching:\nR                              # the default version\nR-4.5.3                        # a specific version\nRscript -e 'R.version.string'  # the default version, non-interactively\nIn admin mode rig default works without sudo as long as your account is in the admin group.\n\n\n5. Install an R package\nrig add installs pak by default, so you can install R packages straight away:\nR -q -e 'pak::pkg_install(\"dplyr\")'\nPackages go into a per-user, per-version library that rig configured R to create automatically, so you do not need sudo to install packages even in admin mode, and packages for different R versions never collide. On macOS rig also restricts the permissions of the system library, so you cannot install packages into it by accident.\nIf you want more than one library for the same R version, e.g. one per project, see the rig library command.\n\n\n6. Run R without switching the default\nAnother way to run a specific version without changing the default is rig run. rig run runs R, a script or a whole project with any installed version, leaving your default alone:\nrig run                            # start R\nrig run -f analysis.R              # run a script\nrig run -e 'sessionInfo()'         # evaluate an expression\nrig run -r 4.5.3 -f analysis.R     # ... with a specific R version\nrig run --cmd check --no-manual .  # run `R CMD check`\nrig run also works if R is not on your PATH, but rig is.\n\n\n7. Turn on shell completions\nrig ships completions for bash, zsh, fish and elvish. See Installing auto-complete for the setup, which depends on how you installed rig.\n\n\n8. macOS extras\n\nThe menu bar app shows your R versions in the macOS menu bar and lets you switch the default with a click. It comes with the system installer and brew install r-rig-app. Start it once from Finder or with open -a Rig, then tick “Launch at login”.\nTo debug R with lldb or gdb, run rig system allow-debugger. The CRAN builds are hardened against debuggers by default. There is also rig system allow-debugger-rstudio for RStudio’s rsession, and rig system allow-core-dumps.\n\n\n\n\n\n1. Install the latest release\nrig add release\nAdmin mode installs into C:\\Program Files\\R, so rig needs your password.\nBesides unpacking R, rig add also configures the CRAN and P3M repositories, installs pak, sets R up to use a user package library, creates the quick links, and (if this is your first R version) makes it the default.\nOn arm64 Windows rig installs arm64 R builds by default. Use the --arch x86_64 flag to install an x86_64 R build. You can mix x86_64 and arm64 builds of R and Rtools.\n\n\n2. See what you have\nrig list\n* name   version  aliases\n-------------------------\n* 4.6.1           release\nThe * marks the default version. rig list --plain prints just the names, one per line, which is handy in scripts.\n\n\n3. Add a second version\nR versions are named with a version spec, not just a number:\nrig add oldrel     # the previous minor release\nrig add 4.4.3      # an exact version\nrig add 4.4        # the latest patch release of 4.4.x\nrig add oldrel/2   # two minor releases back\nrig add devel      # the current R-devel\nrig add next       # the current R patched / release candidate\nrig available lists everything you can install.\n\n\n4. Switch the default version\nrig default          # print the current default\nrig default 4.5.3    # set it\nThe default version is the one the plain R and Rscript commands start. rig also creates versioned quick links, so you can always reach a specific version without switching:\nR                                # the default version\nR-4.5.3                          # a specific version\nRscript -e 'R.version.string'    # the default version, non-interactively\n\n\n\n\n\n\nNote\n\n\n\nIf typing R in PowerShell re-runs your previous command instead of starting R, you have hit PowerShell’s built-in r alias for Invoke-History, which takes precedence over external commands. Run rig system fix-r-alias once and open a new PowerShell session.\n\n\n\n\n5. Install a package\nrig add installed pak, so you can install packages straight away:\nR -q -e 'pak::pkg_install(\"dplyr\")'\nPackages go into a per-user, per-version library that rig configured R to create automatically, so installing packages never needs administrator rights, and packages for different R versions never collide.\nIf you want more than one library for the same R version (say one per project), see the rig library command.\n\n\n6. Install Rtools\nTo build packages from source you need Rtools, which rig manages too:\nrig rtools list        # what is installed\nrig add rtools         # the Rtools version matching your default R\nrig rtools add 45      # a specific Rtools version\nrig configures R and Rtools to work without putting Rtools on the PATH, so R CMD config, R CMD sh, R CMD make and rig run --cmd config work out of the box.\n\n\n7. Run R without switching the default\nrig run runs R, a script or a whole project with any installed version, leaving your default alone:\nrig run                            # start R\nrig run -f analysis.R              # run a script\nrig run -e 'sessionInfo()'         # evaluate an expression\nrig run -r 4.5.3 -f analysis.R     # ... with a specific R version\nrig run --cmd check --no-manual .  # run `R CMD check`\n\n\n8. Turn on shell completions\nrig ships PowerShell completions. See Installing auto-complete for how to load them from your profile.\n\n\n\n\n1. Install the latest release\nrig add release\nAdmin mode installs into /opt/R, so rig needs root, and re-runs itself under sudo:\nRunning `sudo` for adding new R versions. This might need your password.\nrig installs a build made for your distribution. If there is none for your platform it falls back to a portable build and says so:\nNo distro-specific R build for platform `...`, falling back to the portable\nbuild `...`.\nSee the supported distributions for the list.\nBesides unpacking R, rig add also configures the CRAN and P3M repositories (P3M serves pre-compiled Linux binaries, which makes installing packages much faster), installs pak, sets R up to use a user package library, creates the quick links, and (if this is your first R version) makes it the default.\n\n\n2. See what you have\nrig list\n* name   version  aliases\n-------------------------\n* 4.6.1           release\nThe * marks the default version. rig list --plain prints just the names, one per line, which is handy in shell scripts.\n\n\n3. Add a second version\nR versions are named with a version spec, not just a number:\nrig add oldrel     # the previous minor release\nrig add 4.4.3      # an exact version\nrig add 4.4        # the latest patch release of 4.4.x\nrig add oldrel/2   # two minor releases back\nrig add devel      # the current R-devel\nrig add next       # the current R patched / release candidate\nrig available lists everything you can install, and rig available --list-distros the Linux distributions rig supports.\n\n\n4. Switch the default version\nrig default          # print the current default\nrig default 4.5.3    # set it\nThe default version is the one the plain R and Rscript commands start. rig also creates versioned quick links, so you can always reach a specific version without switching:\nR                              # the default version\nR-4.5.3                        # a specific version\nRscript -e 'R.version.string'  # the default version, non-interactively\n\n\n5. Install a package\nrig add installed pak, so you can install packages straight away:\nR -q -e 'pak::pkg_install(\"dplyr\")'\nPackages go into a per-user, per-version library that rig configured R to create automatically, so you do not need sudo to install packages even in admin mode, and packages for different R versions never collide.\nMany R packages need system libraries to build. pak installs those automatically on supported distributions, asking for your password when it has to use the system package manager. Pass rig add --without-sysreqs if you would rather manage system dependencies yourself.\nIf you want more than one library for the same R version (say one per project), see the rig library command.\n\n\n6. Run R without switching the default\nrig run runs R, a script or a whole project with any installed version, leaving your default alone:\nrig run                          # start R\nrig run -f analysis.R            # run a script\nrig run -e 'sessionInfo()'       # evaluate an expression\nrig run -r 4.5.3 -f analysis.R   # ... with a specific R version\nrig run --cmd check --no-manual .  # run `R CMD check`\n\n\n7. Turn on shell completions\nrig ships completions for bash, zsh, fish and elvish. See Installing auto-complete for the setup, which depends on how you installed rig.",
     "crumbs": [
-      "Tutorials",
-      "Admin mode"
+      "Getting started",
+      "As an R admin"
     ]
   },
   {
@@ -28,8 +28,8 @@
     "section": "Where to next",
     "text": "Where to next\n\nMigrating to user mode: move this setup into your home directory later, with one command.\nAdmin mode vs user mode: the concepts behind the two modes, and how to put rig’s directories somewhere else.\nCLI reference: every command and flag.\nrig repos: change which package repositories your R versions use.\nDocker containers: ready-made rig images for CI and reproducible builds.\nFAQ: the questions people ask most often.",
     "crumbs": [
-      "Tutorials",
-      "Admin mode"
+      "Getting started",
+      "As an R admin"
     ]
   },
   {
@@ -39,7 +39,7 @@
     "section": "",
     "text": "rig pkg installs, removes and lists R packages in a library, and looks up package information, dependencies and dependency trees from the repositories, all without starting R.\nrig pkg operates on packages, inside a library. It is a companion to two other command families:",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Managing R packages"
     ]
   },
@@ -50,7 +50,7 @@
     "section": "Looking up packages",
     "text": "Looking up packages\nrig pkg available, rig pkg info, rig pkg deps and rig pkg tree query the package repositories, not any installed library:\nrig pkg available                 # every package, latest version, dep count\nrig pkg info cli                  # DESCRIPTION of the latest cli\nrig pkg info cli --versions       # every version ever published\nrig pkg info cli --readme         # the package's README\nrig pkg deps dplyr                # direct dependencies, with versions\nrig pkg deps dplyr --recursive    # the whole dependency closure\nrig pkg tree dplyr                # the same, as a visual tree\nrig pkg tree dplyr --why glue     # how does dplyr depend on glue\nBy default they only consider hard dependencies (Depends, Imports, LinkingTo). Add --dev to include Suggests and Enhances as well. Every command also takes --json for machine-readable output.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Managing R packages"
     ]
   },
@@ -61,7 +61,7 @@
     "section": "Installing packages",
     "text": "Installing packages\nrig pkg install cli glue\nrig resolves the whole dependency tree before installing anything, so a package is only installed if everything it needs can be installed alongside it, at versions that work together. --dry-run runs the resolution and reports what rig would do, without installing anything.\nA few flags worth knowing:\n\n--reinstall installs every package in the resolution, even ones already up to date. Without it, rig does nothing if the requested packages and their dependencies are already installed and up to date.\n--dev also installs Suggests and Enhances. --ignore-unavailable skips dev dependencies that are not available in the repositories, instead of failing.\n--prefer-binary[=N] trades a newer version for an older one that already has a binary build, useful when compiling from source is expensive.\nPackages can also be installed from git, GitHub or GitLab, not just the repositories. See rig pkg install for the full syntax.\n\nA package on your own machine is installed by path:\nrig pkg install .                    # the package in the current directory\nrig pkg install ./mypkg\nrig pkg install mypkg_1.0.0.tar.gz   # a source tarball\nrig pkg install mypkg_1.0.0.tgz      # a binary package file\nA path is a package source directory, a source tarball, or a binary package built with R CMD INSTALL --build; its dependencies are resolved and installed as usual. An argument is a path when it is ., starts with ./, ../, ~/ or /, or names a package file that exists, so mypkg still means the repositories’ mypkg.\nOn Linux, rig also installs the system libraries and tools that the packages need, e.g. libcurl4-openssl-dev for curl on Ubuntu, from their SystemRequirements fields. It does this itself if it runs as root or if sudo works without a password, and otherwise prints the commands to run. --no-sysreqs turns this off. See rig pkg install for the details.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Managing R packages"
     ]
   },
@@ -72,7 +72,7 @@
     "section": "Listing and removing packages",
     "text": "Listing and removing packages\nrig pkg list                 # list packages in a library\nrig pkg remove cli glue      # remove package(s) from a library\nNeither command starts R. rig pkg remove refuses to remove a base package (base, stats, utils, …) unless --force is given, since R does not work without them. On the other hand it does not check whether another installed package still needs the one being removed.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Managing R packages"
     ]
   },
@@ -83,7 +83,7 @@
     "section": "Choosing a library",
     "text": "Choosing a library\nBy default rig pkg install, rig pkg list and rig pkg remove all operate on the default library of the default R version. Use --library (-l) to target another library by name or path, and --r-version (-r) to target a library of another R version:\nrig pkg install --library myproject cli\nrig pkg install --library /usr/lib/R/site-library cli\nrig pkg list --r-version 4.4.1\nSee rig library for how libraries are named and how the default one is chosen. In admin mode, the site and system libraries belong to the administrator, so installing into or removing from them needs sudo (an administrator account on Windows), your own user libraries never do.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Managing R packages"
     ]
   },
@@ -94,7 +94,7 @@
     "section": "See also",
     "text": "See also\n\nThe rig pkg reference for the full list of flags and options of every subcommand.\nThe rig library reference for managing library directories.\nThe rig proj reference for project-level, reproducible dependency management.\nAdmin mode vs user mode for when installing or removing a package needs elevated privileges.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Managing R packages"
     ]
   },
@@ -105,7 +105,7 @@
     "section": "",
     "text": "If you install rig using the rig installer or Homebrew on macOS, it comes with a menu bar app.\nYou can view and choose the default R version in the macOS menu bar. Start RStudio or a recent RStudio project with the selected R version. Select between your package libraries.\nTo start the menu bar app the first time, run the Rig app in “Applications” from Finder or Spotlight, or run\nopen -a Rig\nfrom a Terminal. Then you can check the “Launch at login” box in “Preferences” to start it automatically in the future.\n\nNote: if you have a lot of menu bar apps running, then some of them might be under the camera area. There is no good solution for this currently, other than running less menu bar apps.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "macOS menu bar app"
     ]
   },
@@ -116,8 +116,8 @@
     "section": "",
     "text": "If you already have an admin-mode setup, one command moves it into your home directory:\nIt does four things:\nRun it as your normal user, not under sudo. Steps 3 and 4 touch files outside your home directory, so rig asks your password for those, and only for those. Three flags control how much it does:\nWith both --keep-* flags nothing outside your home directory is touched, so the whole migration needs no admin privileges at all.\nIf you do not have an admin-mode setup yet, start with Getting started in user mode instead. See Admin mode vs user mode for what changes when you switch.",
     "crumbs": [
-      "Tutorials",
-      "Migrate to user mode"
+      "Getting started",
+      "Migrating to user mode"
     ]
   },
   {
@@ -127,8 +127,8 @@
     "section": "Package libraries",
     "text": "Package libraries\nIf you use the default rig setup, then your package libraries live in your home directory and they are shared between admin and user mode R installations. Nothing needs to be done for them.",
     "crumbs": [
-      "Tutorials",
-      "Migrate to user mode"
+      "Getting started",
+      "Migrating to user mode"
     ]
   },
   {
@@ -138,8 +138,8 @@
     "section": "Going back to admin mode",
     "text": "Going back to admin mode\nSet the mode back and reinstall the versions you want:\nrig config set mode=admin\nrig add release\nThe user-mode installations under your home directory stay where they are; remove them with rig rm first if you want them gone.",
     "crumbs": [
-      "Tutorials",
-      "Migrate to user mode"
+      "Getting started",
+      "Migrating to user mode"
     ]
   },
   {
@@ -149,8 +149,8 @@
     "section": "Where to next",
     "text": "Where to next\n\nGetting started in user mode: the day-to-day commands in user mode, including the PATH setup.\nAdmin mode vs user mode: the concepts behind the two modes, and how to put rig’s directories somewhere else.\nCLI reference: every command and flag.\nFAQ: the questions people ask most often.",
     "crumbs": [
-      "Tutorials",
-      "Migrate to user mode"
+      "Getting started",
+      "Migrating to user mode"
     ]
   },
   {
@@ -400,7 +400,7 @@
     "section": "",
     "text": "rig run runs R scripts with any installed R version. A script can also declare the R version and the packages it needs in a comment block at its top. rig then installs R and the packages if needed, and runs the script in its own environment, so you can share a single .R file and it runs the same way on every machine, without a project or any setup. A lock file next to the script can pin the exact R and package versions, too.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Scripts"
     ]
   },
@@ -411,7 +411,7 @@
     "section": "Running a script",
     "text": "Running a script\nrig run script.R              # run with the default R version\nrig run -r 4.5 script.R       # run with R 4.5\nrig run --rscript script.R    # run with Rscript instead of R\nrig run script.R --verbose 3  # pass arguments to the script\nEvery argument after the script goes to the script, unchanged, where commandArgs(TRUE) picks it up. This includes arguments that look like rig’s own flags, and --. rig’s own flags go before the script.\nrig run -f script.R is the same as rig run script.R. Without -f, rig treats a file as a script if its name ends in .R or .r, or if it starts with #!. Use -f for other files.\nInside an R project, rig run script.R runs the script in the project’s environment, unless the script has its own inline dependencies, see below. Use --no-project to ignore the project.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Scripts"
     ]
   },
@@ -422,7 +422,7 @@
     "section": "Inline dependencies",
     "text": "Inline dependencies\nA script can declare what it needs in a # /// script comment block:\n# /// script\n# [dependencies]\n# R = \"&gt;= 4.4\"\n# cli = \"*\"\n# dplyr = \"&gt;= 1.1\"\n# ///\n\nlibrary(dplyr)\ncli::cli_text(\"Hello from {.pkg cli}!\")\nThe block starts with a # /// script line and ends with a # /// line. Every line in between must be a comment. Without the leading #, these lines form a TOML document. A block can also use ## instead of #, but then every line of the block must start with ##. A script can have at most one block.\nThe block takes these tables of rproj.toml, with the same meaning:\n\n[dependencies]: the packages the script needs, with optional version requirements (^1.2.3, ~1.2.3, &gt;= 1.0, &lt; 2.0, or * for any version). R is the R version. A dependency can also come from git, GitHub, GitLab, a URL or a local path, see rig proj add for the syntax. A relative path is relative to the directory of the script.\n[[repository]]: extra package repositories.\n[tool.rig]: rig settings, e.g. exclude-newer, see below, and prefer-binary, see rig proj lock.\n\nAny other table is an error, so typos do not go unnoticed.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Scripts"
     ]
   },
@@ -433,7 +433,7 @@
     "section": "Creating and editing the block",
     "text": "Creating and editing the block\nYou can write the block by hand, or let rig manage it:\nrig proj init --script script.R           # add a block, or create the script\nrig proj add --script script.R cli dplyr  # add packages to the block\nrig proj remove --script script.R dplyr   # remove packages from the block\nrig proj init --script adds a block with an R requirement to the top of the script, after the #! line if there is one. If the script does not exist yet, it creates it. It does not replace a block that is already there, unless you pass --force.\nrig proj add --script adds packages to the block, and creates the block if the script has none. You give the packages the same way as for a project, e.g. 'dplyr@&gt;= 1.1' or r-lib/cli, and a local path is recorded relative to the script’s directory. rig proj remove --script removes packages from the block.\nBoth commands then set up the script’s environment, so the next rig run script.R starts right away. If the script has a lock file, they update it, too. --no-sync and --no-lock work the same way as for a project. If resolving the dependencies fails, rig proj add --script restores the script, and its lock file, to what they were.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Scripts"
     ]
   },
@@ -444,7 +444,7 @@
     "section": "The script’s environment",
     "text": "The script’s environment\nWhen you run a script with a block, rig:\n\npicks an installed R version that fits the R requirement, or installs one,\nresolves the dependencies to exact package versions, like rig proj lock,\ninstalls the packages into a library of their own, like rig proj sync,\nruns the script with that R version and library.\n\nIf the script has a lock file, rig skips the first two steps, and installs the R version and the package versions the lock file names instead.\nThe environment lives in rig’s cache directory, isolated from your own package libraries, so running a script never changes them. Later runs reuse the environment and start right away. Scripts with the same block share one environment, and changing the block creates a new one. A script with a lock file always gets an environment of its own.\nA script with a block always uses its own environment, even inside a project. --r-version (-r) selects the R version, which must fit the R requirement. For a script with a lock file, it must be one of the R versions in the lock file.\nWhile rig sets up the environment, it writes its messages to standard error, so standard output belongs to the script, and you can redirect it:\nrig run report.R &gt; report.csv\nScripts with inline dependencies work the same way in admin and user mode. If rig needs to install R for a script, it installs it the way the current mode does.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Scripts"
     ]
   },
@@ -455,7 +455,7 @@
     "section": "Upgrading packages",
     "text": "Upgrading packages\nLike a project’s lock file, a script’s environment keeps the package versions it was created with, even if newer versions come out. To solve the dependencies again with the latest versions that fit, use --upgrade, or --upgrade-package to upgrade only some packages:\nrig run --upgrade script.R\nrig run --upgrade-package cli script.R\nFor a script with a lock file, these also update the lock file.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Scripts"
     ]
   },
@@ -466,7 +466,7 @@
     "section": "Reproducible scripts",
     "text": "Reproducible scripts\nThere are two ways to make a script use the same package versions every time: a cutoff date for CRAN packages, and a lock file.\n\nExcluding newer packages\nSet exclude-newer in the script’s [tool.rig] table. The solver then ignores CRAN package versions published after that date:\n# /// script\n# [dependencies]\n# R = \"&gt;= 4.4\"\n# dplyr = \"*\"\n#\n# [tool.rig]\n# exclude-newer = \"2026-06-01\"\n# ///\nexclude-newer also takes a time interval back from today, e.g. \"7 days\", to skip packages released in the last few days. See rig proj lock for the details.\nThis keeps everything in the script itself, but it only fixes the CRAN packages. The R version and git, GitHub and URL dependencies can still change.\n\n\nLock files\nA lock file pins everything: the R version, and the exact version, build and download URL of every package. Lock the script with:\nrig proj lock --script script.R\nThis writes script.R.lock next to the script, with the exact R and package versions, for this machine and the other common platforms. Keep the two files together, e.g. commit both to git. rig proj lock --script takes the same options as rig proj lock, e.g. --r-version or --platform.\nWhen script.R.lock exists, rig run script.R installs the R version and the package versions it names, on any machine it has a target for.\nIf you change the block, e.g. with rig proj add --script, so the lock file does not fit it any more, rig locks the dependencies again, for the same R versions and platforms, keeps the versions the lock file pins where they still fit, and updates script.R.lock. To fail instead, e.g. in CI, use --locked:\nrig run --locked script.R\nOn a machine, or with an --r-version, that the lock file has no target for, rig run fails, and tells you how to add one with rig proj lock --script.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Scripts"
     ]
   },
@@ -477,7 +477,7 @@
     "section": "Executable scripts",
     "text": "Executable scripts\nOn macOS and Linux, a script can start with a #! line that runs it with rig:\n#!/usr/bin/env -S rig run\n# /// script\n# [dependencies]\n# cli = \"*\"\n# ///\n\ncli::cli_text(\"Hello from {.pkg cli}!\")\nMake it executable, and then run it directly, like any other command:\nchmod +x hello\n./hello\nA file that starts with #! is a script for rig run, whatever its name, so it does not need an .R extension. You can also put rig’s own flags in the #! line, e.g. #!/usr/bin/env -S rig run --rscript.\nOn Windows, rig system script-assoc makes .R files run with rig from cmd and PowerShell, e.g. hello.R a b, or just hello a b if the script is on the PATH. It changes how .R files open for the current user, and double-clicking a .R file then runs it, instead of opening it in your editor. rig system script-assoc --undo restores the old association.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Scripts"
     ]
   },
@@ -488,7 +488,7 @@
     "section": "Scripts from packages and projects",
     "text": "Scripts from packages and projects\nrig run &lt;pkg&gt;::&lt;script&gt; runs a script from the exec directory of an installed package, e.g. a command line tool that a package ships.\nA project can give its own scripts a name, in the [[bin]] tables of rproj.toml, and then rig run &lt;name&gt; runs them in the project’s environment. See Named scripts.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Scripts"
     ]
   },
@@ -499,7 +499,7 @@
     "section": "Cleaning up",
     "text": "Cleaning up\nrig cache info shows how much space the script environments take, and\nrig cache clean --category scripts\ndeletes all of them. rig creates them again the next time you run the scripts. Lock files next to the scripts are not touched.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Scripts"
     ]
   },
@@ -510,7 +510,7 @@
     "section": "See also",
     "text": "See also\n\nThe rig run reference for every option.\nR projects, for code that needs more than a single file.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Scripts"
     ]
   },
@@ -1192,7 +1192,7 @@
     "section": "",
     "text": "We maintain some Docker container images that come with rig and R pre-installed, for convenience.\nUse the ghcr.io/r-lib/rig/r Docker container to easily run multiple R versions. It is currently based on Ubuntu 24.04 and contains rig and the seven latest R versions, including R-next and R-devel. It is available for x86_64 and arm64 systems:\nSee this image on GitHub.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Docker containers"
     ]
   },
@@ -1203,7 +1203,7 @@
     "section": "All containers",
     "text": "All containers\nWe also have other containers with rig and either R-devel and R-release preinstalled, on various Linux distros. Here is a table of all containers:\n\n\n\n\n\n\n\n\n\nName\nOS\nR version\nTags\n\n\n\n\nghcr.io/r-lib/rig/ubuntu-24.04-multi\nUbuntu 24.04\nlast 6 (daily)\nr, rig, multi, ubuntu-multi\n\n\nghcr.io/r-lib/rig/ubuntu-26.04-release\nUbuntu 26.04\nrelease\nrelease, ubuntu, ubuntu-release, ubuntu-latest, ubuntu-latest-release, ubuntu-26.04\n\n\nghcr.io/r-lib/rig/ubuntu-26.04-devel\nUbuntu 26.04\ndevel (daily)\ndevel, ubuntu-devel, ubuntu-latest-devel\n\n\nghcr.io/r-lib/rig/ubuntu-24.04-release\nUbuntu 24.04\nrelease\nubuntu-24.04\n\n\nghcr.io/r-lib/rig/ubuntu-24.04-devel\nUbuntu 24.04\ndevel (daily)\n\n\n\nghcr.io/r-lib/rig/ubuntu-22.04-release\nUbuntu 22.04\nrelease\nubuntu-22.04\n\n\nghcr.io/r-lib/rig/ubuntu-22.04-devel\nUbuntu 22.04\ndevel (daily)\n\n\n\nghcr.io/r-lib/rig/ubuntu-20.04-release\nUbuntu 20.04\nrelease\nubuntu-20.04\n\n\nghcr.io/r-lib/rig/ubuntu-20.04-devel\nUbuntu 20.04\ndevel (daily)\n\n\n\nghcr.io/r-lib/rig/debian-13-release\nDebian 13\nrelease\ndebian, debian-release, debian-latest, debian-latest-release, debian-13\n\n\nghcr.io/r-lib/rig/debian-13-devel\nDebian 13\ndevel (daily)\ndebian-devel, debian-latest-devel\n\n\nghcr.io/r-lib/rig/debian-12-release\nDebian 12\nrelease\ndebian-12\n\n\nghcr.io/r-lib/rig/debian-12-devel\nDebian 12\ndevel (daily)\n\n\n\nghcr.io/r-lib/rig/fedora-44-release\nFedora 44\nrelease\nfedora, fedora-release, fedora-latest, fedora-latest-release, fedora-44\n\n\nghcr.io/r-lib/rig/fedora-44-devel\nFedora 44\ndevel\nfedora-devel, fedora-latest-devel\n\n\nghcr.io/r-lib/rig/fedora-43-release\nFedora 43\nrelease\nfedora-43\n\n\nghcr.io/r-lib/rig/fedora-43-devel\nFedora 43\ndevel\n\n\n\nghcr.io/r-lib/rig/fedora-42-release\nFedora 42\nrelease\nfedora-42\n\n\nghcr.io/r-lib/rig/fedora-42-devel\nFedora 42\ndevel\n\n\n\nghcr.io/r-lib/rig/opensuse-16.0-release\nOpenSUSE Leap 16.0\nrelease\nopensuse, opensuse-release, opensuse-latest, opensuse-latest-release, opensuse-16.0\n\n\nghcr.io/r-lib/rig/opensuse-16.0-devel\nOpenSUSE Leap 16.0\ndevel (daily)\nopensuse-devel, opensuse-latest-devel\n\n\nghcr.io/r-lib/rig/opensuse-15.6-release\nOpenSUSE Leap 15.6\nrelease\nopensuse-15.6\n\n\nghcr.io/r-lib/rig/opensuse-15.6-devel\nOpenSUSE Leap 15.6\ndevel (daily)\n\n\n\n\nFor convenience, we also create these tags:\n\n\n\n\n\n\n\n\nTag\nCurrent Image\nDescription\n\n\n\n\nghcr.io/r-lib/rig/r\nubuntu-24.04-multi\nLast 6 R versions on latest Ubuntu.\n\n\nghcr.io/r-lib/rig/rig\n”\n”\n\n\nghcr.io/r-lib/rig/multi\n”\n”\n\n\nghcr.io/r-lib/rig/ubuntu-multi\n”\n”\n\n\nghcr.io/r-lib/rig/release\nubuntu-26.04-release\nLatest R release.\n\n\nghcr.io/r-lib/rig/ubuntu\nubuntu-26.04-release\nLatest R release on latest Ubuntu.\n\n\nghcr.io/r-lib/rig/ubuntu-26.04\nubuntu-26.04-release\nLatest R release on Ubuntu 26.04.\n\n\nghcr.io/r-lib/rig/devel\nubuntu-26.04-devel\nR devel.\n\n\nghcr.io/r-lib/rig/ubuntu-devel\nubuntu-26.04-devel\nR devel on latest Ubuntu.\n\n\nghcr.io/r-lib/rig/ubuntu-24.04\nubuntu-24.04-release\nLatest R release on Ubuntu 24.04.\n\n\nghcr.io/r-lib/rig/ubuntu-22.04\nubuntu-22.04-release\nLatest R release on Ubuntu 22.04.\n\n\nghcr.io/r-lib/rig/ubuntu-20.04\nubuntu-20.04-release\nLatest R release on Ubuntu 20.04.\n\n\nghcr.io/r-lib/rig/debian\ndebian-13-release\nLatest R release on latest Debian.\n\n\nghcr.io/r-lib/rig/debian-13\ndebian-13-release\nLatest R release on Debian 13.\n\n\nghcr.io/r-lib/rig/debian-12\ndebian-12-release\nLatest R release on Debian 12.\n\n\nghcr.io/r-lib/rig/debian-devel\ndebian-13-devel\nR devel on latest Debian.\n\n\nghcr.io/r-lib/rig/fedora\nfedora-44-release\nLatest R release on latest Fedora.\n\n\nghcr.io/r-lib/rig/fedora-44\nfedora-44-release\nLatest R release on Fedora 44.\n\n\nghcr.io/r-lib/rig/fedora-43\nfedora-43-release\nLatest R release on Fedora 43.\n\n\nghcr.io/r-lib/rig/fedora-42\nfedora-42-release\nLatest R release on Fedora 42.\n\n\nghcr.io/r-lib/rig/fedora-devel\nfedora-44-devel\nR devel on latest Fedora.\n\n\nghcr.io/r-lib/rig/opensuse\nopensuse-16.0-release\nLatest R release on latest OpenSUSE.\n\n\nghcr.io/r-lib/rig/opensuse-16.0\nopensuse-16.0-release\nLatest R release on OpenSUSE 16.0.\n\n\nghcr.io/r-lib/rig/opensuse-15.6\nopensuse-15.6-release\nLatest R release on OpenSUSE 15.6.\n\n\nghcr.io/r-lib/rig/opensuse-devel\nopensuse-16.0-devel\nR devel on latest OpenSUSE.\n\n\n\nSee all container images on GitHub.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Docker containers"
     ]
   },
@@ -1214,7 +1214,7 @@
     "section": "Binary-only image",
     "text": "Binary-only image\nghcr.io/r-lib/rig/base contains nothing but the rig binary. You can use it to copy the binary into your own image:\nCOPY --from=ghcr.io/r-lib/rig/base:latest /rig /usr/local/bin/rig",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Docker containers"
     ]
   },
@@ -1225,7 +1225,7 @@
     "section": "Docker container features",
     "text": "Docker container features\nFor all containers:\n\nrig is pre-installed, so you can easily add or remove R versions.\nhttps://github.com/r-lib/pak is installed for all R versions.\nAutomatic system dependency installation via pak.\nLinux binary packages are automatically installed from the Posit Public Package Manager on supported distros, including Ubuntu, Debian and OpenSUSE.\nAvailable on x86_64 and aarch64.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Docker containers"
     ]
   },
@@ -1236,8 +1236,8 @@
     "section": "",
     "text": "In user mode rig keeps everything inside your home directory, so it never needs sudo or an administrator account. Use this on a machine where you do not have administrator rights, or where you would rather not touch system directories.\nIf you do administer the machine and want a conventional system-wide R, follow Getting started in admin mode instead. For the trade-offs between the two modes, see Admin mode vs user mode.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1247,8 +1247,8 @@
     "section": "0. Before you start",
     "text": "0. Before you start\nInstall rig first. Check that rig works and see where it puts things:\nrig --version\nrig system dirs\nMode          admin\nArchitecture  arm64\nR root        /Library/Frameworks/R.framework/Versions\nBinary dir    /usr/local/bin\n...\nrig system dirs works before any R version is installed, so it is the quickest way to confirm which mode you are in and where R will land. The directories depend on your platform, so your output will differ.\nNow choose your platform to continue.\n\n\nmacOSWindowsLinux\n\n\n\n1. Switch rig to user mode\nrig starts out in admin mode even when rig is installed into your home directory, so tell it to use user mode from now on:\nrig system user-mode\nThis is the command the install script points you at when it finishes. On a machine with no system-wide R it has nothing to migrate or clean up, so it just records the setting and does not ask for your password.\nCheck where things will go from now on:\nrig system dirs\nMode          user\nArchitecture  arm64\nR root        /Users/you/.local/share/rig/r\nBinary dir    /Users/you/.local/bin\n...\n\n\n2. Install the latest release\nrig add release\nR is installed under your home directory. Besides unpacking R, rig add also configures the CRAN repository, installs pak for installing packages, sets R up to use a user package library, creates the quick links, and (if this is your first R version) makes the newly installed version the default.\n\n\n3. Make sure ~/.local/bin is on your PATH\nrig needs ~/.local/bin on your PATH for the R and Rscript commands to be found. It sets this up for you: it writes a small ~/.local/bin/rigenv snippet and sources it from your shell startup files (.profile, .bash_profile, .bashrc, .zprofile, .zshrc, and ~/.config/fish/conf.d/rigenv.fish if you use fish).\nThat only affects new shells, so for the session you are in rig tells you how to catch up:\n⚠ /Users/you/.local/bin is not on the PATH.\n  To add it to the current session, run:\n    . \"$HOME/.local/bin/rigenv\"                # bash/zsh/sh\n    fish_add_path \"$HOME/.local/bin\"           # fish\n  New shell sessions will pick it up automatically.\nCheck that it worked:\nwhich R\nR -q -e 'R.home()'\n\n\n4. See what you have\nrig list\n* name   version  aliases\n-------------------------\n* 4.6.1           release\nThe * marks the default version. rig list --plain prints just the names, one per line, which is handy in shell scripts.\n\n\n5. Add a second version\nR versions can be named with a version spec, not just a version number:\nrig add 4.4.3      # an exact version\nrig add 4.4        # the latest patch release of 4.4.x\nrig add oldrel     # the previous minor release\nrig add oldrel/2   # two minor releases back\nrig add devel      # the current development version of R\nrig add next       # the current R patched / release candidate\nrig available lists the R versions you can install, but it leaves out intermediate patch releases. Use rig available --all to include everything.\n\n\n6. Switch the default version\nrig default          # print the current default\nrig default 4.5.3    # set it\nThe default version is the one the plain R and Rscript commands start. rig also creates versioned quick links, so you can always reach a specific version without switching:\nR                              # the default version\nR-4.5.3                        # a specific version\nRscript -e 'R.version.string'  # the default version, non-interactively\nThe quick links are in ~/.local/bin.\n\n\n7. Install an R package\nrig add installs pak by default, so you can install R packages straight away:\nR -q -e 'pak::pkg_install(\"dplyr\")'\nPackages go into a per-user, per-version library that rig configured R to create automatically, so packages for different R versions never collide.\nIf you want more than one library for the same R version, e.g. one per project, see the rig library command.\n\n\n8. Run R without switching the default\nAnother way to run a specific version without changing the default is rig run. It runs R, a script or a whole project with any installed version, leaving your default alone:\nrig run                            # start R\nrig run -f analysis.R              # run a script\nrig run -e 'sessionInfo()'         # evaluate an expression\nrig run -r 4.5.3 -f analysis.R     # ... with a specific R version\nrig run --cmd check --no-manual .  # run `R CMD check`\nrig run also works if R is not on your PATH, but rig is, which makes it a good fallback if you would rather not set up your PATH at all.\n\n\n9. Turn on shell completions\nrig ships completions for bash, zsh, fish and elvish. In user mode they are installed under the install prefix, e.g. ~/.local/share; see Installing auto-complete for how to load them.\n\n\n10. macOS extras\n\nThe menu bar app is not part of the user-mode archive, since it installs into /Applications.\nTo debug R with lldb or gdb, run rig system allow-debugger. The CRAN builds are hardened against debuggers by default. In user mode this needs no password. There is also rig system allow-debugger-rstudio for RStudio’s rsession, and rig system allow-core-dumps.\n\n\n\n\n\n1. Switch rig to user mode\nrig starts out in admin mode even when rig itself lives in your user profile, so tell it to use user mode from now on:\nrig system user-mode\nThis is the command the install script points you at when it finishes. On a machine with no system-wide R it has nothing to migrate or clean up, so it just records the setting and does not raise a UAC prompt.\nCheck where things will go from now on:\nrig system dirs\nMode          user\nArchitecture  x86_64\nR root        C:\\Users\\you\\AppData\\Roaming\\rig\\data\\r\nBinary dir    C:\\Users\\you\\.local\\bin\n...\n\n\n2. Install the latest release\nrig add release\nNo UAC prompt this time: everything is written under your user profile.\nBesides unpacking R, rig add also configures the CRAN and P3M repositories, installs pak, sets R up to use a user package library, creates the quick links, and (if this is your first R version) makes the newly installed version the default.\nOn arm64 Windows rig installs arm64 R builds by default. Use the --arch x86_64 flag to install an x86_64 R build. You can mix x86_64 and arm64 builds of R and Rtools.\n\n\n3. Restart your terminal\nrig adds the quick-link directory to your user PATH in the registry, and tells you that this needs a fresh terminal:\n▶ Added C:\\Users\\you\\.local\\bin to user PATH\n⚠ Restart your terminal (or sign out and back in) for the PATH change to take effect.\nOpen a new terminal, then check that it worked:\nGet-Command R\nR -q -e 'R.home()'\n\n\n\n\n\n\nNote\n\n\n\nIf typing R in PowerShell re-runs your previous command instead of starting R, you have hit PowerShell’s built-in r alias for Invoke-History, which takes precedence over external commands. Run rig system fix-r-alias once and open a new PowerShell session.\n\n\n\n\n4. See what you have\nrig list\n* name   version  aliases\n-------------------------\n* 4.6.1           release\nThe * marks the default version. rig list --plain prints just the names, one per line, which is handy in scripts.\n\n\n5. Add a second version\nR versions can be named with a version spec, not just a version number:\nrig add 4.4.3      # an exact version\nrig add 4.4        # the latest patch release of 4.4.x\nrig add oldrel     # the previous minor release\nrig add oldrel/2   # two minor releases back\nrig add devel      # the current development version of R\nrig add next       # the current R patched / release candidate\nrig available lists the R versions you can install, but it leaves out intermediate patch releases. Use rig available --all to include everything.\n\n\n6. Switch the default version\nrig default          # print the current default\nrig default 4.5.3    # set it\nThe default version is the one the plain R and Rscript commands start. rig also creates versioned quick links, so you can always reach a specific version without switching:\nR                                # the default version\nR-4.5.3                          # a specific version\nRscript -e 'R.version.string'    # the default version, non-interactively\nThe quick links are in your user profile, so switching the default never raises a UAC prompt.\n\n\n7. Install an R package\nrig add installs pak by default, so you can install R packages straight away:\nR -q -e 'pak::pkg_install(\"dplyr\")'\nPackages go into a per-user, per-version library that rig configured R to create automatically, so packages for different R versions never collide.\nIf you want more than one library for the same R version, e.g. one per project, see the rig library command.\n\n\n8. Install Rtools\nTo build packages from source you need Rtools, which rig manages too, and in user mode installs into %APPDATA%\\rig\\data\\rtools:\nrig rtools list    # what is installed\nrig add rtools     # every Rtools version your R versions need\nrig add rtools45   # a specific Rtools version\nrig configures R and Rtools to work without putting Rtools on the PATH, so R CMD config, R CMD sh, R CMD make and rig run --cmd config work out of the box.\n\n\n9. Run R without switching the default\nAnother way to run a specific version without changing the default is rig run. It runs R, a script or a whole project with any installed version, leaving your default alone:\nrig run                            # start R\nrig run -f analysis.R              # run a script\nrig run -e 'sessionInfo()'         # evaluate an expression\nrig run -r 4.5.3 -f analysis.R     # ... with a specific R version\nrig run --cmd check --no-manual .  # run `R CMD check`\nrig run also works if R is not on your PATH, but rig is, which is handy before you have restarted your terminal.\n\n\n10. Turn on shell completions\nrig ships PowerShell completions. Dot-source the script from your PowerShell profile; for a user-mode install that is:\n. \"$env:USERPROFILE\\.local\\share\\rig\\_rig.ps1\"\nSee Installing auto-complete for the details.\n\n\n\n\n1. Switch rig to user mode\nrig starts out in admin mode even when rig itself lives in your home directory, so tell it to use user mode from now on:\nrig system user-mode\nThis is the command the install script points you at when it finishes. On a machine with no system-wide R it has nothing to migrate or clean up, so it just records the setting and does not ask for your password.\nCheck where things will go from now on:\nrig system dirs\nMode          user\nArchitecture  x86_64\nR root        /home/you/.local/share/rig/r\nBinary dir    /home/you/.local/bin\n...\n\n\n2. Install the latest release\nrig add release\nNo password prompt this time: everything is written under your home directory.\nIn user mode rig always installs a portable R build, one that does not depend on your distribution’s packages, picked for your libc (glibc or musl). Very old glibc versions are not supported; if yours is too old, rig says so instead of installing a broken R. rig also downloads a CA certificate bundle and points R at it, so HTTPS works even where the system store is missing or stale; you can re-run that step with rig system update-certs.\nThese portable builds are newer than the distro-specific builds that admin mode installs, and they are not as thoroughly tested yet, so you may hit the occasional rough edge with them. If that is a problem for you and you do have an administrator account, consider admin mode instead. Either way, please report what you run into.\nBesides unpacking R, rig add also configures the CRAN and P3M repositories (P3M serves pre-compiled, self-contained Linux binaries, which makes installing packages faster and more robust), installs pak, sets R up to use a user package library, creates the quick links, and (if this is your first R version) makes the newly installed version the default.\n\n\n3. Make sure ~/.local/bin is on your PATH\nrig needs ~/.local/bin on your PATH for the R and Rscript commands to be found. It sets this up for you: it writes a small ~/.local/bin/rigenv snippet and sources it from your shell startup files (.profile, .bash_profile, .bashrc, .zprofile, .zshrc, and ~/.config/fish/conf.d/rigenv.fish if you use fish).\nThat only affects new shells, so for the session you are in rig tells you how to catch up:\n⚠ /home/you/.local/bin is not on the PATH.\n  To add it to the current session, run:\n    . \"$HOME/.local/bin/rigenv\"                # bash/zsh/sh\n    fish_add_path \"$HOME/.local/bin\"           # fish\n  New shell sessions will pick it up automatically.\nCheck that it worked:\nwhich R\nR -q -e 'R.home()'\n\n\n4. See what you have\nrig list\n* name   version  aliases\n-------------------------\n* 4.6.1           release\nThe * marks the default version. rig list --plain prints just the names, one per line, which is handy in shell scripts.\n\n\n5. Add a second version\nR versions can be named with a version spec, not just a version number:\nrig add 4.4.3      # an exact version\nrig add 4.4        # the latest patch release of 4.4.x\nrig add oldrel     # the previous minor release\nrig add oldrel/2   # two minor releases back\nrig add devel      # the current development version of R\nrig add next       # the current R patched / release candidate\nrig available lists the R versions you can install, but it leaves out intermediate patch releases. Use rig available --all to include everything.\n\n\n6. Switch the default version\nrig default          # print the current default\nrig default 4.5.3    # set it\nThe default version is the one the plain R and Rscript commands start. rig also creates versioned quick links, so you can always reach a specific version without switching:\nR                              # the default version\nR-4.5.3                        # a specific version\nRscript -e 'R.version.string'  # the default version, non-interactively\nThe quick links are in ~/.local/bin, so switching the default never needs a password.\n\n\n7. Install an R package\nrig add installs pak by default, so you can install R packages straight away:\nR -q -e 'pak::pkg_install(\"dplyr\")'\nPackages go into a per-user, per-version library that rig configured R to create automatically, so packages for different R versions never collide.\nMany R packages need system libraries to build and run. pak can install those with your distribution’s package manager, but that needs sudo, which is exactly what user mode avoids. rig sets up P3M’s manylinux package repository binaries on glibc based Linux systems to fix this. These binary packages are self-contained and do not need any system libraries to run. The manylinux repository is fairly new, though, and not as thoroughly tested as P3M’s distro-specific repositories, so occasional problems with individual packages are still to be expected.\nIf P3M is missing a binary for a certain package, then you need to install this package form source. If the package needs system libraries, then you’ll need to install them yourself, or ask an administrator to install them.\nP3M does not have binary packages for musl libc based Linux distributions (e.g. Alpine Linux).\nIf you want more than one library for the same R version, e.g. one per project, see the rig library command.\n\n\n8. Run R without switching the default\nAnother way to run a specific version without changing the default is rig run. It runs R, a script or a whole project with any installed version, leaving your default alone:\nrig run                            # start R\nrig run -f analysis.R              # run a script\nrig run -e 'sessionInfo()'         # evaluate an expression\nrig run -r 4.5.3 -f analysis.R     # ... with a specific R version\nrig run --cmd check --no-manual .  # run `R CMD check`\nrig run also works if R is not on your PATH, but rig is, which makes it a good fallback if you would rather not set up your PATH at all.\n\n\n9. Turn on shell completions\nrig ships completions for bash, zsh, fish and elvish. In user mode they are installed under the install prefix, e.g. ~/.local/share; see Installing auto-complete for how to load them.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1258,8 +1258,8 @@
     "section": "1. Switch rig to user mode",
     "text": "1. Switch rig to user mode\nrig starts out in admin mode even when rig is installed into your home directory, so tell it to use user mode from now on:\nrig system user-mode\nThis is the command the install script points you at when it finishes. On a machine with no system-wide R it has nothing to migrate or clean up, so it just records the setting and does not ask for your password.\nCheck where things will go from now on:\nrig system dirs\nMode          user\nArchitecture  arm64\nR root        /Users/you/.local/share/rig/r\nBinary dir    /Users/you/.local/bin\n...",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1269,8 +1269,8 @@
     "section": "2. Install the latest release",
     "text": "2. Install the latest release\nrig add release\nR is installed under your home directory. Besides unpacking R, rig add also configures the CRAN repository, installs pak for installing packages, sets R up to use a user package library, creates the quick links, and (if this is your first R version) makes the newly installed version the default.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1280,8 +1280,8 @@
     "section": "3. Make sure ~/.local/bin is on your PATH",
     "text": "3. Make sure ~/.local/bin is on your PATH\nrig needs ~/.local/bin on your PATH for the R and Rscript commands to be found. It sets this up for you: it writes a small ~/.local/bin/rigenv snippet and sources it from your shell startup files (.profile, .bash_profile, .bashrc, .zprofile, .zshrc, and ~/.config/fish/conf.d/rigenv.fish if you use fish).\nThat only affects new shells, so for the session you are in rig tells you how to catch up:\n⚠ /Users/you/.local/bin is not on the PATH.\n  To add it to the current session, run:\n    . \"$HOME/.local/bin/rigenv\"                # bash/zsh/sh\n    fish_add_path \"$HOME/.local/bin\"           # fish\n  New shell sessions will pick it up automatically.\nCheck that it worked:\nwhich R\nR -q -e 'R.home()'",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1291,8 +1291,8 @@
     "section": "4. See what you have",
     "text": "4. See what you have\nrig list\n* name   version  aliases\n-------------------------\n* 4.6.1           release\nThe * marks the default version. rig list --plain prints just the names, one per line, which is handy in shell scripts.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1302,8 +1302,8 @@
     "section": "5. Add a second version",
     "text": "5. Add a second version\nR versions can be named with a version spec, not just a version number:\nrig add 4.4.3      # an exact version\nrig add 4.4        # the latest patch release of 4.4.x\nrig add oldrel     # the previous minor release\nrig add oldrel/2   # two minor releases back\nrig add devel      # the current development version of R\nrig add next       # the current R patched / release candidate\nrig available lists the R versions you can install, but it leaves out intermediate patch releases. Use rig available --all to include everything.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1313,8 +1313,8 @@
     "section": "6. Switch the default version",
     "text": "6. Switch the default version\nrig default          # print the current default\nrig default 4.5.3    # set it\nThe default version is the one the plain R and Rscript commands start. rig also creates versioned quick links, so you can always reach a specific version without switching:\nR                              # the default version\nR-4.5.3                        # a specific version\nRscript -e 'R.version.string'  # the default version, non-interactively\nThe quick links are in ~/.local/bin.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1324,8 +1324,8 @@
     "section": "7. Install an R package",
     "text": "7. Install an R package\nrig add installs pak by default, so you can install R packages straight away:\nR -q -e 'pak::pkg_install(\"dplyr\")'\nPackages go into a per-user, per-version library that rig configured R to create automatically, so packages for different R versions never collide.\nIf you want more than one library for the same R version, e.g. one per project, see the rig library command.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1335,8 +1335,8 @@
     "section": "8. Run R without switching the default",
     "text": "8. Run R without switching the default\nAnother way to run a specific version without changing the default is rig run. It runs R, a script or a whole project with any installed version, leaving your default alone:\nrig run                            # start R\nrig run -f analysis.R              # run a script\nrig run -e 'sessionInfo()'         # evaluate an expression\nrig run -r 4.5.3 -f analysis.R     # ... with a specific R version\nrig run --cmd check --no-manual .  # run `R CMD check`\nrig run also works if R is not on your PATH, but rig is, which makes it a good fallback if you would rather not set up your PATH at all.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1346,8 +1346,8 @@
     "section": "9. Turn on shell completions",
     "text": "9. Turn on shell completions\nrig ships completions for bash, zsh, fish and elvish. In user mode they are installed under the install prefix, e.g. ~/.local/share; see Installing auto-complete for how to load them.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1357,8 +1357,8 @@
     "section": "10. macOS extras",
     "text": "10. macOS extras\n\nThe menu bar app is not part of the user-mode archive, since it installs into /Applications.\nTo debug R with lldb or gdb, run rig system allow-debugger. The CRAN builds are hardened against debuggers by default. In user mode this needs no password. There is also rig system allow-debugger-rstudio for RStudio’s rsession, and rig system allow-core-dumps.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1368,8 +1368,8 @@
     "section": "1. Switch rig to user mode",
     "text": "1. Switch rig to user mode\nrig starts out in admin mode even when rig itself lives in your user profile, so tell it to use user mode from now on:\nrig system user-mode\nThis is the command the install script points you at when it finishes. On a machine with no system-wide R it has nothing to migrate or clean up, so it just records the setting and does not raise a UAC prompt.\nCheck where things will go from now on:\nrig system dirs\nMode          user\nArchitecture  x86_64\nR root        C:\\Users\\you\\AppData\\Roaming\\rig\\data\\r\nBinary dir    C:\\Users\\you\\.local\\bin\n...",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1379,8 +1379,8 @@
     "section": "2. Install the latest release",
     "text": "2. Install the latest release\nrig add release\nNo UAC prompt this time: everything is written under your user profile.\nBesides unpacking R, rig add also configures the CRAN and P3M repositories, installs pak, sets R up to use a user package library, creates the quick links, and (if this is your first R version) makes the newly installed version the default.\nOn arm64 Windows rig installs arm64 R builds by default. Use the --arch x86_64 flag to install an x86_64 R build. You can mix x86_64 and arm64 builds of R and Rtools.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1390,8 +1390,8 @@
     "section": "3. Restart your terminal",
     "text": "3. Restart your terminal\nrig adds the quick-link directory to your user PATH in the registry, and tells you that this needs a fresh terminal:\n▶ Added C:\\Users\\you\\.local\\bin to user PATH\n⚠ Restart your terminal (or sign out and back in) for the PATH change to take effect.\nOpen a new terminal, then check that it worked:\nGet-Command R\nR -q -e 'R.home()'\n\n\n\n\n\n\nNote\n\n\n\nIf typing R in PowerShell re-runs your previous command instead of starting R, you have hit PowerShell’s built-in r alias for Invoke-History, which takes precedence over external commands. Run rig system fix-r-alias once and open a new PowerShell session.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1401,8 +1401,8 @@
     "section": "4. See what you have",
     "text": "4. See what you have\nrig list\n* name   version  aliases\n-------------------------\n* 4.6.1           release\nThe * marks the default version. rig list --plain prints just the names, one per line, which is handy in scripts.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1412,8 +1412,8 @@
     "section": "5. Add a second version",
     "text": "5. Add a second version\nR versions can be named with a version spec, not just a version number:\nrig add 4.4.3      # an exact version\nrig add 4.4        # the latest patch release of 4.4.x\nrig add oldrel     # the previous minor release\nrig add oldrel/2   # two minor releases back\nrig add devel      # the current development version of R\nrig add next       # the current R patched / release candidate\nrig available lists the R versions you can install, but it leaves out intermediate patch releases. Use rig available --all to include everything.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1423,8 +1423,8 @@
     "section": "6. Switch the default version",
     "text": "6. Switch the default version\nrig default          # print the current default\nrig default 4.5.3    # set it\nThe default version is the one the plain R and Rscript commands start. rig also creates versioned quick links, so you can always reach a specific version without switching:\nR                                # the default version\nR-4.5.3                          # a specific version\nRscript -e 'R.version.string'    # the default version, non-interactively\nThe quick links are in your user profile, so switching the default never raises a UAC prompt.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1434,8 +1434,8 @@
     "section": "7. Install an R package",
     "text": "7. Install an R package\nrig add installs pak by default, so you can install R packages straight away:\nR -q -e 'pak::pkg_install(\"dplyr\")'\nPackages go into a per-user, per-version library that rig configured R to create automatically, so packages for different R versions never collide.\nIf you want more than one library for the same R version, e.g. one per project, see the rig library command.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1445,8 +1445,8 @@
     "section": "8. Install Rtools",
     "text": "8. Install Rtools\nTo build packages from source you need Rtools, which rig manages too, and in user mode installs into %APPDATA%\\rig\\data\\rtools:\nrig rtools list    # what is installed\nrig add rtools     # every Rtools version your R versions need\nrig add rtools45   # a specific Rtools version\nrig configures R and Rtools to work without putting Rtools on the PATH, so R CMD config, R CMD sh, R CMD make and rig run --cmd config work out of the box.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1456,8 +1456,8 @@
     "section": "9. Run R without switching the default",
     "text": "9. Run R without switching the default\nAnother way to run a specific version without changing the default is rig run. It runs R, a script or a whole project with any installed version, leaving your default alone:\nrig run                            # start R\nrig run -f analysis.R              # run a script\nrig run -e 'sessionInfo()'         # evaluate an expression\nrig run -r 4.5.3 -f analysis.R     # ... with a specific R version\nrig run --cmd check --no-manual .  # run `R CMD check`\nrig run also works if R is not on your PATH, but rig is, which is handy before you have restarted your terminal.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1467,8 +1467,8 @@
     "section": "10. Turn on shell completions",
     "text": "10. Turn on shell completions\nrig ships PowerShell completions. Dot-source the script from your PowerShell profile; for a user-mode install that is:\n. \"$env:USERPROFILE\\.local\\share\\rig\\_rig.ps1\"\nSee Installing auto-complete for the details.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1478,8 +1478,8 @@
     "section": "1. Switch rig to user mode",
     "text": "1. Switch rig to user mode\nrig starts out in admin mode even when rig itself lives in your home directory, so tell it to use user mode from now on:\nrig system user-mode\nThis is the command the install script points you at when it finishes. On a machine with no system-wide R it has nothing to migrate or clean up, so it just records the setting and does not ask for your password.\nCheck where things will go from now on:\nrig system dirs\nMode          user\nArchitecture  x86_64\nR root        /home/you/.local/share/rig/r\nBinary dir    /home/you/.local/bin\n...",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1489,8 +1489,8 @@
     "section": "2. Install the latest release",
     "text": "2. Install the latest release\nrig add release\nNo password prompt this time: everything is written under your home directory.\nIn user mode rig always installs a portable R build, one that does not depend on your distribution’s packages, picked for your libc (glibc or musl). Very old glibc versions are not supported; if yours is too old, rig says so instead of installing a broken R. rig also downloads a CA certificate bundle and points R at it, so HTTPS works even where the system store is missing or stale; you can re-run that step with rig system update-certs.\nThese portable builds are newer than the distro-specific builds that admin mode installs, and they are not as thoroughly tested yet, so you may hit the occasional rough edge with them. If that is a problem for you and you do have an administrator account, consider admin mode instead. Either way, please report what you run into.\nBesides unpacking R, rig add also configures the CRAN and P3M repositories (P3M serves pre-compiled, self-contained Linux binaries, which makes installing packages faster and more robust), installs pak, sets R up to use a user package library, creates the quick links, and (if this is your first R version) makes the newly installed version the default.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1500,8 +1500,8 @@
     "section": "3. Make sure ~/.local/bin is on your PATH",
     "text": "3. Make sure ~/.local/bin is on your PATH\nrig needs ~/.local/bin on your PATH for the R and Rscript commands to be found. It sets this up for you: it writes a small ~/.local/bin/rigenv snippet and sources it from your shell startup files (.profile, .bash_profile, .bashrc, .zprofile, .zshrc, and ~/.config/fish/conf.d/rigenv.fish if you use fish).\nThat only affects new shells, so for the session you are in rig tells you how to catch up:\n⚠ /home/you/.local/bin is not on the PATH.\n  To add it to the current session, run:\n    . \"$HOME/.local/bin/rigenv\"                # bash/zsh/sh\n    fish_add_path \"$HOME/.local/bin\"           # fish\n  New shell sessions will pick it up automatically.\nCheck that it worked:\nwhich R\nR -q -e 'R.home()'",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1511,8 +1511,8 @@
     "section": "4. See what you have",
     "text": "4. See what you have\nrig list\n* name   version  aliases\n-------------------------\n* 4.6.1           release\nThe * marks the default version. rig list --plain prints just the names, one per line, which is handy in shell scripts.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1522,8 +1522,8 @@
     "section": "5. Add a second version",
     "text": "5. Add a second version\nR versions can be named with a version spec, not just a version number:\nrig add 4.4.3      # an exact version\nrig add 4.4        # the latest patch release of 4.4.x\nrig add oldrel     # the previous minor release\nrig add oldrel/2   # two minor releases back\nrig add devel      # the current development version of R\nrig add next       # the current R patched / release candidate\nrig available lists the R versions you can install, but it leaves out intermediate patch releases. Use rig available --all to include everything.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1533,8 +1533,8 @@
     "section": "6. Switch the default version",
     "text": "6. Switch the default version\nrig default          # print the current default\nrig default 4.5.3    # set it\nThe default version is the one the plain R and Rscript commands start. rig also creates versioned quick links, so you can always reach a specific version without switching:\nR                              # the default version\nR-4.5.3                        # a specific version\nRscript -e 'R.version.string'  # the default version, non-interactively\nThe quick links are in ~/.local/bin, so switching the default never needs a password.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1544,8 +1544,8 @@
     "section": "7. Install an R package",
     "text": "7. Install an R package\nrig add installs pak by default, so you can install R packages straight away:\nR -q -e 'pak::pkg_install(\"dplyr\")'\nPackages go into a per-user, per-version library that rig configured R to create automatically, so packages for different R versions never collide.\nMany R packages need system libraries to build and run. pak can install those with your distribution’s package manager, but that needs sudo, which is exactly what user mode avoids. rig sets up P3M’s manylinux package repository binaries on glibc based Linux systems to fix this. These binary packages are self-contained and do not need any system libraries to run. The manylinux repository is fairly new, though, and not as thoroughly tested as P3M’s distro-specific repositories, so occasional problems with individual packages are still to be expected.\nIf P3M is missing a binary for a certain package, then you need to install this package form source. If the package needs system libraries, then you’ll need to install them yourself, or ask an administrator to install them.\nP3M does not have binary packages for musl libc based Linux distributions (e.g. Alpine Linux).\nIf you want more than one library for the same R version, e.g. one per project, see the rig library command.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1555,8 +1555,8 @@
     "section": "8. Run R without switching the default",
     "text": "8. Run R without switching the default\nAnother way to run a specific version without changing the default is rig run. It runs R, a script or a whole project with any installed version, leaving your default alone:\nrig run                            # start R\nrig run -f analysis.R              # run a script\nrig run -e 'sessionInfo()'         # evaluate an expression\nrig run -r 4.5.3 -f analysis.R     # ... with a specific R version\nrig run --cmd check --no-manual .  # run `R CMD check`\nrig run also works if R is not on your PATH, but rig is, which makes it a good fallback if you would rather not set up your PATH at all.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -1566,8 +1566,8 @@
     "section": "9. Turn on shell completions",
     "text": "9. Turn on shell completions\nrig ships completions for bash, zsh, fish and elvish. In user mode they are installed under the install prefix, e.g. ~/.local/share; see Installing auto-complete for how to load them.",
     "crumbs": [
-      "Tutorials",
-      "User mode"
+      "Getting started",
+      "As an R user"
     ]
   },
   {
@@ -2443,11 +2443,11 @@
   {
     "objectID": "tutorial.html",
     "href": "tutorial.html",
-    "title": "Tutorials",
+    "title": "Getting started",
     "section": "",
-    "text": "These tutorials walk you through your first R installation with rig, to running R and installing packages.\nSee Admin mode vs user mode for more details on the two modes and how to pick between them.\n\nGetting started in admin mode\nR is installed system-wide and shared by everyone on the machine. You need an administrator account to do this, and rig asks for your password when it needs to. This is rig’s default mode, and the better tested one.\nGetting started in user mode\nrig installs everything into your home directory and does not need an administrator account. Use it if you have no administrator rights, or do not want R in system directories. It is a newer mode, and less tested than admin mode, especially on Linux.\nMigrate to user mode\nYou already have an admin-mode rig setup and want to move it into your home directory.",
+    "text": "Start by installing rig. Then pick the walkthrough that fits you; each one takes you from your first R installation with rig, to running R and installing packages.\nSee Admin mode vs user mode for more details on the two modes and how to pick between them.\n\nAs an R user\nrig installs everything into your home directory (user mode) and does not need an administrator account. Use it if you have no administrator rights, or do not want R in system directories. It is a newer mode, and less tested than admin mode, especially on Linux.\nAs an R admin\nR is installed system-wide (admin mode) and shared by everyone on the machine. You need an administrator account to do this, and rig asks for your password when it needs to. This is rig’s default mode, and the better tested one.\nMigrating to user mode\nYou already have an admin-mode rig setup and want to move it into your home directory.",
     "crumbs": [
-      "Tutorials"
+      "Getting started"
     ]
   },
   {
@@ -2457,7 +2457,7 @@
     "section": "",
     "text": "rig proj manages an R project: a directory with an rproj.toml manifest that declares the R and package dependencies the project needs, resolved to an exact, reproducible set of versions in rproj.lock.\nrig proj is a companion to rig pkg: use rig pkg install for one-off packages in a library, and rig proj when you want a project’s dependencies to be declared, locked and reproducible on every machine that syncs it.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "R projects"
     ]
   },
@@ -2468,7 +2468,7 @@
     "section": "Quick start",
     "text": "Quick start\nrig proj init           # write rproj.toml (and project boilerplate)\nrig proj lock           # resolve dependencies and write rproj.lock\nrig proj sync           # synchronize the project library (runs lock as needed)\nrig proj add dplyr cli  # add dependencies to rproj.toml (runs lock and sync)\nrig run                 # start R, configured for the project (runs lock and sync)\nrig proj init sets up a new project in the current directory. If you already have a DESCRIPTION file or an renv.lock file, use rig proj import or rig proj renv import instead, to start from that.\nrig proj lock resolves the dependencies declared in rproj.toml and writes them to rproj.lock.\nrig proj sync synchronizes the project library with rproj.lock (runs lock as needed unless you specify --frozen).\nrig proj add and rig proj remove edit rproj.toml and keep rproj.lock and the project library in sync with it.\nrig run, which starts R configured for a project, calls rig proj lock and rig proj sync itself as needed, so day to day you mostly need add/remove and run.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "R projects"
     ]
   },
@@ -2479,7 +2479,7 @@
     "section": "The manifest and the lock file",
     "text": "The manifest and the lock file\nrproj.toml is the manifest you and rig proj add/remove edit: project metadata plus dependency tables ([dependencies], [linking-dependencies], [dependency-groups.*], [optional-dependencies.*]). A dependency can carry a version requirement (^1.2.3, ~1.2.3, &gt;= 1.0, &lt; 2.0, or * for any version) or come straight from git, GitHub or GitLab. See rig proj add for the full syntax.\nEvery [dependency-groups.*] table and every [optional-dependencies.*] extra are optional dependencies: packages the project suggests or can take advantage of, but does not need to run. rig proj lock solves all of them together with the hard dependencies, in one solve, by default; --no-dev leaves them out. See rig proj lock.\nrproj.lock is written by rig proj lock, which reads rproj.toml and resolves it with rig’s built-in solver into an exact, reproducible set of package versions, each with the URL it downloads from. It never runs R. Both files are meant to be committed, rig proj add/remove update both for you.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "R projects"
     ]
   },
@@ -2490,7 +2490,7 @@
     "section": "Platforms and R versions",
     "text": "Platforms and R versions\nrproj.lock has one target for each R version and platform it was solved for. By default rig proj lock solves for this machine, macOS on arm64 (aarch64-apple-darwin), Windows (x86_64-w64-mingw32), any glibc Linux (x86_64-unknown-linux-gnu), and source packages (source), so the same lock file works for everyone on the project. rig proj sync picks the target that matches the machine it runs on.\nTo lock for a different set of platforms, list them in rproj.toml:\n[tool.rig]\nplatforms = [\n  \"aarch64-apple-darwin\",\n  \"x86_64-unknown-linux-gnu-ubuntu-24.04\",\n  \"source\",\n]\nPlatforms are written as target triples, with a distribution and version for a specific Linux distribution. Shorter forms such as macos, windows, ubuntu-24.04 or macos-arm64 work too. See rig proj lock for the details, and --platform / --add-platform to change the platforms for one lock.\nBy default rig proj lock solves for one R version: the default R version, if the project’s R requirement allows it. To lock for several R versions, list them in rproj.toml as well:\n[tool.rig]\nr-versions = [\"4.5\", \"4.6\"]\nrig proj lock --r-version changes the R versions for one lock.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "R projects"
     ]
   },
@@ -2501,7 +2501,7 @@
     "section": "Syncing the project environment",
     "text": "Syncing the project environment\nrig proj sync installs the versions rproj.lock resolved into the project library, and writes the rest of the project’s virtual environment under .rvenv: .rvenv/bin/R and .rvenv/bin/Rscript wrapper scripts, shell activation scripts, and .rvenv/rvenv.cfg. It installs the R version the lock file names first, if it is not already installed.\n.rvenv is entirely machine-specific and generated. rig proj init adds it to .gitignore for you, and it can be deleted and rebuilt at any time. rproj.toml and rproj.lock need to be committed for a fresh clone of the project to work, together with the boilerplate files .Renviron and .rvenvlib.\nProjects also get a tools package library automatically added to every R session in the project. Install development tools you use but the project itself does not depend on, e.g. devtools, usethis, roxygen2, there with rig pkg install -l tools &lt;pkgs&gt;, so they don’t end up in rproj.toml.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "R projects"
     ]
   },
@@ -2512,7 +2512,7 @@
     "section": "Inspecting a project",
     "text": "Inspecting a project\nrig proj status   # is the project library in sync with rproj.lock?\nrig proj deps     # flat list of dependencies from rproj.toml\nrig proj tree     # dependency tree, with --why &lt;pkg&gt; to invert it\nrig proj status, rig proj deps and rig proj tree are all read-only: they never resolve, download or change anything. rig proj status is the one to reach for after pulling changes to rproj.toml/rproj.lock, to see whether rig proj sync needs to run again.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "R projects"
     ]
   },
@@ -2523,7 +2523,7 @@
     "section": "Interoperating with DESCRIPTION and renv",
     "text": "Interoperating with DESCRIPTION and renv\nA project’s dependencies can move back and forth between rproj.toml and the two formats most R packages and projects already use:\n\nrig proj import creates rproj.toml from a DESCRIPTION file. rig proj export writes one back.\nrig proj renv import creates rproj.toml from an renv renv.lock file. rig proj renv export writes one back, resolved for a single R version and platform.\n\n\n\n\n\n\n\nNoteConversions are not 100%\n\n\n\nConverting between rproj.toml, DESCRIPTION and renv.lock may not preserve all information, especially if you edited rproj.toml manually.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "R projects"
     ]
   },
@@ -2534,7 +2534,7 @@
     "section": "Named scripts",
     "text": "Named scripts\nA project can give its own scripts a name, in [[bin]] tables of rproj.toml:\n[[bin]]\nname = \"report\"\npath = \"scripts/report.R\"\ndescription = \"Build the report\"\nrig run report then runs scripts/report.R in the project’s environment (the R version and package library rproj.lock resolved), from anywhere inside the project. Extra arguments, e.g. rig run report --format pdf, are passed on to the script for commandArgs(TRUE) to pick up.\nrig run --list lists a project’s declared scripts.\nA declared name wins over a directory of the same name. Use ./name to run an app in a directory whose name a script has taken instead. See rig run for the full rules on telling a script name apart from a path.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "R projects"
     ]
   },
@@ -2545,7 +2545,7 @@
     "section": "Workspaces",
     "text": "Workspaces\nA manifest with a [workspace] table is the root of a workspace: several projects or packages, listed by path pattern in members, that share one rproj.lock and one package library. rig proj lock from the root or from any member resolves every member together, so shared dependencies land on the same version everywhere. [workspace.dependencies] lets members inherit a shared version requirement by name instead of repeating it. See rig proj lock for the details.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "R projects"
     ]
   },
@@ -2556,7 +2556,7 @@
     "section": "See also",
     "text": "See also\n\nThe rig proj reference for the full list of flags and options of every subcommand.\nrig run, which starts R configured for a project.\nManaging R packages for installing packages outside of a project.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "R projects"
     ]
   },
@@ -2567,7 +2567,7 @@
     "section": "",
     "text": "Why does rig create a user package library?\n\n\nInstalling non-base packages into a user package library has several benefits:\n\nThe system library is not writeable for regular users on some systems (Windows and Linux, typically), so we might as well create a properly versioned user library at the default place.\nSome tools need a clean R environment, with base packages only, and do not work well if user packages are installed into the system library. E.g. R CMD check is such a tool, and https://github.com/r-lib/revdepcheck is another.\nYou can delete an R installation (e.g. with rig rm) and then install it again, without losing your R packages.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "FAQ"
     ]
   },
@@ -2578,7 +2578,7 @@
     "section": "Feedback",
     "text": "Feedback\nPlease open an issue in our issue tracker at https://github.com/r-lib/rig/issues",
     "crumbs": [
-      "Guide",
+      "Guides",
       "FAQ"
     ]
   },
@@ -2589,7 +2589,7 @@
     "section": "",
     "text": "Some of the methods below install rig itself into your home directory, others system-wide. That choice is independent of the mode rig installs R in: rig defaults to admin mode either way, and you switch to user mode explicitly with rig system user-mode. Admin mode is the older and better tested mode, so if you have an administrator account and no reason to keep R in your home directory, you can skip that step.\nOnce rig is installed, the tutorials walk you through installing R, switching between versions and installing packages.",
     "crumbs": [
-      "Guide",
+      "Getting started",
       "Installing rig"
     ]
   },
@@ -2600,7 +2600,7 @@
     "section": "Supported Linux distributions",
     "text": "Supported Linux distributions\n\nDebian 12, 13\nUbuntu 20.04, 22.04, 24.04, 26.04\nFedora Linux 43, 44\nOpenSUSE 15.6, 16.0\nSUSE Linux Enterprise 15 SP6\nRed Hat Enterprise Linux 7, 8, 9, 10\nAlmaLinux 8, 9, 10\nRocky Linux 8, 9 10\n\n\n\nRetired Linux distributions\n\nThese are not updated any more, no new R builds are added for them, but existing R builds still work.\n\nCentOS 6 (only x86_64, last R version: 4.0.4),\nCentOS 7 (last R version: 4.4.3),\nCentOS 8 (last R version: 4.4.3),\nDebian 9 (last R version: 4.2.1),\nDebian 10 (last R version: 4.4.3),\nFedora 37 (last R version: 4.3.2),\nFedora 38 (last R version: 4.4.2),\nFedora 39 (last R version: 4.4.3),\nFedora 40 (last R version: 4.5.1),\nFedora 41 (last R version: 4.5.3),\nFedora 42 (last R version: 4.6.1),\nOpenSUSE 42 (only x86_64, last R version: 4.2.1),\nOpenSUSE 15.1 (only x86_64, last R version: 4.1.2),\nOpenSUSE 15.2 (only x86_64, last R version: 4.1.3),\nOpenSUSE 15.3 (last R version: x86_64: 4.4.3, aarch64: 4.3.1),\nOpenSUSE 15.4 (last R version: 4.4.0),\nOpenSUSE 15.5 (last R version: 4.4.3),\nSUSE Linux Enterprise 15 (only x86_64, last R version: 4.1.2),\nSUSE Linux Enterprise 15.1 (only x86_64, last R version: 4.1.2),\nSUSE Linux Enterprise 15.2 (only x86_64, last R version: 4.1.3),\nSUSE Linux Enterprise 15.3 (last R version: x86_64: 4.4.3, aarch64: 4.3.1),\nSUSE Linux Enterprise 15.4 (last R version: 4.4.0),\nSUSE Linux Enterprise 15.5 (last R version: 4.4.3),\nUbuntu 16.04 (only x86_64, last R version: 4.1.2),\nUbuntu 18.04 (last R version: 4.3.1).\n\n\nWe use Linux builds or R from the Posit R-builds project.",
     "crumbs": [
-      "Guide",
+      "Getting started",
       "Installing rig"
     ]
   },
@@ -2611,7 +2611,7 @@
     "section": "Installing auto-complete",
     "text": "Installing auto-complete\nAll rig installers and archives ship shell completion files.\n\nmacOS and Linux\nThe macOS and Linux installers install completion files for zsh and bash into system locations.\nzsh completions work out of the box.\nFor bash completions install the bash-completion package from Homebrew or your Linux distribution and make sure it is loaded from your .bashrc. (You don’t need to install bash from Homebrew, but you can if you like.)\nFor user-mode installs the completion files are placed under the install prefix instead (e.g. ~/.local/share):\n\nzsh: add ~/.local/share/zsh/site-functions to your fpath (before compinit).\nbash: bash-completion picks up ~/.local/share/bash-completion/completions automatically once it is loaded from your .bashrc.\n\n\n\nWindows\nThe Windows installer and archive ship a PowerShell completion script. To enable tab-completion, dot-source it from your PowerShell profile ($PROFILE). For a user-mode archive install that is:\n. \"$env:USERPROFILE\\.local\\share\\rig\\_rig.ps1\"",
     "crumbs": [
-      "Guide",
+      "Getting started",
       "Installing rig"
     ]
   },
@@ -2622,7 +2622,7 @@
     "section": "",
     "text": "rig can manage R installations in one of two modes. The current default is admin mode: R is installed system-wide, shared by every user on the machine, and most operations need sudo or an administrator account. In user mode rig installs everything into your home directory and never needs elevated privileges.\nAdmin mode is the older and better tested of the two, and it is what most rig users run today. User mode is newer, and on Linux it relies on portable (manylinux/musllinux) R builds and manylinux R packages that are still maturing. Pick admin mode if you can use an administrator account and want the best-trodden path; pick user mode if you cannot, or do not want to, touch system directories.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Admin mode vs user mode"
     ]
   },
@@ -2633,7 +2633,7 @@
     "section": "At a glance",
     "text": "At a glance\n\nPros and cons\n\n\n\n\nUser mode\nAdmin mode\n\n\n\n\nBest for\nmachines without admin rights\nshared servers, native Linux packages2\n\n\nMaturity\nnewer, less tested, esp. on Linux1\noldest and best tested, current default\n\n\nRequired privileges\nnone\nsudo / administrator for many operations\n\n\nShared between users\nno\nyes\n\n\nR install root\nin your home directory (see below)\nplatform default (see below)\n\n\nNeeds PATH setup\npossibly3\nusually no\n\n\nSupported Linux distros\nall glibc and musl distros4\nselected2\n\n\nMultiple patch versions on macOS\nyes\nno5\n\n\n\n\nUser mode is a recent addition to rig, so it has seen much less use than admin mode. This is most noticeable on Linux, where user mode always installs a portable R build and uses manylinux R packages; both are newer and less widely exercised than the distro-specific builds and packages that admin mode uses. Please report any problem you run into.\nIn admin mode, on supported Linux distributions, rig installs R through the system package manager, so it is managed like any other distro package. R’s and R packages’ system libraries are shared with other users and also managed by the system package manager. System libraries for R packages can be automatically installed by pak.\nIn user mode, the rig binary directory must be on your PATH for the R and Rscript commands to be found. rig helps with this and patches your shell profiles if the R binary directory is not already on your PATH.\nIn user mode, on Linux, rig supports all glibc (&gt;= 2.28) and musl (&gt;= 1.2) distros. It uses self-contained R builds that do not depend on the system package manager or system packages. It sets up Posit Package Manager’s manylinux R package repositories to install self-contained binary R packages.\nIn admin mode on macOS, rig can only install one patch version of any given minor version of R. For example, if you install R 4.5.1, rig will remove any other 4.5.x version that is already installed.\n\n\n\nWhere things go\n\n\n\n\n\n\n\n\n\nPlatform\nMode\nR install root\nBinary directory (R, Rscript, R-*)\n\n\n\n\nmacOS\nadmin\n/Library/Frameworks/R.framework\n/usr/local/bin\n\n\nmacOS\nuser\n~/.local/share/rig/r\n~/.local/bin\n\n\nLinux\nadmin\n/opt/R\n/usr/local/bin\n\n\nLinux\nuser\n~/.local/share/rig/r\n~/.local/bin\n\n\nWindows\nadmin\nC:\\Program Files\\R\nC:\\Program Files\\R\\bin\n\n\nWindows\nuser\n%APPDATA%\\rig\\data\\r\n%USERPROFILE%\\.local\\bin\n\n\n\nrig system dirs prints the directories rig actually uses on your machine, in the current mode and after applying any configuration overrides. It works without an R installation and is a good way to see where rig add will put things.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Admin mode vs user mode"
     ]
   },
@@ -2644,7 +2644,7 @@
     "section": "Admin mode",
     "text": "Admin mode\nAdmin mode is the current default, for historical reasons. Previous versions of rig only supported admin mode. R is installed into the platform’s usual system location and rig creates startup links (R, Rscript), and versioned R-4.5.1-style quick links in a system-wide binary directory that is normally already on everyone’s PATH.\nBecause these locations are outside your home directory, operations that write to them, e.g. adding or removing an R version, switching the default, creating the startup and quick links, switch to the root or administrator user as needed. On Unix rig runs sudo (prompting for your password); on Windows it elevates through a UAC prompt. On macOS admin mode also restricts the permissions of the system R library so that packages are not installed into it accidentally.\nAdmin mode may be the right choice on a server where you have administrator rights and want a single shared R for everyone. It may also be the right choice on Linux if you want rig to install R and R’s and R packages’ system dependencies through the system package manager so that it is managed like any other distro package.\nIt is also the mode with the most mileage on it: rig only supported admin mode for years, so if you have an administrator account and no reason to prefer user mode, this is the safer default today, on Linux in particular.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Admin mode vs user mode"
     ]
   },
@@ -2655,7 +2655,7 @@
     "section": "User mode",
     "text": "User mode\nIn user mode rig installs R entirely inside your home directory and creates the startup and quick links in a per-user binary directory. Nothing lives outside your account, so rig never needs sudo or an administrator account in this mode. It is designed for machines where you do not have, or do not want to use, elevated privileges.\nThe one thing to take care of is your PATH: the rig binary directory (~/.local/bin, or %USERPROFILE%\\.local\\bin on Windows) must be on it for the R and Rscript commands to be found. The user-mode install script sets this up for you; if you install rig from an archive manually. rig also checks if your PATH is set up correctly, and if not, it patches your shell profiles on Unix and updates your user environment variables on Windows.\n\n\n\n\n\n\nWarningUser mode is newer\n\n\n\nUser mode is a much more recent feature than admin mode, so it is less tested. On Linux especially: user mode always installs a portable (manylinux or musl) R build and uses manylinux R packages from P3M, and those are not as battle-hardened as the distro-specific builds and packages of admin mode. If you have an administrator account and no particular reason to keep R inside your home directory, admin mode is the more conservative choice for now. Either way, please report problems you hit.\n\n\nWhichever mode you decide on, you can pin it explicitly with the steps below, instead of relying on rig’s default.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Admin mode vs user mode"
     ]
   },
@@ -2666,7 +2666,7 @@
     "section": "How rig picks the mode",
     "text": "How rig picks the mode\nrig resolves the mode from the first of these that is set, and otherwise defaults to admin mode:\n\nThe global --user / --admin flags on the command line.\nThe RIG_MODE environment variable (user or admin).\nThe mode key in the rig config file.\n\nSo you can choose the mode at three different scopes:\n# Just this one command:\nrig add release --user\n\n# For a shell session (or exported in your profile):\nexport RIG_MODE=user\n\n# Persistently, saved in the rig config file:\nrig config set mode=user\nrig config set mode=admin",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Admin mode vs user mode"
     ]
   },
@@ -2677,7 +2677,7 @@
     "section": "Switching an existing setup to user mode",
     "text": "Switching an existing setup to user mode\nIf you already have an admin-mode setup, rig system user-mode migrates it in one step:\n\nIt sets the rig mode configuration to user.\nReinstalls your admin-mode R versions in user mode and restores the previous default version and version aliases. (R versions already present in user mode are not reinstalled.)\nRemoves the system-wide admin-mode R installations.\nRemoves the system-wide startup and quick links.\n\nSteps 3 and 4 delete files outside your home directory, so they need sudo or an administrator account, rig asks for your password for just that part. Use --no-reinstall to skip the reinstall and only clean up, or --keep-install and --keep-links to leave the admin-mode installations and/or links in place. With both --keep-* flags nothing outside your home directory is touched, so no elevated privileges are needed at all.\nIf you use Positron, it caches the list of R interpreters, so it may keep showing the old admin-mode installations and miss the new user-mode ones. Clear its interpreter cache, re-discover interpreters, and restart Positron to pick up the change.\nTo go back, set the mode to admin again (rig config set mode=admin) and reinstall the R versions you want.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Admin mode vs user mode"
     ]
   },
@@ -2688,7 +2688,7 @@
     "section": "Mixing admin and user mode",
     "text": "Mixing admin and user mode\nYou can mix admin and user mode on the same machine, but it is not recommended. The main reason is that it is easy to set up your PATH incorrectly and end up with the wrong R and Rscript commands being found. E.g. on macOS or Linux both /usr/local/bin/R and ~/.local/bin/R exist and the one that is found first on your PATH is used.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Admin mode vs user mode"
     ]
   },
@@ -2699,7 +2699,7 @@
     "section": "Advanced: custom directories",
     "text": "Advanced: custom directories\nYou can override where rig puts things with an environment variable or a config key:\n\nQuick-link directory: RIG_BINARY_DIR env var, or the binary-dir config key. This applies in both modes, overriding the default /usr/local/bin (admin) or ~/.local/bin (user). If you change this, rig never modifies your shell config files or your PATH in the Windows registry.\nR install root: RIG_R_INSTALL_DIR env var, or the r-install-dir config key. This only takes effect in user mode. In admin mode R is installed by the platform installer (the Apple .pkg, the Windows installer, or a Linux distribution package) to its fixed system location and cannot be relocated.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Admin mode vs user mode"
     ]
   },
@@ -2710,7 +2710,7 @@
     "section": "See also",
     "text": "See also\n\nThe tutorials for step-by-step walkthroughs: getting started in admin mode or user mode.\nIf you want to switch from admin to user mode, see migrating an existing setup to user mode.\nThe FAQ entry on installing R without admin permissions.\nThe install guide for the user-mode install script and PATH setup.",
     "crumbs": [
-      "Guide",
+      "Guides",
       "Admin mode vs user mode"
     ]
   }
