@@ -1,0 +1,308 @@
+---
+title: "Migrating from renv to rig"
+toc-depth: 3
+---
+
+You already use renv to keep an R project's packages reproducible.
+What would change if rig managed the project instead?
+
+This tutorial compares how the two tools manage dependencies and what working with a rig project looks like in Positron or RStudio.
+If you decide to switch, the migration steps walk you through importing your dependencies, preserving the environment your analysis needs, and checking the result in your editor.
+You keep working in your editor; the change is how you declare, install, and share the project's dependencies.
+
+You need a working renv project, a backup of that project, and rig installed with the `rig proj renv import` command available.
+See [Installing rig](install.qmd) if you need to install it.
+Run terminal commands from the project's root directory; run R examples in an R session opened in that same directory.
+The terminal commands work in both a Unix shell and PowerShell.
+
+::: callout-warning
+## Experimental, and not an exact lock-file conversion
+
+`rig proj` is experimental: its commands and file formats may change.
+Importing `renv.lock` is a starting point, not a guarantee of an identical environment.
+rig imports package names and version requirements, but not their repository or remote-source information.
+Keep your backup until you have checked the rig environment and run your project's analysis or tests.
+
+If you only want rig to manage R installations, you can keep using renv for packages.
+You do not need to migrate to `rig proj` to use rig.
+:::
+
+## How rig projects differ from renv
+
+Both tools give a project its own package library and a lock file to share with collaborators.
+In `renv.lock`, package names, exact versions, and source information are recorded together.
+rig separates the requirements from their resolution:
+
+- **`rproj.toml`** is the human-facing manifest. It declares the packages the project needs, with version requirements and any source constraints.
+- **`rproj.lock`** records the resolved environment: exact versions, download locations, and the dependency graph, including packages needed by other packages.
+
+You can read and edit the project's requirements without working through all the installation details.
+Those details remain available in the lock file when you need to inspect them, but rig maintains that file for you.
+
+The commands reflect that separation:
+
+| Task | renv | `rig proj` |
+|------------------------|------------------------|------------------------|
+| Record dependencies | `renv::snapshot()` records packages from the library according to the project's snapshot settings. | `rproj.toml` declares requirements; `rig proj lock` resolves them into `rproj.lock`. |
+| Add a dependency | Install it, then snapshot. | `rig proj add` updates the manifest, lock file, and library. |
+| Recreate the environment | `renv::restore()` installs packages from `renv.lock`. | `rig proj sync` installs packages from `rproj.lock` and installs the locked R version if needed. |
+| Manage R itself | Records the R version, but does not install R. | Manages R installations as well as package dependencies. |
+| Work in an editor | renv's `.Rprofile` auto-loader configures the library. | rig's `.Renviron` and `.rvenvlib` configure the library; the editor still needs to select the appropriate R executable. |
+
+With renv, snapshotting records the relevant state of an installed library.
+With rig, the declared requirements are the input, and the installed library is built from the resolved lock file.
+Installing a package in the R console does not add it to rig's declarations.
+
+For the everyday experience in Positron or RStudio, skip to [Working with a rig project](#working-with-a-rig-project).
+To make the switch, follow the migration steps below.
+
+## Migration steps
+
+### 1. Save a working renv baseline
+
+Make a backup of the project directory before changing either tool's configuration.
+Include hidden files and the existing `renv/` directory, not only files tracked by Git.
+Continue working in your original project directory for the rest of this tutorial; the backup is there if you need to undo the migration.
+
+In your project's **renv-enabled R session**, check whether the code, installed library, and lock file agree.
+The [renv status reference](https://rstudio.github.io/renv/reference/status.html) explains how to interpret any differences.
+
+``` r
+renv::status()
+```
+
+If renv reports differences, decide which state you want to preserve.
+If the installed packages are the ones your working analysis needs, record them with `renv::snapshot()`:
+
+``` r
+renv::snapshot()
+```
+
+Review the proposed changes before accepting them.
+Snapshotting uses your project's configured snapshot type; it does not necessarily record every installed package.
+If the lock file instead represents the known-good state, use `renv::restore()` to restore it before migrating.
+
+Run your analysis or tests in this renv environment and save the results you will compare later.
+Keep the baseline lock file in version control as well as in your backup.
+
+### 2. Turn off renv's startup activation
+
+Deactivate renv **before importing the project**, while you still have an R session using the renv library:
+
+``` r
+renv::deactivate(clean = FALSE)
+```
+
+This removes renv's auto-loader from the project `.Rprofile`, but retains `renv.lock` and the project library.
+renv restarts the session; close that session before continuing in the terminal.
+
+The distinction matters because rig's import does not deactivate renv.
+If `.Rprofile` still sources `renv/activate.R`, starting R can reactivate the old library even after you have created a rig environment.
+Inspect `.Rprofile` for any custom renv activation code, preserving unrelated startup settings.
+Do not use `clean = TRUE` here: it deletes the lock file and `renv/` directory you are keeping for comparison and rollback.
+See [renv's activation reference](https://rstudio.github.io/renv/reference/activate.html).
+
+### 3. Import and inspect the manifest
+
+In the terminal, import the saved lock file:
+
+``` sh
+rig proj renv import
+```
+
+The import reads `renv.lock` and creates a **manifest**, `rproj.toml`: a file that declares what the project needs.
+It also adds rig's startup settings to `.Renviron`, creates `.rvenvlib/rvenv`, and adds `.rvenv` to `.gitignore`.
+Existing `.Renviron` and `.gitignore` content is preserved outside rig's managed blocks.
+No packages are installed yet, and `renv.lock` is left alone.
+
+Open `rproj.toml` before running any more commands.
+For example, a lock file recording R 4.5.2 and cli 3.6.5 produces these requirements:
+
+``` toml
+[dependencies]
+R = ">= 4.5"
+cli = "^3.6.5"
+```
+
+This is an excerpt, not a manifest to paste over your imported file.
+Your manifest also has project metadata and an entry for each package in your lock file, including transitive dependencies: packages needed by other packages.
+
+#### Keep the first migration separate from an upgrade
+
+The imported requirements allow version changes.
+`R = ">= 4.5"` allows newer R versions, and `cli = "^3.6.5"` allows cli versions from 3.6.5 up to, but not including, 4.0.0.
+A caret requirement is not an exact pin.
+
+For a first migration, edit the imported requirements to match the versions in your baseline lock file.
+For the example above, change the requirements to:
+
+``` toml
+[dependencies]
+R = "= 4.5.2"
+cli = "= 3.6.5"
+```
+
+The leading `=` requests that exact version.
+Apply the same change to the other repository packages you want to preserve, not only packages you call directly.
+Removing the caret without adding `=` does **not** pin a package: a bare version such as `"3.6.5"` also means a compatible-version range.
+
+Exact requirements prevent the solver from silently choosing newer versions; they do not recover package sources that the import discarded.
+A version that is unavailable for a chosen target may still prevent locking or installation.
+
+#### Restore package sources that import does not carry over
+
+Compare the imported entries with the `Source`, `Repository`, and `Remote*` fields in `renv.lock`.
+The import uses package names and versions, not those source fields.
+Review these cases before locking:
+
+- **GitHub or other Git packages:** replace the imported version-only entry with a Git dependency, retaining the original commit when you need the same code. The [dependency reference](reference/proj.qmd#rig-proj-add) describes Git dependencies and revision syntax.
+- **Private or other CRAN-like repositories:** add the repository to `rproj.toml` and pin the relevant packages to it. See [project repositories](reference/proj.qmd#repositories). rig does not inherit repositories from your R session or `renv.lock`.
+- **Local packages and package archives:** declare the appropriate path or URL dependency using the [dependency reference](reference/proj.qmd#rig-proj-add). Check that collaborators can access the same source.
+- **Bioconductor packages:** check the intended release as well as package versions. rig's default release follows the chosen R version; see [the lock reference](reference/proj.qmd#rig-proj-lock) for how to select a release explicitly.
+
+renv profiles and Python environment metadata are not imported either.
+If your project depends on them, plan their replacement separately before switching.
+
+::: callout-note
+## If the import refuses to proceed
+
+If rig reports `rproj.toml already exists`, stop and check whether this directory is already a rig project.
+`rig proj renv import --dependencies` merges dependencies into an existing manifest, overwriting matching dependency entries; it is not a fresh migration and does not create the full startup setup.
+
+If rig reports conflicting startup files, inspect them rather than immediately passing `--force`.
+That flag permits replacement of rig's generated files.
+:::
+
+### 4. Resolve and install the rig environment
+
+Once the manifest describes the versions and sources you want, resolve it:
+
+``` sh
+rig proj lock
+```
+
+This creates `rproj.lock`, rig's **lock file**: the exact package versions and download locations for each resolved R-version/platform target.
+Unlike renv's snapshot, locking solves the requirements in a manifest; it does not inspect the packages in your old library.
+Review `rproj.lock` against your baseline before installing anything.
+See [R projects](proj-guide.qmd#platforms-and-r-versions) for choosing the platforms to lock for.
+
+Preview the installation from that lock file:
+
+``` sh
+rig proj sync --dry-run
+```
+
+The preview shows what sync would install or write without changing the R installation or project environment.
+If locking fails or the preview names an unexpected package version, return to the manifest.
+Check exact constraints, package sources, repository access, and target platforms rather than relaxing constraints only to make the error disappear.
+
+When you are satisfied with the plan, install from the reviewed lock file:
+
+``` sh
+rig proj sync --locked
+```
+
+`--locked` requires a lock file consistent with the manifest.
+Sync installs packages into `.rvenv/lib` by default and writes R wrappers under `.rvenv/bin`; it does not copy your renv library.
+It also installs the locked R version if that version is missing.
+
+This works in both [admin mode and user mode](admin-vs-user-mode.qmd).
+The mode determines where R is installed and whether that installation needs elevated privileges; it does not change the manifest-and-lock workflow.
+Source packages may need compilers or system libraries.
+On Linux, installing missing system packages can need administrator rights even in user mode; see [the `rig proj sync` system requirements](reference/proj.qmd#system-requirements).
+
+### 5. Check the project in Positron or RStudio
+
+Open your project folder in Positron, or reopen your existing project in RStudio.
+Start a fresh R session.
+
+The project's `.Renviron` and `.rvenvlib` configure the package library when R starts.
+You do not need to run `rig run` or activate a shell to use the project in your editor.
+However, rig's startup files do not choose which R executable the editor starts.
+In the R console, check the running R version and library search paths:
+
+``` r
+getRversion()
+.libPaths()
+```
+
+Check that the R version matches your lock file and that the project library is present.
+With the default layout, that library is `.rvenv/lib`, not `renv/library`.
+Other libraries, including rig's tools library and R's base library, can also appear; the paths are not expected to contain only one entry.
+
+If R still uses the renv library, revisit `.Rprofile` and check for custom renv activation.
+If the R version is wrong, change the editor's R selection.
+Restart R after either change; an already-running session keeps its library configuration.
+Opening the project does not run `rig proj sync` automatically: we installed the environment explicitly in step 4.
+
+Now run the same analysis or tests you used for the renv baseline, using your editor as usual.
+Compare results, not only whether packages load.
+Matching version numbers alone cannot prove that the project behaves identically: package sources, system libraries, and external tools also matter.
+
+::: callout-note
+## Optional terminal check
+
+To check the environment independently of your editor's R selection, run `rig run` from the project directory.
+It starts R through the project's wrapper, using the project's R version and library.
+Run `getRversion()` and `.libPaths()` there to compare with your editor session.
+This is also useful for running scripts from a terminal, but it is not a required step when opening the editor.
+:::
+
+## Working with a rig project {#working-with-a-rig-project}
+
+Keep editing scripts, loading packages, running analyses, and rendering documents in Positron or RStudio as before.
+The main change is how you manage dependencies: use rig in your editor's **Terminal** pane, rather than installing packages in the R console and snapshotting afterward.
+Run these terminal commands from the project root.
+
+For example, if your project needs dplyr, declare it with:
+
+``` sh
+rig proj add dplyr
+```
+
+This updates the manifest, locks dependencies, and syncs the project library.
+Return to the R console and use `library(dplyr)` as usual.
+If the operation replaced a package already loaded in your session, restart R before using its new version.
+You no longer need a separate `renv::snapshot()` step.
+
+Calling `install.packages()` in R does not update `rproj.toml` or `rproj.lock`.
+Declare project dependencies with `rig proj add` so collaborators can recreate them, rather than relying on packages installed only on your machine.
+
+Commit `rproj.toml`, `rproj.lock`, `.rvenvlib`, the `.gitignore` update, and the startup-file changes.
+Review `.Renviron` before committing it: rig's boilerplate belongs in version control, but any credentials or machine-specific settings already in that file do not.
+Do not commit `.rvenv`; each machine rebuilds its own environment.
+
+After pulling dependency changes from a collaborator, or cloning the project on another machine, install the committed environment from the Terminal pane:
+
+``` sh
+rig proj sync --locked
+```
+
+This brings the local environment into line with the lock file.
+Restart your R session if packages changed, and select the project's R version if it changed too.
+You can use `rig proj status` to check the manifest, lock file, and local environment's status.
+
+Update project setup instructions and continuous integration (CI) scripts to use `rig proj sync --locked` rather than `renv::restore()`.
+Check that CI has rig installed, can reach the required package sources, and runs the same tests.
+Test a fresh checkout before asking collaborators to switch.
+
+Keep `renv.lock` and `renv/` until the migration has been checked by everyone who needs it.
+After that, remove the unused renv files and any remaining renv setup calls deliberately.
+Do not delete renv's global cache to clean up one project: other renv projects may still use it.
+
+## If you need to go back
+
+Close the R session and save any work you have done since making the backup.
+Replace the migrated project directory with the backed-up directory, then reopen the project in your editor with its original R version.
+The backup retains the original startup files, lock file, and renv library; use `renv::restore()` if you need to restore packages.
+
+Restore the whole project setup, not only `renv.lock`: rig's `.Renviron` settings would otherwise still configure the library.
+
+## Where to next
+
+You now have a declared set of dependencies, a reviewed rig lock file, and a project library tested against your renv baseline.
+Keep the first successful migration as a checkpoint before loosening version requirements or upgrading packages.
+
+- [R projects](proj-guide.qmd): dependency groups, multiple platforms, and named project scripts.
+- [The `rig proj` reference](reference/proj.qmd): the full command and option reference.
+- [The renv introduction](https://rstudio.github.io/renv/articles/renv.html): background on renv libraries, lock files, and deactivation.

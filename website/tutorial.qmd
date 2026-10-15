@@ -2,8 +2,8 @@
 title: "Tutorials"
 ---
 
-These tutorials walk you through your first R installation with rig, to
-running R and installing packages.
+These tutorials walk you through installing R, running it and installing
+packages, and migrating an existing setup or project to rig.
 
 See [Admin mode vs user mode](admin-vs-user-mode.qmd) for more details
 on the two modes and how to pick between them.
@@ -22,3 +22,7 @@ on the two modes and how to pick between them.
 3. [**Migrate to user mode**](tutorial-migrate.qmd) \
    You already have an admin-mode rig setup and want to move it into your
    home directory.
+
+4. [**Migrate from renv to rig**](tutorial-renv.qmd) \
+   Compare rig and renv project management, migrate an existing project,
+   and learn the everyday workflow in Positron or RStudio.
