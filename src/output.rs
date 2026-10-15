@@ -1,4 +1,5 @@
 use std::io::IsTerminal;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
 use indicatif::ProgressBar;
@@ -28,6 +29,8 @@ struct OutputInner {
     // Error messages already shown, so `main` does not print them again
     // when the same error propagates up to it.
     errors: RwLock<Vec<String>>,
+    // Drop info and status messages, see `set_quiet()`.
+    quiet: AtomicBool,
 }
 
 impl Output {
@@ -38,6 +41,7 @@ impl Output {
                 interactive: std::io::stdout().is_terminal(),
                 bar: RwLock::new(None),
                 errors: RwLock::new(Vec::new()),
+                quiet: AtomicBool::new(false),
             }),
         }
     }
@@ -49,6 +53,17 @@ impl Output {
     /// live lands on the bar's line and leaves a half-overwritten frame behind.
     pub fn set_progress_bar(&self, bar: Option<ProgressBar>) {
         *self.inner.bar.write().unwrap() = bar;
+    }
+
+    /// Drop info and status messages until this is unset again, e.g. for a
+    /// report that calls helpers that narrate their progress. Warnings and
+    /// errors are still shown.
+    pub fn set_quiet(&self, quiet: bool) {
+        self.inner.quiet.store(quiet, Ordering::Relaxed);
+    }
+
+    fn is_quiet(&self) -> bool {
+        self.inner.quiet.load(Ordering::Relaxed)
     }
 
     fn emit(&self, line: &str) {
@@ -93,6 +108,9 @@ impl Output {
 
     /// Display an info message
     pub fn info(&self, msg: &str) {
+        if self.is_quiet() {
+            return;
+        }
         if self.inner.interactive {
             self.emit(&format!("{} {}", "ℹ".blue(), msg));
         } else {
@@ -102,10 +120,35 @@ impl Output {
 
     /// Display a status message (for progress/operations)
     pub fn status(&self, msg: &str) {
+        if self.is_quiet() {
+            return;
+        }
         if self.inner.interactive {
             self.emit(&format!("{} {}", "▶".blue(), msg.blue()));
         } else {
             self.emit(msg);
+        }
+    }
+
+    /// A green tick or a red cross, plus a space, to put in front of a line
+    /// of a report on stdout. Empty if stdout is not a terminal.
+    pub fn mark(&self, ok: bool) -> String {
+        if !self.inner.interactive {
+            String::new()
+        } else if ok {
+            format!("{} ", "✓".green().bold())
+        } else {
+            format!("{} ", "✗".red().bold())
+        }
+    }
+
+    /// `label` in bold, for the section headers of a report on stdout. Plain
+    /// if stdout is not a terminal.
+    pub fn heading(&self, label: &str) -> String {
+        if self.inner.interactive {
+            label.bold().to_string()
+        } else {
+            label.to_string()
         }
     }
 

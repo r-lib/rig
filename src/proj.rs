@@ -3564,6 +3564,26 @@ fn sc_proj_status(
         None
     };
 
+    // Whether the lock file still fits the manifest, the same check as
+    // `rig proj lock --check`, e.g. after a hand edit of `rproj.toml`.
+    let lock_current = if manifest.is_some() && lock.is_some() {
+        OUTPUT.set_quiet(true);
+        let fits = lock_fits_manifest(&root);
+        OUTPUT.set_quiet(false);
+        match fits {
+            Ok(fits) => Some(fits),
+            Err(e) => {
+                warnings.push(format!(
+                    "Could not check whether {} is up to date: {}",
+                    RPROJ_LOCK_FILE, e
+                ));
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     let cfg = match read_rvenv_cfg(&root) {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -3587,9 +3607,25 @@ fn sc_proj_status(
     };
 
     if json {
-        print_proj_status_json(&root, &manifest, &lock, &cfg, &sync_reason, &warnings)
+        print_proj_status_json(
+            &root,
+            &manifest,
+            &lock,
+            lock_current,
+            &cfg,
+            &sync_reason,
+            &warnings,
+        )
     } else {
-        print_proj_status(&root, &manifest, &lock, &cfg, &sync_reason, &warnings)
+        print_proj_status(
+            &root,
+            &manifest,
+            &lock,
+            lock_current,
+            &cfg,
+            &sync_reason,
+            &warnings,
+        )
     }
 }
 
@@ -3598,16 +3634,22 @@ fn print_proj_status(
     root: &Path,
     manifest: &Option<Rproj>,
     lock: &Option<RprojLock>,
+    lock_current: Option<bool>,
     cfg: &Option<RvenvCfg>,
     sync_reason: &Option<String>,
     warnings: &[String],
 ) -> Result<(), Box<dyn Error>> {
-    println!("Project: {}", root.display());
+    println!("{} {}", OUTPUT.heading("Project:"), root.display());
     println!();
 
     match manifest {
         Some(m) => {
-            println!("Manifest: {} {}", m.project.name, m.project.version);
+            println!(
+                "{} {} {}",
+                OUTPUT.heading("Manifest:"),
+                m.project.name,
+                m.project.version
+            );
             if let Some(ws) = &m.workspace {
                 if !ws.members.is_empty() {
                     match workspace_members(root, ws) {
@@ -3639,16 +3681,50 @@ fn print_proj_status(
                 }
             }
         }
-        None => println!("Manifest: none, run `rig proj init` first"),
+        None => println!(
+            "{} none, run `rig proj init` first",
+            OUTPUT.heading("Manifest:")
+        ),
     }
     println!();
 
     match lock {
         Some(lock) => {
-            println!("Lock file: {} (version {})", RPROJ_LOCK_FILE, lock.version);
-            let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
+            println!(
+                "{} {} (version {})",
+                OUTPUT.heading("Lock file:"),
+                RPROJ_LOCK_FILE,
+                lock.version
+            );
+            match lock_current {
+                Some(true) => println!(
+                    "  {}up to date with {}",
+                    OUTPUT.mark(true),
+                    RPROJ_MANIFEST_FILE
+                ),
+                Some(false) => println!(
+                    "  {}out of date with {}, run `rig proj lock`",
+                    OUTPUT.mark(false),
+                    RPROJ_MANIFEST_FILE
+                ),
+                None => {}
+            }
+            // The rule spans all three columns, plus the two 3-space gaps.
+            let width = |header: &str, cell: fn(&RprojLockTarget) -> usize| {
+                lock.targets
+                    .iter()
+                    .map(cell)
+                    .chain([header.len()])
+                    .max()
+                    .unwrap_or(0)
+            };
+            let rule = width("R version", |t| t.r_version.len())
+                + width("Platform", |t| t.platform.len())
+                + width("Packages", |t| t.packages.len().to_string().len())
+                + 6;
+            let mut tab: Table = Table::new("  {:<}   {:<}   {:<}");
             tab.add_row(row!("R version", "Platform", "Packages"));
-            tab.add_heading("-------------------------------------");
+            tab.add_heading(format!("  {}", "-".repeat(rule)));
             for target in &lock.targets {
                 tab.add_row(row!(
                     &target.r_version,
@@ -3658,22 +3734,35 @@ fn print_proj_status(
             }
             print!("{}", tab);
         }
-        None => println!("Lock file: none, run `rig proj lock` first"),
+        None => println!(
+            "{} none, run `rig proj lock` first",
+            OUTPUT.heading("Lock file:")
+        ),
     }
     println!();
 
     match cfg {
         Some(cfg) => {
             println!(
-                "Environment: R {} ({}, {})",
-                cfg.r_version, cfg.platform, cfg.r_arch
+                "{} R {} ({}, {})",
+                OUTPUT.heading("Environment:"),
+                cfg.r_version,
+                cfg.platform,
+                cfg.r_arch
             );
             match sync_reason {
-                None => println!("  up to date"),
-                Some(reason) => println!("  needs sync: {}", reason),
+                None => println!("  {}up to date with {}", OUTPUT.mark(true), RPROJ_LOCK_FILE),
+                Some(reason) => println!(
+                    "  {}out of date: {}, run `rig proj sync`",
+                    OUTPUT.mark(false),
+                    reason
+                ),
             }
         }
-        None => println!("Environment: none, run `rig proj sync` first"),
+        None => println!(
+            "{} none, run `rig proj sync` first",
+            OUTPUT.heading("Environment:")
+        ),
     }
 
     if !warnings.is_empty() {
@@ -3691,6 +3780,7 @@ fn print_proj_status_json(
     root: &Path,
     manifest: &Option<Rproj>,
     lock: &Option<RprojLock>,
+    lock_current: Option<bool>,
     cfg: &Option<RvenvCfg>,
     sync_reason: &Option<String>,
     warnings: &[String],
@@ -3752,6 +3842,7 @@ fn print_proj_status_json(
                 .collect();
             serde_json::json!({
                 "version": lock.version,
+                "up_to_date": lock_current,
                 "targets": targets,
             })
         }

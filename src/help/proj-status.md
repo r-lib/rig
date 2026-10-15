@@ -6,9 +6,11 @@ Show what rig knows about the project in the current directory, or the
 workspace it belongs to: the manifest, the lock file, and whether the local
 [project environment](../admin-vs-user-mode.qmd) is in sync with it.
 
-This is read-only. It never solves dependencies, downloads anything, or
+This is read-only. It never solves dependencies, installs packages, or
 changes the project -- see [`rig proj lock`](#rig-proj-lock) and
-[`rig proj sync`](#rig-proj-sync) for that.
+[`rig proj sync`](#rig-proj-sync) for that. To compare the lock file to
+`rproj.toml` it may need to fetch the metadata of a git dependency that is
+not cached yet.
 
 The report has three parts, each shown only if it applies:
 
@@ -16,7 +18,10 @@ The report has three parts, each shown only if it applies:
   workspace members if it is a workspace, and its dependency counts by
   group (`main` plus any `[dependency-groups.*]`).
 * **Lock file** -- `rproj.lock`'s version, and one row per locked target: the
-  R version, the platform, and how many packages it locks.
+  R version, the platform, and how many packages it locks. Also whether the
+  lock file is still up to date with `rproj.toml`, e.g. after you edited
+  `rproj.toml` by hand. This is the same check as
+  [`rig proj lock --check`](#rig-proj-lock).
 * **Environment** -- the R version and platform the local `.rvenv` was last
   synced against, and whether it is still up to date with the lock file, or
   why not.

@@ -1,5 +1,9 @@
 # rig 0.11.1-dev (development version)
 
+* `rig proj status` now reports whether `rproj.lock` is up to date with
+  `rproj.toml`, e.g. after a manual edit of `rproj.toml`. It runs the same
+  check as `rig proj lock --check` (#466).
+
 * New `prefer-binary` and `exclude-newer` configuration entries (and
   `RIG_PREFER_BINARY` and `RIG_EXCLUDE_NEWER` environment variables) set the
   defaults of `--prefer-binary` and `--exclude-newer` for `rig pkg install`
