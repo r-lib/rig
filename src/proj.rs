@@ -52,7 +52,7 @@ use crate::repos::interpret_repos_args::{interpret_pkg_repos_args, PkgReposArgs}
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
-    format_constraints, parse_add_spec, prefer_binary_lookback, Author, DepTable,
+    format_constraints, parse_add_spec, prefer_binary_lookback, Author, Build, DepTable,
     LockDirectDependency, Repository, Rproj, RprojLock, RprojLockOptions, RprojLockPackage,
     RprojLockTarget, RprojLockTool, DESCRIPTION_RIG_NOTE_FIELD, RPROJ_LOCK_VERSION,
     RPROJ_MANIFEST_FILE,
@@ -428,13 +428,22 @@ fn sc_proj_import(
         // Any other field, e.g. `Encoding`, has no structured home in the
         // manifest, so it round-trips verbatim through the `[description]`
         // escape hatch: `Encoding: UTF-8` becomes `Encoding = "UTF-8"`.
+        // Build flags, e.g. `LazyData: true`, go to `[build]`. A value that
+        // is not a logical is kept verbatim in `[description]` instead.
+        let mut build = Build::default();
         for (key, value) in paragraph.iter() {
             if KNOWN_DESCRIPTION_FIELDS.contains(&key) || key.starts_with("Config/") {
+                continue;
+            }
+            if build.set_description_field(key, value) {
                 continue;
             }
             manifest
                 .description
                 .insert(key.to_string(), toml::Value::String(reflow(value)));
+        }
+        if build != Build::default() {
+            manifest.build = Some(build);
         }
     }
 

@@ -26,6 +26,11 @@ to merge dependencies into an existing file instead.
 | `Enhances`            | `[dependency-groups.enhances]` |
 | `Config/Needs/<name>` | `[dependency-groups.<name>]`   |
 | `Config/Needs/Optional/<name>` | `[optional-dependencies.<name>]` |
+| `ByteCompile:`        | `[build].byte-compile`         |
+| `NeedsCompilation:`   | `[build].needs-compilation`    |
+| `LazyData:`           | `[build].lazy-data`            |
+| `Biarch:`             | `[build].biarch`               |
+| `KeepSource:`         | `[build].keep-source`          |
 
 `Authors@R` is parsed into `[project].authors`, one entry per `person()` call, in
 order; this is a best-effort parser for common `person()` usage (name, `email`,
