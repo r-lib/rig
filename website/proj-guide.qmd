@@ -141,6 +141,9 @@ whether `rig proj sync` needs to run again.
 
 ## Interoperating with DESCRIPTION and renv
 
+For a worked migration, see [Migrating from renv to rig](tutorial-renv.qmd),
+including version constraints, package sources, and startup activation.
+
 A project's dependencies can move back and forth between `rproj.toml` and
 the two formats most R packages and projects already use:
 

@@ -39,6 +39,8 @@ website:
             file: tutorial-admin.qmd
           - text: "Migrate to user mode"
             file: tutorial-migrate.qmd
+          - text: "Migrate from renv"
+            file: tutorial-renv.qmd
       - section: "Guide"
         contents:
           - text: "Installing rig"
