@@ -1584,7 +1584,13 @@ impl Rproj {
                         if let Some(path) = &t.path {
                             let path = Path::new(path);
                             if path.is_relative() {
-                                t.path = Some(root.join(path).display().to_string());
+                                // Canonical, so it is the same path after a
+                                // round trip through `rproj.lock`, which
+                                // records it relative to the lock file, see
+                                // `crate::proj::relative_local_paths`.
+                                let joined = root.join(path);
+                                let resolved = joined.canonicalize().unwrap_or(joined);
+                                t.path = Some(resolved.display().to_string());
                             }
                         }
                         out.push((name.clone(), t));
@@ -1593,6 +1599,26 @@ impl Rproj {
             }
         }
         out
+    }
+
+    /// The names of the `path` dependencies whose path is relative, so
+    /// `rproj.lock` records them relative, too, see
+    /// `crate::proj::relative_local_paths`.
+    pub fn relative_path_dependencies(&self) -> Vec<String> {
+        std::iter::once(&self.dependencies)
+            .chain(std::iter::once(&self.linking_dependencies))
+            .chain(self.dependency_groups.values().map(|g| &g.dependencies))
+            .chain(self.optional_dependencies.values())
+            .flat_map(|table| table.iter())
+            .filter_map(|(name, dep)| match dep {
+                Dependency::Detailed(t) => t
+                    .path
+                    .as_ref()
+                    .filter(|p| Path::new(p).is_relative())
+                    .map(|_| name.clone()),
+                _ => None,
+            })
+            .collect()
     }
 
     /// The git/GitHub/url/local-sourced dependencies that end up in a
@@ -2827,6 +2853,18 @@ pub struct LockRepository {
     pub metadata: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub explicit: bool,
+}
+
+impl LockRepository {
+    /// Whether this is the built-in Bioconductor entry.
+    pub fn is_bioc(&self) -> bool {
+        self.name.eq_ignore_ascii_case(BIOC_REPOSITORY_NAME)
+    }
+
+    /// Whether this is the built-in CRAN entry.
+    pub fn is_cran(&self) -> bool {
+        self.name.eq_ignore_ascii_case(CRAN_REPOSITORY_NAME)
+    }
 }
 
 impl RprojLockOptions {

@@ -1337,6 +1337,9 @@ pub(crate) struct ProjectSolve {
     /// [`Rproj::git_dependencies`]. Fetched and registered with the solver by
     /// [`register_git_sources`] before it runs.
     pub git_deps: Vec<(String, crate::rproj::DepTable)>,
+    /// The names of the `path` dependencies that every member's manifest
+    /// gives as a relative path, see [`relative_local_paths`].
+    pub relative_paths: HashSet<String>,
     /// The root manifest's `exclude-newer` setting, see
     /// [`Rproj::exclude_newer`], or if it has none, the user setting, see
     /// [`Rproj::exclude_newer_or_config`]. A workspace takes it from its root
@@ -1388,6 +1391,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
             let group_roots = manifest.main_and_group_roots()?;
             let extra_roots = manifest.optional_dependency_roots();
             let git_deps = manifest.git_dependencies(root);
+            let relative_paths = manifest.relative_path_dependencies().into_iter().collect();
             // Same name/base-package restriction as a workspace member (see
             // below): it would be nonsense for the project's own name to
             // shadow R or a base package in the registry.
@@ -1412,6 +1416,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
                 group_roots,
                 extra_roots,
                 git_deps,
+                relative_paths,
                 exclude_newer: manifest.exclude_newer_or_config()?,
                 exclude_newer_in_manifest: manifest.exclude_newer()?.is_some(),
                 repos: ProjRepos::from_manifest(&manifest)?,
@@ -1439,13 +1444,30 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
     let mut extra_roots: HashMap<String, Vec<String>> = HashMap::new();
     let mut seen: HashMap<String, PathBuf> = HashMap::new();
     let mut git_deps: Vec<(String, crate::rproj::DepTable)> = vec![];
+    let mut relative_paths: HashSet<String> = HashSet::new();
     let mut pins: BTreeMap<String, String> = BTreeMap::new();
 
     for dir in &dirs {
         let mut member = proj_read_manifest(dir)?;
         member.inherit_workspace_deps(ws, &dir.join(RPROJ_MANIFEST_FILE))?;
+        // One library, one set of repositories to fill it from, so the
+        // workspace root's `[[repository]]` is the workspace's. A member that
+        // declares its own -- `rig proj import` writes them from a
+        // DESCRIPTION -- is warned about rather than rejected, so that
+        // importing a package into a workspace still works.
+        if dir != root && !member.repository.is_empty() {
+            let msg = format!(
+                "Ignoring the repositories of workspace member {}, a \
+                 workspace uses the ones in its root {}",
+                dir.display(),
+                RPROJ_MANIFEST_FILE
+            );
+            OUTPUT.warn(&msg);
+            info!("{}", msg);
+        }
         let name = member.project.name.clone();
         git_deps.extend(member.git_dependencies(dir));
+        relative_paths.extend(member.relative_path_dependencies());
         for (pkg, repo) in member.repository_pins()? {
             match pins.get(&pkg) {
                 Some(other) if !other.eq_ignore_ascii_case(&repo) => bail!(
@@ -1511,6 +1533,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
         group_roots,
         extra_roots,
         git_deps,
+        relative_paths,
         exclude_newer: manifest.exclude_newer_or_config()?,
         exclude_newer_in_manifest: manifest.exclude_newer()?.is_some(),
         repos,
@@ -2130,7 +2153,9 @@ type GitSourceKey = (String, Option<String>, Option<String>);
 /// so a `proj_lock` run parses the file once instead of twice.
 fn read_existing_lock(root: &Path) -> Option<RprojLock> {
     let text = fs::read_to_string(root.join(RPROJ_LOCK_FILE)).ok()?;
-    RprojLock::parse(&text).ok()
+    let mut lock = RprojLock::parse(&text).ok()?;
+    absolute_local_paths(&mut lock, root);
+    Some(lock)
 }
 
 /// The `[tool.rig]` options a `rig proj lock` run solves with, given the effective
@@ -2357,6 +2382,72 @@ fn project_source_url(root_abs: &Path) -> Option<String> {
 /// [`project_source_url`].
 fn project_sources(root_abs: &Path) -> Vec<String> {
     project_source_url(root_abs).into_iter().collect()
+}
+
+/// Record the local packages of `lock` the way `rproj.lock` keeps them: the
+/// project's own package as `.`, and every `path` dependency in `relative`,
+/// the ones the manifest gives as a relative path, relative to `root`, the
+/// directory of `rproj.lock`, see [`LockSource::Local`]. A `path` the
+/// manifest gives as absolute stays absolute. `uv.lock` does the same. So the
+/// lock file does not change when the project is moved, or checked out
+/// elsewhere with its local packages in the same place relative to it.
+///
+/// In memory every local path is absolute, so the rest of rig never has to
+/// know where the lock file is: this runs right before `rig proj lock` writes
+/// the lock, and [`absolute_local_paths`] right after reading it.
+fn relative_local_paths(lock: &mut RprojLock, root: &Path, relative: &HashSet<String>) {
+    for pkg in lock
+        .targets
+        .iter_mut()
+        .flat_map(|t| t.packages.iter_mut())
+        .filter(|p| p.is_project || relative.contains(&p.package))
+    {
+        let Some(LockSource::Local { path }) = lock_package_source(pkg) else {
+            continue;
+        };
+        // E.g. on another drive on Windows, there is no relative path.
+        let Ok(rel) = relativize_to_root(root, Path::new(&path)) else {
+            continue;
+        };
+        let rel = rel.replace('\\', "/");
+        let rel = if rel == "." || rel.starts_with("../") {
+            rel
+        } else {
+            format!("./{}", rel)
+        };
+        pkg.sources = vec![rel.clone()];
+        pkg.metadata
+            .insert(crate::install::REMOTE_URL_FIELD.to_string(), rel);
+    }
+}
+
+/// Turn the relative local paths of a `lock` read from `root`, see
+/// [`relative_local_paths`], into absolute paths.
+fn absolute_local_paths(lock: &mut RprojLock, root: &Path) {
+    let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    for pkg in lock.targets.iter_mut().flat_map(|t| t.packages.iter_mut()) {
+        let Some(LockSource::Local { path }) = lock_package_source(pkg) else {
+            continue;
+        };
+        if Path::new(&path).is_absolute() {
+            continue;
+        }
+        let joined = root.join(&path);
+        let abs = joined.canonicalize().unwrap_or(joined);
+        // The same as `rig proj lock` writes it, see `project_lock_package`.
+        pkg.sources = if pkg.is_project {
+            project_sources(&abs)
+        } else {
+            vec![LockSource::Local {
+                path: abs.display().to_string(),
+            }
+            .to_string()]
+        };
+        pkg.metadata.insert(
+            crate::install::REMOTE_URL_FIELD.to_string(),
+            abs.display().to_string(),
+        );
+    }
 }
 
 /// The [`RprojLockPackage`] entry for the project's own package -- `alias` is
@@ -4499,11 +4590,12 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // --r-version/--platform were given in.
     targets.sort_by(|a, b| (&a.r_version, &a.platform).cmp(&(&b.r_version, &b.platform)));
 
-    let rproj_lock = RprojLock {
+    let mut rproj_lock = RprojLock {
         version: RPROJ_LOCK_VERSION,
         tool: RprojLockTool { rig: lock_options },
         targets,
     };
+    relative_local_paths(&mut rproj_lock, root, &solve.relative_paths);
     fs::write(root.join(RPROJ_LOCK_FILE), rproj_lock.to_toml()?)?;
     OUTPUT.success(&format!("Written project lockfile to {}", label));
     info!("Written project lockfile to {}", label);
@@ -5669,7 +5761,8 @@ pub(crate) fn proj_sync(
     }
 
     let lock_content = fs::read_to_string(&lock_path)?;
-    let lock = RprojLock::parse(&lock_content)?;
+    let mut lock = RprojLock::parse(&lock_content)?;
+    absolute_local_paths(&mut lock, root);
     // The lock file has canonical platform strings, so `--platform macos`
     // has to be brought into that form to match.
     let platform = opts
@@ -5731,6 +5824,20 @@ pub(crate) fn proj_sync(
     // export` without `--force` would refuse to touch it.
     if wanted.iter().any(|p| p.is_project) {
         let description_path = root.join("DESCRIPTION");
+        // A lock file only says which package to install, the project to
+        // install it from has to be here, e.g. with `--frozen` and no
+        // manifest.
+        if !root.join(RPROJ_MANIFEST_FILE).exists() {
+            let msg = format!(
+                "{} installs the project's own package, which needs a {} in the \
+                 current directory. Use --no-install-project to leave it out",
+                lock_path.display(),
+                RPROJ_MANIFEST_FILE
+            );
+            OUTPUT.error(&msg);
+            error!("{}", msg);
+            bail!("{}", msg);
+        }
         if opts.dry_run {
             OUTPUT.info(&format!("Would write {}", description_path.display()));
         } else if description_path.exists() && !description_is_rig_generated(&description_path) {
@@ -5833,52 +5940,9 @@ pub(crate) fn proj_sync(
             }
         }
 
-        // `--frozen` installs from the lockfile alone, whose packages already
-        // carry full download URLs, so a missing manifest here is not fatal:
-        // just skip the repositories file instead of failing.
-        let manifest = if opts.frozen {
-            proj_read_manifest_opt(root)?
-        } else {
-            Some(proj_read_manifest(root)?)
-        };
-        // One library, one set of repositories to fill it from, so the
-        // workspace root's `[[repository]]` is the workspace's. A member that
-        // declares its own -- `rig proj import` writes them from a
-        // DESCRIPTION -- is warned about rather than rejected, so that
-        // importing a package into a workspace still works.
-        if let Some(manifest) = &manifest {
-            if let Some(ws) = &manifest.workspace {
-                for member in workspace_members(root, ws)? {
-                    if member == root {
-                        continue;
-                    }
-                    let has_own = proj_read_manifest_opt(&member)?
-                        .map(|m| !m.repository.is_empty())
-                        .unwrap_or(false);
-                    if has_own {
-                        let msg = format!(
-                            "Ignoring the repositories of workspace member {}, a \
-                             workspace uses the ones in its root {}",
-                            member.display(),
-                            RPROJ_MANIFEST_FILE
-                        );
-                        OUTPUT.warn(&msg);
-                        info!("{}", msg);
-                    }
-                }
-            }
-        } else {
-            let msg = format!(
-                "No {} found, skipping repository setup",
-                RPROJ_MANIFEST_FILE
-            );
-            OUTPUT.warn(&msg);
-            info!("{}", msg);
-        }
-        let repos: &[Repository] = manifest
-            .as_ref()
-            .map(|m| m.repository.as_slice())
-            .unwrap_or(&[]);
+        // The repositories the lock was solved with, so the environment
+        // installs from the same ones, with or without a manifest.
+        let repos = &lock.tool.rig.repositories;
         if opts.dry_run {
             OUTPUT.info(&format!(
                 "Would refresh the project environment for R {} ({})",
@@ -8026,6 +8090,76 @@ mod tests {
             Path::new("/tmp/mypkg"),
             Some(&"sha".to_string())
         ));
+    }
+
+    #[test]
+    fn local_paths_are_relative_in_the_lock_file_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().canonicalize().unwrap();
+        let root = base.join("proj");
+        let near = base.join("near");
+        let far = base.join("far");
+        for d in [&root, &near, &far, &root.join("sub")] {
+            fs::create_dir_all(d).unwrap();
+        }
+        let local = |name: &str, path: &Path| {
+            let mut pkg = locked_in(name, &["main"], &[]);
+            pkg.metadata
+                .insert(REMOTE_TYPE_FIELD.to_string(), "local".to_string());
+            pkg.metadata.insert(
+                crate::install::REMOTE_URL_FIELD.to_string(),
+                path.display().to_string(),
+            );
+            pkg.sources = vec![LockSource::Local {
+                path: path.display().to_string(),
+            }
+            .to_string()];
+            pkg
+        };
+        let alias = self_alias("mypkg", "1.0.0", &[]);
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![
+            project_lock_package(&alias, &root, None),
+            local("near", &near),
+            local("sub", &root.join("sub")),
+            local("far", &far),
+            locked_in("cli", &["main"], &[]),
+        ];
+        let mut lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
+            targets: vec![t],
+        };
+        let before = lock.to_toml().unwrap();
+
+        // `far` is an absolute `path` in the manifest, the others relative.
+        let relative = HashSet::from(["near".to_string(), "sub".to_string()]);
+        relative_local_paths(&mut lock, &root, &relative);
+        let url = |i: usize, lock: &RprojLock| {
+            let pkg = &lock.targets[0].packages[i];
+            (
+                pkg.sources.clone(),
+                pkg.metadata
+                    .get(crate::install::REMOTE_URL_FIELD)
+                    .cloned()
+                    .unwrap_or_default(),
+            )
+        };
+        assert_eq!(url(0, &lock), (vec![".".to_string()], ".".to_string()));
+        assert_eq!(
+            url(1, &lock),
+            (vec!["../near".to_string()], "../near".to_string())
+        );
+        assert_eq!(
+            url(2, &lock),
+            (vec!["./sub".to_string()], "./sub".to_string())
+        );
+        assert_eq!(url(3, &lock).1, far.display().to_string());
+
+        // Reading it back gives the same absolute paths as before.
+        let mut read = RprojLock::parse(&lock.to_toml().unwrap()).unwrap();
+        absolute_local_paths(&mut read, &root);
+        assert_eq!(read.to_toml().unwrap(), before);
     }
 
     #[test]
