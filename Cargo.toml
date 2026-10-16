@@ -82,7 +82,7 @@ nix = { version = "0.28.0", features = ["fs", "user"] }
 once_cell = "1.21.3"
 # clean up paths, for rig rstudio
 path-clean = "1.0.1"
-pubgrub = "0.3.0"
+pubgrub = "0.4.0"
 # random file names, e.g. when renaming the macos installer
 rand = "0.8.5"
 # thread pool to solve multiple `rig proj lock` targets in parallel
