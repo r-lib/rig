@@ -40,6 +40,7 @@ pub(crate) mod remove;
 pub(crate) mod search;
 #[cfg(test)]
 mod stub;
+mod sync;
 pub(crate) mod tree;
 mod views;
 
@@ -53,6 +54,7 @@ pub fn sc_pkg(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
         Some(("list", s)) => list::sc_pkg_list(s, args, mainargs),
         Some(("remove", s)) => remove::sc_pkg_remove(s, args, mainargs),
         Some(("search", s)) => search::sc_pkg_search(s, args, mainargs),
+        Some(("sync", s)) => sync::sc_pkg_sync(s, args, mainargs),
         Some(("tree", s)) => tree::sc_pkg_tree(s, args, mainargs),
         _ => Ok(()), // unreachable
     }

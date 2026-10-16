@@ -23,11 +23,8 @@
 * rig now sends a `User-Agent` header with its HTTP requests, e.g.
   `rig/0.11.1 (+https://github.com/r-lib/rig)`.
 
-* `rig proj sync --library <path>` can be used to install into a one-off
-  directory, without changing the project environment.
-
-* `rig proj sync --lockfile <path>` installs from that lock file and does not
-  look for a project.
+* New `rig pkg sync [LOCKFILE]` command installs the packages of a lock file
+  into a library, without touching the project environment.
 
 * A new `--cache-dir` flag, `RIG_CACHE_DIR` environment variable, and
   `cache-dir` configuration entry allow overriding the location of rig's cache.

@@ -17,12 +17,11 @@ the project's own package, see below.
 If `rproj.lock` exists, `rig proj sync` installs from it, even if `rproj.toml`
 changed since. Pass `--locked` to fail instead if `rproj.lock` is missing or
 out of date, see "Checking the lock file" in [`rig proj lock`](#rig-proj-lock). This is
-useful in CI. `--locked` reads `rproj.toml`, so it does not work with `--frozen`
-or `--lockfile`.
+useful in CI. `--locked` reads `rproj.toml`, so it does not work with `--frozen`.
 
 `--with-repos` (`--index`) and `--without-repos` (`--no-index`) lock again first,
 with the project's repositories changed, see "Repositories" in [`rig proj
-lock`](#rig-proj-lock). They do not work with `--frozen` or `--lockfile`.
+lock`](#rig-proj-lock). They do not work with `--frozen`.
 
 By default sync installs `[dependencies]` (`main`) plus the `dev` [dependency
 group](#rig-proj-lock), and nothing else: no other `[dependency-groups.*]` table, and no
@@ -105,9 +104,7 @@ The project library defaults to `.rvenv/lib`, inside the project. Set the
 `RIG_PROJ_LIBRARY_ROOT` environment variable, or the `proj-library-root`
 [configuration entry](config.qmd), to a directory to centralize every project's library
 under it instead, one subdirectory per project. `rig system dirs
---library-root` reports the effective root, or that none is set. `--library`
-still wins outright when passed, to install to a one-off location without
-changing the project environment. It implies `--inexact`.
+--library-root` reports the effective root, or that none is set.
 
 When the library is centralized, sync still leaves a symlink at `.rvenv/lib`
 pointing at the real location, so anything that expects a library there

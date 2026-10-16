@@ -60,16 +60,16 @@ pub fn sc_pkg_list(
 /// `name` and `rversion` are only known for a library of an R installation, and
 /// are unset when `--library` named a directory directly: rig does not need to
 /// know which R version, if any, that directory belongs to, and never asks.
-pub(super) struct ResolvedLibrary {
-    pub(super) name: Option<String>,
-    pub(super) path: PathBuf,
-    pub(super) rversion: Option<String>,
+pub(crate) struct ResolvedLibrary {
+    pub(crate) name: Option<String>,
+    pub(crate) path: PathBuf,
+    pub(crate) rversion: Option<String>,
 }
 
 impl ResolvedLibrary {
     /// How to name this library in the header line of a listing: the R version
     /// and library name it belongs to, when it has them, and always its path.
-    pub(super) fn tag(&self) -> String {
+    pub(crate) fn tag(&self) -> String {
         match (&self.rversion, &self.name) {
             (Some(rver), Some(name)) => format!("(R {}, {}: {})", rver, name, self.path.display()),
             _ => format!("({})", self.path.display()),
@@ -93,8 +93,21 @@ impl ResolvedLibrary {
 /// name in the current directory. Prefix a relative path with `./` (or use an
 /// absolute path) to bypass the library name lookup.
 pub(super) fn resolve_library(args: &ArgMatches) -> Result<ResolvedLibrary, Box<dyn Error>> {
-    let lib = args.get_one::<String>("library");
+    let lib = args.get_one::<String>("library").map(|x| x.as_str());
+    // A path needs no R version, so this also works with none installed.
+    let rver = match lib {
+        Some(lib) if looks_like_path(lib) => String::new(),
+        _ => library_rver(args)?,
+    };
+    resolve_library_for(lib, &rver)
+}
 
+/// [`resolve_library`] for a `--library` value `lib` and the R installation
+/// `rver`, which is not used if `lib` looks like a path.
+pub(crate) fn resolve_library_for(
+    lib: Option<&str>,
+    rver: &str,
+) -> Result<ResolvedLibrary, Box<dyn Error>> {
     if let Some(lib) = lib {
         if looks_like_path(lib) {
             debug!("Using library directory {}", lib);
@@ -105,14 +118,13 @@ pub(super) fn resolve_library(args: &ArgMatches) -> Result<ResolvedLibrary, Box<
             });
         }
     }
-
-    let rver = library_rver(args)?;
+    let rver = rver.to_string();
 
     let lib = match lib {
         None => sc_library_get_default(&rver)?,
         Some(name) => {
             let libs = sc_library_get_list(Some(rver.to_string()), true)?;
-            match libs.iter().find(|lib| &lib.name == name) {
+            match libs.iter().find(|lib| lib.name == name) {
                 Some(lib) => lib.clone(),
                 None if Path::new(name).is_dir() => {
                     debug!("Using library directory {}", name);
