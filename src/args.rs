@@ -2227,19 +2227,6 @@ pub fn rig_app() -> Command {
                 .arg(exclude_newer_arg().conflicts_with_all(["frozen", "locked"]))
                 .args(proj_repos_args().map(|a| a.conflicts_with_all(["frozen", "locked"])))
                 .arg(
-                    Arg::new("library")
-                        .help(
-                            "Install into exactly this directory, instead of the\n\
-                            project library (default: .rvenv/lib, see\n\
-                            RIG_PROJ_LIBRARY_ROOT), and leave the project\n\
-                            environment alone. Implies --inexact.",
-                        )
-                        .long("library")
-                        .value_name("PATH")
-                        .num_args(1)
-                        .required(false),
-                )
-                .arg(
                     Arg::new("dry-run")
                         .help(
                             "Show what sync would do, without installing, removing or\n\
@@ -2734,6 +2721,146 @@ pub fn rig_app() -> Command {
                         .action(clap::ArgAction::SetTrue)
                         .hide(true),
                 ),
+        )
+        .subcommand(
+            Command::new("sync")
+                .about(ABOUT_PKG_SYNC)
+                .long_about(HELP_PKG_SYNC)
+                .display_order(0)
+                .arg(
+                    Arg::new("lockfile")
+                        .help("lock file to install from [default: rproj.lock]")
+                        .value_name("LOCKFILE")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("library")
+                        .help(
+                            "Library name or path, instead of the default library of\n\
+                            the R version the lock file names",
+                        )
+                        .long("library")
+                        .short('l')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help(
+                            "R version to install with, an installed R version or one of\n\
+                            the lock file's R versions (default: the default R version,\n\
+                            if the lock file has a target for it, else the highest)",
+                        )
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("platform")
+                        .help(
+                            "Which of the lock file's targets to install, when more\n\
+                            than one matches this machine. Any spelling of the\n\
+                            platform works, e.g. macos for aarch64-apple-darwin.",
+                        )
+                        .long("platform")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-install-r")
+                        .help(
+                            "Fail if the R version the lock file needs is not installed,\n\
+                            instead of installing it",
+                        )
+                        .long("no-install-r")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-install-project")
+                        .help(
+                            "Do not install the project's own package, if the lock file\n\
+                            has one. Still installed if another package actually\n\
+                            depends on it.",
+                        )
+                        .long("no-install-project")
+                        .visible_alias("no-install-self")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-dev")
+                        .help(
+                            "Do not install the dev dependency group (default:\n\
+                            installed alongside main). An explicit --group dev or\n\
+                            --all-groups installs it anyway.",
+                        )
+                        .long("no-dev")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("group")
+                        .help(
+                            "Also install this dependency group, in addition to the\n\
+                            default set (main, plus dev unless --no-dev). Repeat or\n\
+                            comma-separate for several.",
+                        )
+                        .long("group")
+                        .value_name("NAME")
+                        .num_args(1)
+                        .value_delimiter(',')
+                        .action(clap::ArgAction::Append)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all-groups")
+                        .help("Install every dependency group.")
+                        .long("all-groups")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("extra")
+                        .help(
+                            "Install this optional-dependency extra. Not installed by\n\
+                            default. Repeat or comma-separate for several.",
+                        )
+                        .long("extra")
+                        .value_name("NAME")
+                        .num_args(1)
+                        .value_delimiter(',')
+                        .action(clap::ArgAction::Append)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all-extras")
+                        .help("Install every optional-dependency extra.")
+                        .long("all-extras")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("max-concurrent")
+                        .help(
+                            "Maximum number of concurrent installations\n\
+                            (default: number of CPU cores, see 'concurrent-installs'\n\
+                            in 'rig config')",
+                        )
+                        .long("max-concurrent")
+                        .num_args(1)
+                        .value_parser(clap::value_parser!(usize))
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("dry-run")
+                        .help("Show what would be installed, install nothing")
+                        .long("dry-run")
+                        .num_args(0)
+                        .required(false),
+                )
+                .args(sysreqs_args()),
         )
         .subcommand(
             Command::new("tree")
@@ -3808,17 +3935,40 @@ mod tests {
     }
 
     #[test]
-    fn proj_sync_library_flag() {
-        let matches = rig_app()
-            .try_get_matches_from(["rig", "proj", "sync", "--library", "lib"])
-            .unwrap();
+    fn pkg_sync_args() {
+        let sync = |extra: &[&str]| {
+            let mut argv = vec!["rig", "pkg", "sync"];
+            argv.extend_from_slice(extra);
+            rig_app().try_get_matches_from(argv)
+        };
+
+        let matches = sync(&["a.lock", "--library", "lib"]).unwrap();
         let (_name, sub) = matches.subcommand().unwrap();
         let (_name, sub) = sub.subcommand().unwrap();
+        assert_eq!(sub.get_one::<String>("lockfile").unwrap(), "a.lock");
         assert_eq!(sub.get_one::<String>("library").unwrap(), "lib");
 
-        assert!(rig_app()
-            .try_get_matches_from(["rig", "proj", "sync", "--library"])
-            .is_err());
+        // The lock file and the library are both optional.
+        let matches = sync(&[]).unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert!(sub.get_one::<String>("lockfile").is_none());
+        assert!(sub.get_one::<String>("library").is_none());
+        assert!(sync(&["-l", "lib", "--no-dev", "--group", "test", "--dry-run"]).is_ok());
+
+        // The lock file is used as it is, and nothing is ever removed.
+        for flag in ["--frozen", "--locked", "--inexact", "--exclude-newer"] {
+            assert!(sync(&["a.lock", flag]).is_err(), "{}", flag);
+        }
+    }
+
+    #[test]
+    fn proj_sync_has_no_library_or_lockfile() {
+        for flag in ["--library", "--lockfile"] {
+            assert!(rig_app()
+                .try_get_matches_from(["rig", "proj", "sync", flag, "x"])
+                .is_err());
+        }
     }
 
     #[test]
