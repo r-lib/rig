@@ -99,9 +99,10 @@ fn pkg_repos_args() -> [Arg; 2] {
             .required(false),
         Arg::new("without-repos")
             .help(
-                "Do not use these repositories, a comma-separated list.\n\
-                Without a value, do not use any of the configured repositories,\n\
-                only the ones in --with-repos. Can be repeated.",
+                "Do not use these repositories, a comma-separated list, given\n\
+                with '=', e.g. --without-repos=cran. Without a value, do not use\n\
+                any of the configured repositories, only the ones in --with-repos.\n\
+                Can be repeated.",
             )
             .long("without-repos")
             .visible_alias("no-index")
@@ -132,9 +133,10 @@ pub(crate) fn proj_repos_args() -> [Arg; 2] {
             .required(false),
         Arg::new("without-repos")
             .help(
-                "Do not use these repositories, a comma-separated list, e.g.\n\
-                cran,bioc. Without a value, do not use any of the project's\n\
-                repositories, only the ones in --with-repos. Can be repeated.",
+                "Do not use these repositories, a comma-separated list, given\n\
+                with '=', e.g. --without-repos=cran,bioc. Without a value, do not\n\
+                use any of the project's repositories, only the ones in\n\
+                --with-repos. Can be repeated.",
             )
             .long("without-repos")
             .visible_alias("no-index")
@@ -460,7 +462,8 @@ pub fn rig_app() -> Command {
             Arg::new("without-repos")
                 .help(
                     "Do not set up package repositories.\n\
-                    Alternatively, specify which ones to skip, a comma-separated list.\n\
+                    Alternatively, specify which ones to skip, a comma-separated list,\n\
+                    given with '=', e.g. --without-repos=cran.\n\
                     If --with-repos is also specified, then only the repositories in that\n\
                     argument will be enabled.",
                 )
@@ -2979,7 +2982,8 @@ pub fn rig_app() -> Command {
             Arg::new("without-repos")
                 .help(
                     "Do not set up package repositories.\n\
-                    Alternatively, specify which ones to skip, a comma-separated list.\n\
+                    Alternatively, specify which ones to skip, a comma-separated list,\n\
+                    given with '=', e.g. --without-repos=cran.\n\
                     If --with-repos is also specified, then only the repositories in that\n\
                     argument will be enabled.",
                 )
