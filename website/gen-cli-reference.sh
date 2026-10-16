@@ -194,6 +194,20 @@ render_synopsis() {
     # Wrap `--flag` tokens in code spans, both so they read as code and so
     # Pandoc smart typography does not turn the `--` into an en dash.
     function wrapflags(s){ gsub(/--[A-Za-z0-9][A-Za-z0-9=-]*/, "`&`", s); return s }
+    # Backslash-escape `<` and `>` outside code spans. Otherwise placeholders
+    # in the help text, like `<SCRIPT>.lock` or `<package>@<version>`, are
+    # passed through as raw HTML tags, and an unclosed `<script>` hides the
+    # rest of the page in the browser.
+    function escangle(s,   i, c, r, incode){
+      r = ""; incode = 0
+      for (i = 1; i <= length(s); i++){
+        c = substr(s, i, 1)
+        if (c == "`") incode = !incode
+        else if (!incode && (c == "<" || c == ">")) c = "\\" c
+        r = r c
+      }
+      return r
+    }
     # Map an os tag from a `{platform:<os>}` sentinel to a badge label.
     function badgelabel(os){
       if (os == "windows") return "Windows only"
@@ -290,12 +304,12 @@ render_synopsis() {
       d = stripbadge(d)
       if (lastbadge != "" && curbadge == "") curbadge = lastbadge
       d = stripaliases(d)
-      x = wrapflags(d)
+      x = escangle(wrapflags(d))
       if (x == "") return
       if (needcolon){ out(":   " x); needcolon = 0 } else out("    " x)
     }
     function meta(m,  x){
-      x = wrapflags(m)
+      x = escangle(wrapflags(m))
       if (needcolon){ out(":   *" x "*"); needcolon = 0 }
       else { if (!hadmeta) out(""); out("    *" x "*  ") }
       hadmeta = 1

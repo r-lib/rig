@@ -11,6 +11,27 @@ pub enum ReposSetupArgs {
     },
 }
 
+impl ReposSetupArgs {
+    /// The same setup with lowercase repository names. The names are kept as
+    /// the user typed them until they are validated, so error messages can
+    /// show them; everything after that works with lowercase names.
+    pub fn to_lowercase(&self) -> ReposSetupArgs {
+        let lower = |v: &[String]| v.iter().map(|x| x.to_lowercase()).collect();
+        match self {
+            ReposSetupArgs::Default {
+                whitelist,
+                blacklist,
+            } => ReposSetupArgs::Default {
+                whitelist: lower(whitelist),
+                blacklist: lower(blacklist),
+            },
+            ReposSetupArgs::Empty { whitelist } => ReposSetupArgs::Empty {
+                whitelist: lower(whitelist),
+            },
+        }
+    }
+}
+
 pub fn interpret_repos_args(args: &ArgMatches, deprecated: bool) -> ReposSetupArgs {
     let mut setup;
 
@@ -49,7 +70,7 @@ pub fn interpret_repos_args(args: &ArgMatches, deprecated: bool) -> ReposSetupAr
         if without_repos != "ALL REPOSITORIES" {
             let repos: Vec<String> = without_repos
                 .split(',')
-                .map(|s| s.trim().to_string().to_lowercase())
+                .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
             if let ReposSetupArgs::Default { blacklist, .. } = &mut setup {
@@ -61,7 +82,7 @@ pub fn interpret_repos_args(args: &ArgMatches, deprecated: bool) -> ReposSetupAr
     if let Some(with_repos) = args.get_one::<String>("with-repos") {
         let repos: Vec<String> = with_repos
             .split(',')
-            .map(|s| s.trim().to_string().to_lowercase())
+            .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
         match &mut setup {
@@ -78,8 +99,8 @@ pub fn interpret_repos_args(args: &ArgMatches, deprecated: bool) -> ReposSetupAr
 /// repositories for this command only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PkgReposArgs {
-    /// The repository names, lowercase, to apply on top of the configured
-    /// repositories.
+    /// The repository names, as given, to apply on top of the configured
+    /// repositories. They are matched case insensitively.
     pub setup: ReposSetupArgs,
     /// Extra repositories given by URL, `(name, url)`, in the order given.
     pub urls: Vec<(String, String)>,
@@ -91,7 +112,7 @@ impl PkgReposArgs {
         matches!(self.setup, ReposSetupArgs::Empty { .. })
     }
 
-    /// The repository names to use, lowercase.
+    /// The repository names to use, as given.
     pub fn enabled_names(&self) -> &[String] {
         match &self.setup {
             ReposSetupArgs::Default { whitelist, .. } => whitelist,
@@ -131,7 +152,6 @@ pub fn interpret_pkg_repos_args(
         .iter()
         .filter(|v| *v != "ALL REPOSITORIES")
         .flat_map(|v| split_repos_list(v))
-        .map(|s| s.to_lowercase())
         .collect();
 
     let mut whitelist: Vec<String> = vec![];
@@ -139,11 +159,14 @@ pub fn interpret_pkg_repos_args(
     for item in with.iter().flat_map(|v| split_repos_list(v)) {
         match parse_repo_url(&item)? {
             Some(nu) => urls.push(nu),
-            None => whitelist.push(item.to_lowercase()),
+            None => whitelist.push(item),
         }
     }
 
-    let mut both: Vec<&String> = whitelist.iter().filter(|x| blacklist.contains(x)).collect();
+    let mut both: Vec<&String> = whitelist
+        .iter()
+        .filter(|x| blacklist.iter().any(|b| b.eq_ignore_ascii_case(x)))
+        .collect();
     if !both.is_empty() {
         both.sort();
         both.dedup();
@@ -406,18 +429,31 @@ mod tests {
     }
 
     #[test]
-    fn test_lowercase_conversion() {
+    fn test_names_keep_case() {
+        // The names are kept as given, for error messages, and lowercased
+        // after validation.
         let cmd = create_test_command();
         let matches = cmd
-            .try_get_matches_from(vec!["test", "--with-repos=CRAN,BiOc"])
+            .try_get_matches_from(vec![
+                "test",
+                "--with-repos=CRAN,BiOc",
+                "--without-repos=P3M",
+            ])
             .unwrap();
         let result = interpret_repos_args(&matches, true);
 
         assert_eq!(
             result,
             ReposSetupArgs::Default {
+                whitelist: vec!["CRAN".to_string(), "BiOc".to_string()],
+                blacklist: vec!["P3M".to_string()],
+            }
+        );
+        assert_eq!(
+            result.to_lowercase(),
+            ReposSetupArgs::Default {
                 whitelist: vec!["cran".to_string(), "bioc".to_string()],
-                blacklist: vec![],
+                blacklist: vec!["p3m".to_string()],
             }
         );
     }
@@ -557,8 +593,8 @@ mod tests {
             ]),
             Some(PkgReposArgs {
                 setup: ReposSetupArgs::Default {
-                    whitelist: s(&["bioc", "p3m", "cranextra"]),
-                    blacklist: s(&["cran", "r-forge"]),
+                    whitelist: s(&["Bioc", "p3m", "cranextra"]),
+                    blacklist: s(&["CRAN", "r-forge"]),
                 },
                 urls: vec![],
             })
@@ -609,6 +645,7 @@ mod tests {
             .try_get_matches_from(vec!["test", "--index=cran,p3m", "--no-index=P3M"])
             .unwrap();
         let err = interpret_pkg_repos_args(&matches).unwrap_err();
+        assert!(err.to_string().contains("both"));
         assert!(err.to_string().contains("p3m"));
     }
 

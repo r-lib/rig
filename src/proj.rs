@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::error::Error;
 use std::fs::{self, File};
@@ -52,16 +52,17 @@ use crate::repos::interpret_repos_args::{interpret_pkg_repos_args, PkgReposArgs}
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
-    format_constraints, parse_add_spec, prefer_binary_lookback, Author, DepTable,
+    format_constraints, parse_add_spec, prefer_binary_lookback, Author, Build, DepTable,
     LockDirectDependency, Repository, Rproj, RprojLock, RprojLockOptions, RprojLockPackage,
     RprojLockTarget, RprojLockTool, DESCRIPTION_RIG_NOTE_FIELD, RPROJ_LOCK_VERSION,
     RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
     ensure_rvenv_files, existing_targets, find_project_root, find_workspace_root,
-    link_library_compat_symlink, project_library, project_library_in_tree, read_rvenv_cfg,
-    rvenv_init, rvenv_sync, rvenv_sync_needed, workspace_members, write_sync_stamp, RvenvCfg,
-    RPROJ_LOCK_FILE, RVENV_CFG_FILE, RVENV_DIR,
+    link_library_compat_symlink, missing_shim_files, project_library, project_library_in_tree,
+    project_shim_library, read_rvenv_cfg, rvenv_init, rvenv_sync, rvenv_sync_needed,
+    workspace_members, write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE, RVENV_CFG_FILE, RVENV_DIR,
+    RVENV_SHIM_DIR,
 };
 use crate::rversion::OsVersion;
 use crate::script_meta::{script_lock_env, script_lock_path};
@@ -428,13 +429,22 @@ fn sc_proj_import(
         // Any other field, e.g. `Encoding`, has no structured home in the
         // manifest, so it round-trips verbatim through the `[description]`
         // escape hatch: `Encoding: UTF-8` becomes `Encoding = "UTF-8"`.
+        // Build flags, e.g. `LazyData: true`, go to `[build]`. A value that
+        // is not a logical is kept verbatim in `[description]` instead.
+        let mut build = Build::default();
         for (key, value) in paragraph.iter() {
             if KNOWN_DESCRIPTION_FIELDS.contains(&key) || key.starts_with("Config/") {
+                continue;
+            }
+            if build.set_description_field(key, value) {
                 continue;
             }
             manifest
                 .description
                 .insert(key.to_string(), toml::Value::String(reflow(value)));
+        }
+        if build != Build::default() {
+            manifest.build = Some(build);
         }
     }
 
@@ -3584,6 +3594,43 @@ fn sc_proj_status(
         None
     };
 
+    // Whether the lock file still fits the manifest, the same check as
+    // `rig proj lock --check`, e.g. after a hand edit of `rproj.toml`.
+    let lock_current = if manifest.is_some() && lock.is_some() {
+        OUTPUT.set_quiet(true);
+        let fits = lock_fits_manifest(&root);
+        OUTPUT.set_quiet(false);
+        match fits {
+            Ok(fits) => Some(fits),
+            Err(e) => {
+                warnings.push(format!(
+                    "Could not check whether {} is up to date: {}",
+                    RPROJ_LOCK_FILE, e
+                ));
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // R started directly needs the whole shim. Other `rig proj` commands
+    // fill it in, but say so here, because a file that is missing from a
+    // fresh clone is probably kept out of git by an ignore rule.
+    if manifest.is_some() {
+        let missing = missing_shim_files(&project_shim_library(&root));
+        if !missing.is_empty() {
+            warnings.push(format!(
+                "Missing from {}: {}. Run `rig proj sync` to fill them in, and \
+                 commit all of {}; check that your ignore rules (e.g. *.rds) do \
+                 not exclude them",
+                RVENV_SHIM_DIR,
+                missing.join(", "),
+                RVENV_SHIM_DIR
+            ));
+        }
+    }
+
     let cfg = match read_rvenv_cfg(&root) {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -3607,9 +3654,25 @@ fn sc_proj_status(
     };
 
     if json {
-        print_proj_status_json(&root, &manifest, &lock, &cfg, &sync_reason, &warnings)
+        print_proj_status_json(
+            &root,
+            &manifest,
+            &lock,
+            lock_current,
+            &cfg,
+            &sync_reason,
+            &warnings,
+        )
     } else {
-        print_proj_status(&root, &manifest, &lock, &cfg, &sync_reason, &warnings)
+        print_proj_status(
+            &root,
+            &manifest,
+            &lock,
+            lock_current,
+            &cfg,
+            &sync_reason,
+            &warnings,
+        )
     }
 }
 
@@ -3618,16 +3681,22 @@ fn print_proj_status(
     root: &Path,
     manifest: &Option<Rproj>,
     lock: &Option<RprojLock>,
+    lock_current: Option<bool>,
     cfg: &Option<RvenvCfg>,
     sync_reason: &Option<String>,
     warnings: &[String],
 ) -> Result<(), Box<dyn Error>> {
-    println!("Project: {}", root.display());
+    println!("{} {}", OUTPUT.heading("Project:"), root.display());
     println!();
 
     match manifest {
         Some(m) => {
-            println!("Manifest: {} {}", m.project.name, m.project.version);
+            println!(
+                "{} {} {}",
+                OUTPUT.heading("Manifest:"),
+                m.project.name,
+                m.project.version
+            );
             if let Some(ws) = &m.workspace {
                 if !ws.members.is_empty() {
                     match workspace_members(root, ws) {
@@ -3659,16 +3728,50 @@ fn print_proj_status(
                 }
             }
         }
-        None => println!("Manifest: none, run `rig proj init` first"),
+        None => println!(
+            "{} none, run `rig proj init` first",
+            OUTPUT.heading("Manifest:")
+        ),
     }
     println!();
 
     match lock {
         Some(lock) => {
-            println!("Lock file: {} (version {})", RPROJ_LOCK_FILE, lock.version);
-            let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
+            println!(
+                "{} {} (version {})",
+                OUTPUT.heading("Lock file:"),
+                RPROJ_LOCK_FILE,
+                lock.version
+            );
+            match lock_current {
+                Some(true) => println!(
+                    "  {}up to date with {}",
+                    OUTPUT.mark(true),
+                    RPROJ_MANIFEST_FILE
+                ),
+                Some(false) => println!(
+                    "  {}out of date with {}, run `rig proj lock`",
+                    OUTPUT.mark(false),
+                    RPROJ_MANIFEST_FILE
+                ),
+                None => {}
+            }
+            // The rule spans all three columns, plus the two 3-space gaps.
+            let width = |header: &str, cell: fn(&RprojLockTarget) -> usize| {
+                lock.targets
+                    .iter()
+                    .map(cell)
+                    .chain([header.len()])
+                    .max()
+                    .unwrap_or(0)
+            };
+            let rule = width("R version", |t| t.r_version.len())
+                + width("Platform", |t| t.platform.len())
+                + width("Packages", |t| t.packages.len().to_string().len())
+                + 6;
+            let mut tab: Table = Table::new("  {:<}   {:<}   {:<}");
             tab.add_row(row!("R version", "Platform", "Packages"));
-            tab.add_heading("-------------------------------------");
+            tab.add_heading(format!("  {}", "-".repeat(rule)));
             for target in &lock.targets {
                 tab.add_row(row!(
                     &target.r_version,
@@ -3678,22 +3781,35 @@ fn print_proj_status(
             }
             print!("{}", tab);
         }
-        None => println!("Lock file: none, run `rig proj lock` first"),
+        None => println!(
+            "{} none, run `rig proj lock` first",
+            OUTPUT.heading("Lock file:")
+        ),
     }
     println!();
 
     match cfg {
         Some(cfg) => {
             println!(
-                "Environment: R {} ({}, {})",
-                cfg.r_version, cfg.platform, cfg.r_arch
+                "{} R {} ({}, {})",
+                OUTPUT.heading("Environment:"),
+                cfg.r_version,
+                cfg.platform,
+                cfg.r_arch
             );
             match sync_reason {
-                None => println!("  up to date"),
-                Some(reason) => println!("  needs sync: {}", reason),
+                None => println!("  {}up to date with {}", OUTPUT.mark(true), RPROJ_LOCK_FILE),
+                Some(reason) => println!(
+                    "  {}out of date: {}, run `rig proj sync`",
+                    OUTPUT.mark(false),
+                    reason
+                ),
             }
         }
-        None => println!("Environment: none, run `rig proj sync` first"),
+        None => println!(
+            "{} none, run `rig proj sync` first",
+            OUTPUT.heading("Environment:")
+        ),
     }
 
     if !warnings.is_empty() {
@@ -3711,6 +3827,7 @@ fn print_proj_status_json(
     root: &Path,
     manifest: &Option<Rproj>,
     lock: &Option<RprojLock>,
+    lock_current: Option<bool>,
     cfg: &Option<RvenvCfg>,
     sync_reason: &Option<String>,
     warnings: &[String],
@@ -3772,6 +3889,7 @@ fn print_proj_status_json(
                 .collect();
             serde_json::json!({
                 "version": lock.version,
+                "up_to_date": lock_current,
                 "targets": targets,
             })
         }
@@ -6224,7 +6342,7 @@ fn download_http_lockfile_packages(
     // Track results using Cell for interior mutability
     let success_count = Cell::new(0);
     let cached_count = Cell::new(0);
-    let error: Cell<Option<(usize, String)>> = Cell::new(None);
+    let errors: RefCell<Vec<(usize, String)>> = RefCell::new(Vec::new());
 
     // Download all packages concurrently with progress updates
     OUTPUT.status(&format!("Downloading {} packages", total));
@@ -6245,20 +6363,31 @@ fn download_http_lockfile_packages(
                 overall_pb.inc(1);
             }
             Err(e) => {
-                error.set(Some((idx, e.to_string())));
+                errors.borrow_mut().push((idx, e.to_string()));
                 overall_pb.finish_and_clear();
             }
         },
     )?;
 
-    // Check if there was an error
-    if let Some((idx, err)) = error.into_inner() {
-        OUTPUT.error(&format!(
-            "Failed to download {}: {}",
-            packages[idx].package, err
-        ));
-        error!("Failed to download {}: {}", packages[idx].package, err);
-        bail!("Failed to download {}: {}", packages[idx].package, err);
+    // Report every failure, in package order, before failing
+    let mut errors = errors.into_inner();
+    errors.sort_by_key(|(idx, _)| *idx);
+    let messages: Vec<String> = errors
+        .iter()
+        .map(|(idx, err)| format!("Failed to download {}: {}", packages[*idx].package, err))
+        .collect();
+    for msg in &messages {
+        error!("{}", msg);
+    }
+    match messages.len() {
+        0 => {}
+        1 => bail!("{}", messages[0]),
+        n => {
+            for msg in &messages {
+                OUTPUT.error(msg);
+            }
+            bail!("Failed to download {} packages", n);
+        }
     }
 
     overall_pb.finish_with_message(format!(

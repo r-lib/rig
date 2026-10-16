@@ -13,9 +13,9 @@ affected by the `PACKAGEMANAGER_ADDRESS` environment variable.
 
 * `version`: the package version, as published.
 
-* `platform`: `source` for the CRAN source tarball, otherwise the build
-  target: `macos`, `windows`, or a Linux target name such as `jammy`.
-  [`rig ppm platforms`](ppm.qmd#rig-ppm-platforms) lists the target names.
+* `platform`: `source` for the CRAN source tarball, otherwise the build target:
+  `macos`, `windows`, or a Linux target name such as `jammy`. [`rig ppm platforms`](ppm.qmd#rig-ppm-platforms)
+  lists the target names.
 
 * `arch`, `r_version`: the architecture and minor R version the binary is for.
   Both are `*` on a source row, which is architecture- and

@@ -761,6 +761,80 @@ pub struct Build {
     pub lazy_data: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub biarch: Option<bool>,
+    #[serde(
+        rename = "keep-source",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub keep_source: Option<bool>,
+}
+
+impl Build {
+    /// The `DESCRIPTION` field of each `[build]` flag, in the order
+    /// `rig proj export` writes them.
+    pub const DESCRIPTION_FIELDS: [&'static str; 5] = [
+        "ByteCompile",
+        "NeedsCompilation",
+        "LazyData",
+        "Biarch",
+        "KeepSource",
+    ];
+
+    fn flag_mut(&mut self, field: &str) -> Option<&mut Option<bool>> {
+        match field {
+            "ByteCompile" => Some(&mut self.byte_compile),
+            "NeedsCompilation" => Some(&mut self.needs_compilation),
+            "LazyData" => Some(&mut self.lazy_data),
+            "Biarch" => Some(&mut self.biarch),
+            "KeepSource" => Some(&mut self.keep_source),
+            _ => None,
+        }
+    }
+
+    /// The set flags as `DESCRIPTION` fields, e.g. `("LazyData", "true")`.
+    /// `NeedsCompilation` is written as `yes`/`no`, like `R CMD build`
+    /// does, the others as `true`/`false`.
+    pub fn description_fields(&self) -> Vec<(&'static str, &'static str)> {
+        let flags = [
+            self.byte_compile,
+            self.needs_compilation,
+            self.lazy_data,
+            self.biarch,
+            self.keep_source,
+        ];
+        Self::DESCRIPTION_FIELDS
+            .iter()
+            .zip(flags)
+            .filter_map(|(&field, flag)| {
+                let value = match (field, flag?) {
+                    ("NeedsCompilation", true) => "yes",
+                    ("NeedsCompilation", false) => "no",
+                    (_, true) => "true",
+                    (_, false) => "false",
+                };
+                Some((field, value))
+            })
+            .collect()
+    }
+
+    /// Set the flag of `DESCRIPTION` field `field` from its `value`. R
+    /// reads these as logicals, so `yes`/`no` and `true`/`false` are
+    /// accepted, in any case. Returns `false`, and changes nothing, if
+    /// `field` is not a build flag or `value` is not a logical.
+    pub fn set_description_field(&mut self, field: &str, value: &str) -> bool {
+        let value = match value.trim().to_lowercase().as_str() {
+            "yes" | "true" => true,
+            "no" | "false" => false,
+            _ => return false,
+        };
+        match self.flag_mut(field) {
+            Some(flag) => {
+                *flag = Some(value);
+                true
+            }
+            None => false,
+        }
+    }
 }
 
 /// One `[[bin]]` — a named entry-point script run via `rig run <name>`.
@@ -1923,6 +1997,12 @@ impl Rproj {
                 .map(|(name, table)| dep_table_to_pak_ref(name, table))
                 .collect();
             writeln!(out, "Remotes:{}", fold_dcf_list(&items))?;
+        }
+
+        if let Some(build) = &self.build {
+            for (field, value) in build.description_fields() {
+                writeln!(out, "{}: {}", field, value)?;
+            }
         }
 
         for (group_name, group) in self.dependency_groups.iter() {
@@ -3391,6 +3471,7 @@ mod tests {
             needs_compilation: Some(true),
             lazy_data: None,
             biarch: None,
+            keep_source: Some(false),
         });
         m.bin = vec![Bin {
             name: "report".to_string(),
@@ -5556,6 +5637,47 @@ foo = "bar"
         // The manifest survives a TOML round trip.
         let text = toml::to_string_pretty(&m).unwrap();
         assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), m);
+    }
+
+    #[test]
+    fn to_description_writes_build_flags() {
+        let mut m = Rproj::minimal("mypkg");
+        m.build = Some(Build {
+            byte_compile: Some(true),
+            needs_compilation: Some(false),
+            lazy_data: None,
+            biarch: None,
+            keep_source: Some(false),
+        });
+
+        let (desc, _) = m.to_description().unwrap();
+        assert!(desc.contains("ByteCompile: true\nNeedsCompilation: no\nKeepSource: false\n"));
+        assert!(!desc.contains("LazyData:"));
+        assert!(!desc.contains("Biarch:"));
+    }
+
+    #[test]
+    fn build_flags_are_read_from_description_fields() {
+        let mut build = Build::default();
+        assert!(build.set_description_field("NeedsCompilation", "yes"));
+        assert!(build.set_description_field("LazyData", "TRUE"));
+        assert!(build.set_description_field("KeepSource", " false "));
+        assert!(build.set_description_field("Biarch", "No"));
+        assert_eq!(
+            build,
+            Build {
+                byte_compile: None,
+                needs_compilation: Some(true),
+                lazy_data: Some(true),
+                biarch: Some(false),
+                keep_source: Some(false),
+            }
+        );
+
+        // Not a logical, or not a build flag: nothing changes.
+        assert!(!build.set_description_field("ByteCompile", "maybe"));
+        assert!(!build.set_description_field("Encoding", "true"));
+        assert_eq!(build.byte_compile, None);
     }
 
     #[test]

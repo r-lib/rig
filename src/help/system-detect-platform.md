@@ -16,12 +16,11 @@ strings as target triples, with `aarch64` or `x86_64` as the arch:
 - `x86_64-unknown-linux-gnu-ubuntu-24.04` -- a specific Linux distribution
   and version.
 
-This is the form `rproj.lock` uses, and that rig prints in messages.
-Commands that take a platform, e.g. `rig proj lock --platform` or the
-`RIG_PLATFORM` environment variable, also take shorter forms: `macos`,
-`windows`, `linux`, `macos-arm64`, `ubuntu-24.04`, `linux-ubuntu-24.04`,
-and P3M platform names like `jammy-x86_64`. `arm64` and `amd64` work as
-arch names, too.
+This is the form `rproj.lock` uses, and that rig prints in messages. Commands
+that take a platform, e.g. `rig proj lock --platform` or the `RIG_PLATFORM`
+environment variable, also take shorter forms: `macos`, `windows`, `linux`,
+`macos-arm64`, `ubuntu-24.04`, `linux-ubuntu-24.04`, and P3M platform names like
+`jammy-x86_64`. `arm64` and `amd64` work as arch names, too.
 
 Set `RIG_PLATFORM` to make rig act as if it ran on another platform, e.g.:
 

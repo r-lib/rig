@@ -99,10 +99,11 @@ that `{{< include >}}` a partial. Edit the partials, not the rendered HTML.
   them, and don't list them individually in `_quarto.yml` (the sidebar picks
   them up with `auto: "reference/*.qmd"`).
 - The layout is the uv-style three-column docs layout: a **permanent docked
-  left sidebar** holds all navigation (Get started, a collapsible `Guide`
-  section with the Guide pages — including a nested `Tutorials` section that
-  links to `tutorial.qmd` and lists the three tutorial pages —, Reference,
-  Changelog — see the
+  left sidebar** holds all navigation (a `Getting started` section that
+  links to the `tutorial.qmd` hub and lists `Installing rig`, `As an R user`
+  (`tutorial-user.qmd`), `As an R admin` (`tutorial-admin.qmd`) and
+  `Migrating to user mode`; a `Guides` section with the other Guide pages;
+  Reference; Changelog — see the
   `sidebar:` block in `_quarto.yml`), the content is in the middle, and the
   right-hand on-page TOC (`toc: true`) lists the current page's sections. The
   main navigation lives in the sidebar only; the top `navbar` is kept thin

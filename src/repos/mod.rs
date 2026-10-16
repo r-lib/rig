@@ -146,13 +146,14 @@ fn today() -> String {
     jiff::Zoned::now().date().to_string()
 }
 
-/// The repository names given on the command line, lowercase, the way
-/// `--with-repos` matches them.
+/// The repository names given on the command line, as given, without
+/// duplicates. They are matched case insensitively, the way `--with-repos`
+/// matches them.
 fn repo_names_arg(args: &ArgMatches) -> Vec<String> {
     let mut names: Vec<String> = vec![];
     for name in args.get_many::<String>("name").into_iter().flatten() {
-        let name = name.trim().to_lowercase();
-        if !name.is_empty() && !names.contains(&name) {
+        let name = name.trim().to_string();
+        if !name.is_empty() && !names.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
             names.push(name);
         }
     }
