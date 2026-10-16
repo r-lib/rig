@@ -8,7 +8,7 @@ use std::time::Duration;
 use clap::ArgMatches;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{debug, error, info};
-use pubgrub::{resolve, SelectedDependencies};
+use pubgrub::resolve;
 use rayon::prelude::*;
 use simple_error::SimpleError;
 use tabular::*;
@@ -1887,7 +1887,7 @@ pub(crate) fn sc_proj_solve_project_deps(
     target: Option<BinaryTarget>,
     prefer_binary: Option<usize>,
     report_status: bool,
-) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
+) -> Result<(RPackageRegistry, RegistrySolution), Box<dyn Error>> {
     let roots = [SolveRoot::project(deps.clone())?];
     let bioc_version = solve_bioc_version(&BiocSetting::default(), r_version, None);
     let repos = ProjRepos::default();
@@ -1996,7 +1996,7 @@ pub(crate) fn sc_proj_solve_deps(
     filter: &RepoFilter,
     pins: &SolvePins,
     report_status: bool,
-) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
+) -> Result<(RPackageRegistry, RegistrySolution), Box<dyn Error>> {
     info!("Solving dependencies");
 
     // `r_version` may be a symbolic, installed R name (e.g. "devel", "next")
@@ -3205,7 +3205,7 @@ fn solve_platform_key(target_name: Option<String>) -> String {
 
 fn solution_to_sorted_vec(
     registry: &RPackageRegistry,
-    solution: &SelectedDependencies<RPackageRegistry>,
+    solution: &RegistrySolution,
 ) -> Vec<(String, RegistryPackageVersion)> {
     let mut vec: Vec<(String, RegistryPackageVersion)> = solution
         .iter()
@@ -4457,7 +4457,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             .unwrap_or_default(),
         overrides: overrides.clone(),
     };
-    type SolveResult = (RPackageRegistry, SelectedDependencies<RPackageRegistry>);
+    type SolveResult = (RPackageRegistry, RegistrySolution);
     let solved: Vec<(String, String, Result<SolveResult, String>)> = to_solve
         .par_iter()
         .map(|st| {
@@ -4617,7 +4617,7 @@ struct TargetSolution {
 /// One solved target's packages, keyed by package name.
 fn solution_rows(
     registry: &RPackageRegistry,
-    solution: &SelectedDependencies<RPackageRegistry>,
+    solution: &RegistrySolution,
 ) -> BTreeMap<String, SolvedRow> {
     let sorted_solution = solution_to_sorted_vec(registry, solution);
     let mut rows: BTreeMap<String, SolvedRow> = BTreeMap::new();

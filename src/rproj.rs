@@ -41,7 +41,7 @@ use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::minor_r_version;
 use crate::repos::feed::RepoId;
 use crate::rvenv::RPROJ_LOCK_FILE;
-use crate::solver::{RPackageRegistry, RegistryPackageVersion};
+use crate::solver::{RPackageRegistry, RegistrySolution};
 
 pub const RPROJ_LOCK_VERSION: usize = 7;
 
@@ -3014,10 +3014,10 @@ impl RprojLockTarget {
     /// Turn one solve into one lockfile target.
     pub fn from_solution(
         registry: &RPackageRegistry,
-        solution: &HashMap<String, RegistryPackageVersion, rustc_hash::FxBuildHasher>,
+        solution: &RegistrySolution,
     ) -> RprojLockTarget {
         let r_version = solution
-            .get("R")
+            .get(&"R".to_string())
             .map(|r| r.version.to_string())
             .unwrap_or_default();
         let platform = registry.binary_target();

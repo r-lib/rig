@@ -397,7 +397,7 @@ jobs:
 
   msrv:
     runs-on: ${{ matrix.os }}
-    name: Build with Rust 1.91.0 (${{ matrix.os }})
+    name: Build with Rust 1.92.0 (${{ matrix.os }})
     env:
       RUST_BACKTRACE: 1
 
@@ -412,8 +412,8 @@ jobs:
       with:
         fetch-depth: 10
 
-    - name: Install rust 1.91.0
-      uses: dtolnay/rust-toolchain@1.91.0
+    - name: Install rust 1.92.0
+      uses: dtolnay/rust-toolchain@1.92.0
 
     - name: Build rig
       run: |
