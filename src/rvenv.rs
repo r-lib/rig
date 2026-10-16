@@ -10,6 +10,7 @@
 //!   .Renviron               # tracked -- in-session activation
 //!   .gitignore              # tracked -- ignores /.rvenv/
 //!   .rvenvlib/
+//!     .gitignore            # tracked -- re-includes all of .rvenvlib
 //!     rvenv/                # tracked -- the shim package
 //! ```
 //!
@@ -256,7 +257,8 @@ R_DEFAULT_PACKAGES=rvenv,datasets,utils,grDevices,graphics,stats,methods
 /// The block rig manages in the project's root `.gitignore`. Everything in
 /// `.rvenv` is machine-specific; the pre-built rvenv package a fresh clone
 /// needs before the first `rig proj sync` lives in `.rvenvlib` instead, which
-/// is tracked and needs no exception here.
+/// is tracked. `.rvenvlib` has its own `.gitignore`, see
+/// [`shim_gitignore_body`].
 fn root_gitignore_block() -> String {
     format!(
         "\
@@ -269,6 +271,21 @@ fn root_gitignore_block() -> String {
 ",
         BLOCK_START, BLOCK_END
     )
+}
+
+/// The `.gitignore` in `.rvenvlib`. It un-ignores everything in there, so
+/// that the user's own ignore rules cannot drop part of the shim package
+/// from version control. R projects often ignore `*.rds`, which would leave
+/// out `Meta/package.rds`, and then R cannot load the shim in a fresh clone.
+/// A `.gitignore` in a subdirectory takes precedence over the ones above it
+/// and over the global excludes file. It cannot help if `.rvenvlib` itself is
+/// ignored, because then git never looks inside it.
+fn shim_gitignore_body() -> &'static str {
+    "\
+# Managed by rig. Everything in .rvenvlib must be committed, so this
+# overrides ignore rules from elsewhere, e.g. *.rds.
+!*
+"
 }
 
 // -------------------------------------------------------------------- paths --
@@ -332,6 +349,11 @@ pub fn project_shim_library(root: &Path) -> PathBuf {
 /// nothing else creates it.
 pub fn project_shim_package(root: &Path) -> PathBuf {
     project_shim_library(root).join(RVENV_SHIM_PKG)
+}
+
+/// `<root>/.rvenvlib/.gitignore`, see [`shim_gitignore_body`].
+pub fn project_shim_gitignore(root: &Path) -> PathBuf {
+    project_shim_library(root).join(RVENV_GITIGNORE_FILE)
 }
 
 /// Leave a compatibility symlink at `link_path` (`.rvenv/lib`) pointing at
@@ -734,6 +756,7 @@ pub fn init_targets(root: &Path) -> Vec<PathBuf> {
         root.join(RPROJ_MANIFEST_FILE),
         root.join(RVENV_RENVIRON_FILE),
         root.join(RVENV_GITIGNORE_FILE),
+        project_shim_gitignore(root),
         project_shim_package(root),
     ]
 }
@@ -745,14 +768,15 @@ pub fn init_targets(root: &Path) -> Vec<PathBuf> {
 /// marked block into them (see [`update_root_gitignore`] and
 /// [`update_project_renviron`]), never overwrites the rest of the file, so an
 /// existing `.gitignore` or `.Renviron` -- with or without rig's block -- is
-/// never a conflict.
+/// never a conflict. Neither is `.rvenvlib/.gitignore`, which is rig's alone.
 pub fn existing_targets(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let gitignore = root.join(RVENV_GITIGNORE_FILE);
     let renviron = root.join(RVENV_RENVIRON_FILE);
+    let shim_gitignore = project_shim_gitignore(root);
     Ok(init_targets(root)
         .into_iter()
         .filter(|p| p.exists())
-        .filter(|p| *p != gitignore && *p != renviron)
+        .filter(|p| *p != gitignore && *p != renviron && *p != shim_gitignore)
         .collect())
 }
 
@@ -859,7 +883,22 @@ fn update_marked_block(path: &Path, block: &str) -> Result<(), Box<dyn Error>> {
 
 // -------------------------------------------------------------- shim package --
 
-/// Write the shim package into `<lib>/rvenv`, replacing whatever is there.
+/// The files of the shim package, relative to `<lib>/rvenv`, with their
+/// contents.
+const SHIM_FILES: [(&str, &str); 4] = [
+    ("DESCRIPTION", HC_RVENV_PKG_DESCRIPTION),
+    ("NAMESPACE", HC_RVENV_PKG_NAMESPACE),
+    ("LICENSE", HC_RVENV_PKG_LICENSE),
+    // No extension: this is the file `loadNamespace()` sources, and it is
+    // named after the package.
+    ("R/rvenv", HC_RVENV_PKG_CODE),
+];
+
+/// The binary file of the shim package, relative to `<lib>/rvenv`.
+const SHIM_META_FILE: &str = "Meta/package.rds";
+
+/// Write the shim package into `<lib>/rvenv`, replacing whatever is there,
+/// and `<lib>/.gitignore` next to it, see [`shim_gitignore_body`].
 ///
 /// This writes an *installed* R package without running R, which works
 /// because the shim needs no lazy-load database: `loadNamespace()` sources
@@ -882,18 +921,31 @@ pub fn write_shim_package(lib: &Path) -> Result<(), Box<dyn Error>> {
     // The embedded text files may be checked out with CRLF, e.g. on Windows
     // without a .gitattributes rule. R reads either, but the project keeps a
     // copy of them under version control, so write the same bytes everywhere.
-    for (path, contents) in [
-        ("DESCRIPTION", HC_RVENV_PKG_DESCRIPTION),
-        ("NAMESPACE", HC_RVENV_PKG_NAMESPACE),
-        ("LICENSE", HC_RVENV_PKG_LICENSE),
-        // No extension: this is the file `loadNamespace()` sources, and it is
-        // named after the package.
-        ("R/rvenv", HC_RVENV_PKG_CODE),
-    ] {
+    for (path, contents) in SHIM_FILES {
         write_atomically(&pkg.join(path), contents.replace("\r\n", "\n").as_bytes())?;
     }
-    write_atomically(&pkg.join("Meta").join("package.rds"), HC_RVENV_PKG_META)?;
+    write_atomically(&pkg.join(SHIM_META_FILE), HC_RVENV_PKG_META)?;
+    write_atomically(
+        &lib.join(RVENV_GITIGNORE_FILE),
+        shim_gitignore_body().as_bytes(),
+    )?;
     Ok(())
+}
+
+/// The files of the shim library at `lib` that are missing, relative to
+/// `lib`. Empty if the shim is complete. A file can go missing without the
+/// rest if the user's ignore rules kept it out of version control, typically
+/// `*.rds` dropping `Meta/package.rds`.
+pub fn missing_shim_files(lib: &Path) -> Vec<String> {
+    let pkg = Path::new(RVENV_SHIM_PKG);
+    let mut paths: Vec<PathBuf> = SHIM_FILES.iter().map(|(p, _)| pkg.join(p)).collect();
+    paths.push(pkg.join(SHIM_META_FILE));
+    paths.push(PathBuf::from(RVENV_GITIGNORE_FILE));
+    paths
+        .into_iter()
+        .filter(|p| !lib.join(p).exists())
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .collect()
 }
 
 // --------------------------------------------------------------------- init --
@@ -918,6 +970,7 @@ pub fn rvenv_init(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     Ok(vec![
         renviron,
         root.join(RVENV_GITIGNORE_FILE),
+        project_shim_gitignore(root),
         project_shim_package(root),
     ])
 }
@@ -930,7 +983,12 @@ pub fn rvenv_init(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 /// themselves, they set `R_LIBS_USER` on their own. A no-op if the manifest
 /// is missing (nothing to fill in).
 ///
-/// If the shim package is already there, this still creates or updates
+/// If the shim package is there, but some of its files are not, e.g.
+/// because the user's ignore rules kept `Meta/package.rds` out of version
+/// control, this writes it again and says which files were missing. Projects
+/// set up by an older rig also get `.rvenvlib/.gitignore` this way.
+///
+/// If the shim package is complete, this still creates or updates
 /// rig's block in `.Renviron`, so that a deleted `.Renviron` comes back and
 /// projects set up by an older rig pick up fixes to it, e.g. quoting
 /// `RVENV_R_LIBS_USER` for Windows paths.
@@ -938,7 +996,31 @@ pub fn ensure_rvenv_files(root: &Path) -> Result<(), Box<dyn Error>> {
     if !root.join(RPROJ_MANIFEST_FILE).exists() {
         return Ok(());
     }
-    if !project_shim_package(root).exists() {
+    if project_shim_package(root).exists() {
+        let missing = missing_shim_files(&project_shim_library(root));
+        if !missing.is_empty() {
+            write_shim_package(&project_shim_library(root))?;
+            let what = missing
+                .iter()
+                .map(|p| format!("{}/{}", RVENV_SHIM_DIR, p))
+                .collect::<Vec<_>>()
+                .join(", ");
+            // A project from an older rig only lacks the `.gitignore`; the
+            // rest going missing points at the user's ignore rules.
+            let hint = if missing == [RVENV_GITIGNORE_FILE] {
+                String::new()
+            } else {
+                " If these were missing from a fresh clone, your ignore \
+                 rules (e.g. *.rds) probably kept them out of git."
+                    .to_string()
+            };
+            OUTPUT.info(&format!(
+                "Filled in missing {}. Commit all of {}.{}",
+                what, RVENV_SHIM_DIR, hint
+            ));
+            info!("Filled in missing {} in {}", what, root.display());
+        }
+    } else {
         rvenv_init(root)?;
         OUTPUT.info("Filled in missing .Renviron/.rvenvlib for this project");
         info!(
@@ -1630,6 +1712,26 @@ mod tests {
     }
 
     #[test]
+    fn ensure_rvenv_files_fills_in_a_partial_shim() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join(RPROJ_MANIFEST_FILE), "").unwrap();
+        rvenv_init(root).unwrap();
+        let meta = root.join(".rvenvlib/rvenv/Meta/package.rds");
+        let gitignore = root.join(".rvenvlib/.gitignore");
+        fs::remove_file(&meta).unwrap();
+        fs::remove_file(&gitignore).unwrap();
+        assert_eq!(
+            missing_shim_files(&project_shim_library(root)),
+            ["rvenv/Meta/package.rds", ".gitignore"]
+        );
+        ensure_rvenv_files(root).unwrap();
+        assert!(meta.exists());
+        assert!(gitignore.exists());
+        assert!(missing_shim_files(&project_shim_library(root)).is_empty());
+    }
+
+    #[test]
     fn a_gitignore_is_never_a_conflict() {
         let tmp = tempfile::tempdir().unwrap();
         update_root_gitignore(tmp.path()).unwrap();
@@ -1863,6 +1965,10 @@ mod tests {
         );
         assert_eq!(entries(&pkg.join("R")), ["rvenv"]);
         assert_eq!(entries(&pkg.join("Meta")), ["package.rds"]);
+        assert_eq!(entries(&lib), [".gitignore", "rvenv"]);
+        assert!(fs::read_to_string(lib.join(".gitignore"))
+            .unwrap()
+            .contains("\n!*\n"));
 
         let desc = fs::read_to_string(pkg.join("DESCRIPTION")).unwrap();
         assert!(desc.contains("Package: rvenv\n"));

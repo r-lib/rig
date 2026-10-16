@@ -59,9 +59,10 @@ use crate::rproj::{
 };
 use crate::rvenv::{
     ensure_rvenv_files, existing_targets, find_project_root, find_workspace_root,
-    link_library_compat_symlink, project_library, project_library_in_tree, read_rvenv_cfg,
-    rvenv_init, rvenv_sync, rvenv_sync_needed, workspace_members, write_sync_stamp, RvenvCfg,
-    RPROJ_LOCK_FILE, RVENV_CFG_FILE, RVENV_DIR,
+    link_library_compat_symlink, missing_shim_files, project_library, project_library_in_tree,
+    project_shim_library, read_rvenv_cfg, rvenv_init, rvenv_sync, rvenv_sync_needed,
+    workspace_members, write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE, RVENV_CFG_FILE, RVENV_DIR,
+    RVENV_SHIM_DIR,
 };
 use crate::rversion::OsVersion;
 use crate::script_meta::{script_lock_env, script_lock_path};
@@ -3592,6 +3593,23 @@ fn sc_proj_status(
     } else {
         None
     };
+
+    // R started directly needs the whole shim. Other `rig proj` commands
+    // fill it in, but say so here, because a file that is missing from a
+    // fresh clone is probably kept out of git by an ignore rule.
+    if manifest.is_some() {
+        let missing = missing_shim_files(&project_shim_library(&root));
+        if !missing.is_empty() {
+            warnings.push(format!(
+                "Missing from {}: {}. Run `rig proj sync` to fill them in, and \
+                 commit all of {}; check that your ignore rules (e.g. *.rds) do \
+                 not exclude them",
+                RVENV_SHIM_DIR,
+                missing.join(", "),
+                RVENV_SHIM_DIR
+            ));
+        }
+    }
 
     let cfg = match read_rvenv_cfg(&root) {
         Ok(cfg) => cfg,

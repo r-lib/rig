@@ -23,10 +23,12 @@ committed, so that a fresh clone of the project works right away:
 
 - `rproj.toml` - the manifest.
 - `.Renviron`, `.rvenvlib/rvenv` - boilerplate to set up R's libraries for the
-  project when started from the project directory, in a terminal, of from
+  project when started from the project directory, in a terminal, or from
   an editor (RStudio, Positron, VS Code).
 - `.gitignore` - to ignore `.rvenv` which contains the project library and
   configuration files, created by `rig proj sync`.
+- `.rvenvlib/.gitignore` - to make sure that git keeps all of `.rvenvlib`,
+  even if other ignore rules match some of its files, e.g. `*.rds`.
 
 The R virtual environment in `.rvenv`, including the project library
 `.rvenv/lib`, is machine-specific and is created by [`rig proj sync`](#rig-proj-sync) . It can
@@ -70,4 +72,4 @@ rig refuses to overwrite any of the files above; pass `--force` to replace
 them. `.Renviron` and `.gitignore` are the exceptions: rig never refuses on an
 existing `.Renviron` or `.gitignore`, it just merges its block into them (or
 adds one), leaving the rest of the file alone, and `--force` does not change
-that.
+that. rig always writes `.rvenvlib/.gitignore` itself.
