@@ -26,9 +26,9 @@ above.
 
 ## Bioconductor packages
 
-Bioconductor packages are added the same way as CRAN packages, e.g.
-`rig proj add limma`, see "Bioconductor packages" in
-[`rig proj lock`](#rig-proj-lock).
+Bioconductor packages are added the same way as CRAN packages, e.g. `rig
+proj add limma`, see "Bioconductor packages" in [`rig proj
+lock`](#rig-proj-lock).
 
 ## Packages from other repositories
 
@@ -75,33 +75,33 @@ rig proj add https://cran.rstudio.com/src/contrib/processx_3.9.0.tar.gz
 
 A bare `<owner>/<repo>` (optionally `github::<owner>/<repo>`) is a GitHub
 reference; `<owner>/<repo>/<subdir>` points at a package in a subdirectory of
-the repository. After the path, `@<ref>` pins a branch, tag or commit,
-`#<pr>` a pull request, and `@*release` the latest release.
+the repository. After the path, `@<ref>` pins a branch, tag or commit, `#<pr>`
+a pull request, and `@*release` the latest release.
 
 `gitlab::<group>/<project>` is the same idea for GitLab, including nested
-subgroups (`gitlab::<group>/<subgroup>/<project>`); `@<ref>` pins a branch,
-tag or commit, and `/-/<subdir>` points at a subdirectory. Merge requests and
+subgroups (`gitlab::<group>/<subgroup>/<project>`); `@<ref>` pins a branch, tag
+or commit, and `/-/<subdir>` points at a subdirectory. Merge requests and
 `@*release` are not supported for GitLab. A self-hosted instance is
 `gitlab::<https-url-of-group-and-project>`, e.g.
 `gitlab::https://gitlab.example.com/group/project`.
 
 A `git::<url>` reference works with any git host, not only GitHub or GitLab.
 
-`url::<https-url>` (or a bare `<https-url>`) points straight at a
-package source archive.
+`url::<https-url>` (or a bare `<https-url>`) points straight at a package
+source archive.
 
 The package name is read from the fetched repository's (or archive's) own
-`DESCRIPTION` (which may differ from the repository name), and the
-dependency is pinned by commit, or by the archive's sha256 for a `url::`
-source, not by version range: `rig proj add` resolves the reference right
-away, and `rproj.lock` records it.
+`DESCRIPTION` (which may differ from the repository name), and the dependency
+is pinned by commit, or by the archive's sha256 for a `url::` source, not by
+version range: `rig proj add` resolves the reference right away, and
+`rproj.lock` records it.
 
 rig fetches a git/GitHub/GitLab source with the system `git`, which must be
-installed and on `PATH`. A private repository authenticates exactly the way
-a plain `git clone` would on your machine: a configured credential helper
-(Keychain, Windows Credential Manager, `git credential-store`, etc.),
-`.netrc`, an SSH agent, or credentials already embedded in the URL. There is
-no separate rig-specific token setting. A `url::` source is a plain HTTP(S)
+installed and on `PATH`. A private repository authenticates exactly the way a
+plain `git clone` would on your machine: a configured credential helper
+(Keychain, Windows Credential Manager, `git credential-store`, etc.), `.netrc`,
+an SSH agent, or credentials already embedded in the URL. There is no
+separate rig-specific token setting. A `url::` source is a plain HTTP(S)
 download and needs no such authentication.
 
 ## Local sources
@@ -119,7 +119,10 @@ rig proj add local::mypkg
 The path is recorded in `rproj.toml` relative to the project's own directory
 (not the directory `rig proj add` was run from), so the manifest stays
 correct after the project is moved or checked out elsewhere, as long as the
-local package stays in the same place relative to it.
+local package stays in the same place relative to it. `rproj.lock` keeps a
+relative path relative too, to the directory of `rproj.lock`, which is the
+workspace root in a workspace. A path given as absolute stays absolute in
+both files.
 
 ## Version requirements
 
@@ -143,14 +146,15 @@ components, so `^1.1.0.9000` is `>= 1.1.0.9000, < 2.0.0.0`.
 
 `--script script.R` adds the packages to the `# /// script` block of an R
 script, instead of `rproj.toml`, see [scripts with inline dependencies](run.qmd#scripts-with-inline-dependencies). It
-creates the block if the script has none. The packages are given the same way as
-for a project, and a local path is recorded relative to the script's directory.
-A script has no dependency groups, so `--script` does not work with `--dev`.
+creates the block if the script has none. The packages are given the same
+way as for a project, and a local path is recorded relative to the script's
+directory. A script has no dependency groups, so `--script` does not work
+with `--dev`.
 
-Then rig sets up the script's environment in its cache directory, the same way
-`rig run script.R` would, so the next `rig run` can start right away.
-`--no-sync` and `--no-lock` work the same way as for a project. If resolving the
-dependencies fails, the script is restored to what it was.
+Then rig sets up the script's environment in its cache directory, the same
+way `rig run script.R` would, so the next `rig run` can start right away.
+`--no-sync` and `--no-lock` work the same way as for a project. If resolving
+the dependencies fails, the script is restored to what it was.
 
 ## Options
 

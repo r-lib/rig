@@ -26,6 +26,11 @@ to merge dependencies into an existing file instead.
 | `Enhances`            | `[dependency-groups.enhances]` |
 | `Config/Needs/<name>` | `[dependency-groups.<name>]`   |
 | `Config/Needs/Optional/<name>` | `[optional-dependencies.<name>]` |
+| `ByteCompile:`        | `[build].byte-compile`         |
+| `NeedsCompilation:`   | `[build].needs-compilation`    |
+| `LazyData:`           | `[build].lazy-data`            |
+| `Biarch:`             | `[build].biarch`               |
+| `KeepSource:`         | `[build].keep-source`          |
 
 `Authors@R` is parsed into `[project].authors`, one entry per `person()` call, in
 order; this is a best-effort parser for common `person()` usage (name, `email`,
@@ -37,17 +42,17 @@ Name <email>` field is used instead, as a single author with role `cre`.
 a plain package name (with an optional version requirement) is kept
 verbatim as `ref = "..."`. E.g. `tidyverse/tidytemplate` becomes `tidytemplate =
 { ref = "tidyverse/tidytemplate" }`. `rig proj export` writes these back
-unchanged. Note that only the `dev` and `enhances` groups are installed by
-rig, so a `Config/Needs/*` group is carried in the manifest, but not solved
-or installed by `rig proj lock` and `rig proj sync`. This behavior will be
+unchanged. Note that only the `dev` and `enhances` groups are installed by rig,
+so a `Config/Needs/*` group is carried in the manifest, but not solved or
+installed by `rig proj lock` and `rig proj sync`. This behavior will be
 improved in the future.
 
 `Config/Needs/Optional/<name>` fields are parsed the same way, into
 `[optional-dependencies.<name>]` instead of `[dependency-groups.<name>]`. A
-package listed there is also `Suggests`-listed in the same `DESCRIPTION`
-file (`rig proj export` writes it to both places, since `R CMD check` only
-allows using a package conditionally if it's `Suggests`-listed), so it also
-ends up in `[dependency-groups.dev]`, same as any other `Suggests` entry.
+package listed there is also `Suggests`-listed in the same `DESCRIPTION` file
+(`rig proj export` writes it to both places, since `R CMD check` only allows
+using a package conditionally if it's `Suggests`-listed), so it also ends up
+in `[dependency-groups.dev]`, same as any other `Suggests` entry.
 
 ## Files
 
@@ -61,7 +66,7 @@ shim package works with every R. The default is the current default R
 version, or the current R release if there is no default.
 
 `--prefer-binary` writes `prefer-binary = true` (`--prefer-binary=5`:
-`prefer-binary = 5`) into the manifest's `[tool.rig]` table, like for
-[`rig proj init`](#rig-proj-init). With `--dependencies` it is set in the
-existing manifest, too, and `--prefer-binary=0` writes
-`prefer-binary = false`, to turn it off.
+`prefer-binary = 5`) into the manifest's `[tool.rig]` table, like for [`rig proj
+init`](#rig-proj-init). With `--dependencies` it is set in the existing
+manifest, too, and `--prefer-binary=0` writes `prefer-binary = false`, to turn
+it off.

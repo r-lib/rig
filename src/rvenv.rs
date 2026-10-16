@@ -10,6 +10,7 @@
 //!   .Renviron               # tracked -- in-session activation
 //!   .gitignore              # tracked -- ignores /.rvenv/
 //!   .rvenvlib/
+//!     .gitignore            # tracked -- re-includes all of .rvenvlib
 //!     rvenv/                # tracked -- the shim package
 //! ```
 //!
@@ -73,7 +74,7 @@ use crate::hardcoded::{
 use crate::platform::parse_platform_string;
 use crate::repos::binaries::{ppm_url, PpmStatus, MANYLINUX};
 use crate::repositories::{write_repositories_file, RepoFileEntry, RepositoriesContents};
-use crate::rproj::{Repository as ManifestRepository, Rproj, Workspace, RPROJ_MANIFEST_FILE};
+use crate::rproj::{LockRepository, Rproj, Workspace, RPROJ_MANIFEST_FILE};
 use crate::utils::write_atomically;
 #[cfg(not(windows))]
 use crate::utils::write_executable;
@@ -256,7 +257,8 @@ R_DEFAULT_PACKAGES=rvenv,datasets,utils,grDevices,graphics,stats,methods
 /// The block rig manages in the project's root `.gitignore`. Everything in
 /// `.rvenv` is machine-specific; the pre-built rvenv package a fresh clone
 /// needs before the first `rig proj sync` lives in `.rvenvlib` instead, which
-/// is tracked and needs no exception here.
+/// is tracked. `.rvenvlib` has its own `.gitignore`, see
+/// [`shim_gitignore_body`].
 fn root_gitignore_block() -> String {
     format!(
         "\
@@ -269,6 +271,21 @@ fn root_gitignore_block() -> String {
 ",
         BLOCK_START, BLOCK_END
     )
+}
+
+/// The `.gitignore` in `.rvenvlib`. It un-ignores everything in there, so
+/// that the user's own ignore rules cannot drop part of the shim package
+/// from version control. R projects often ignore `*.rds`, which would leave
+/// out `Meta/package.rds`, and then R cannot load the shim in a fresh clone.
+/// A `.gitignore` in a subdirectory takes precedence over the ones above it
+/// and over the global excludes file. It cannot help if `.rvenvlib` itself is
+/// ignored, because then git never looks inside it.
+fn shim_gitignore_body() -> &'static str {
+    "\
+# Managed by rig. Everything in .rvenvlib must be committed, so this
+# overrides ignore rules from elsewhere, e.g. *.rds.
+!*
+"
 }
 
 // -------------------------------------------------------------------- paths --
@@ -332,6 +349,11 @@ pub fn project_shim_library(root: &Path) -> PathBuf {
 /// nothing else creates it.
 pub fn project_shim_package(root: &Path) -> PathBuf {
     project_shim_library(root).join(RVENV_SHIM_PKG)
+}
+
+/// `<root>/.rvenvlib/.gitignore`, see [`shim_gitignore_body`].
+pub fn project_shim_gitignore(root: &Path) -> PathBuf {
+    project_shim_library(root).join(RVENV_GITIGNORE_FILE)
 }
 
 /// Leave a compatibility symlink at `link_path` (`.rvenv/lib`) pointing at
@@ -734,6 +756,7 @@ pub fn init_targets(root: &Path) -> Vec<PathBuf> {
         root.join(RPROJ_MANIFEST_FILE),
         root.join(RVENV_RENVIRON_FILE),
         root.join(RVENV_GITIGNORE_FILE),
+        project_shim_gitignore(root),
         project_shim_package(root),
     ]
 }
@@ -745,14 +768,15 @@ pub fn init_targets(root: &Path) -> Vec<PathBuf> {
 /// marked block into them (see [`update_root_gitignore`] and
 /// [`update_project_renviron`]), never overwrites the rest of the file, so an
 /// existing `.gitignore` or `.Renviron` -- with or without rig's block -- is
-/// never a conflict.
+/// never a conflict. Neither is `.rvenvlib/.gitignore`, which is rig's alone.
 pub fn existing_targets(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let gitignore = root.join(RVENV_GITIGNORE_FILE);
     let renviron = root.join(RVENV_RENVIRON_FILE);
+    let shim_gitignore = project_shim_gitignore(root);
     Ok(init_targets(root)
         .into_iter()
         .filter(|p| p.exists())
-        .filter(|p| *p != gitignore && *p != renviron)
+        .filter(|p| *p != gitignore && *p != renviron && *p != shim_gitignore)
         .collect())
 }
 
@@ -859,7 +883,22 @@ fn update_marked_block(path: &Path, block: &str) -> Result<(), Box<dyn Error>> {
 
 // -------------------------------------------------------------- shim package --
 
-/// Write the shim package into `<lib>/rvenv`, replacing whatever is there.
+/// The files of the shim package, relative to `<lib>/rvenv`, with their
+/// contents.
+const SHIM_FILES: [(&str, &str); 4] = [
+    ("DESCRIPTION", HC_RVENV_PKG_DESCRIPTION),
+    ("NAMESPACE", HC_RVENV_PKG_NAMESPACE),
+    ("LICENSE", HC_RVENV_PKG_LICENSE),
+    // No extension: this is the file `loadNamespace()` sources, and it is
+    // named after the package.
+    ("R/rvenv", HC_RVENV_PKG_CODE),
+];
+
+/// The binary file of the shim package, relative to `<lib>/rvenv`.
+const SHIM_META_FILE: &str = "Meta/package.rds";
+
+/// Write the shim package into `<lib>/rvenv`, replacing whatever is there,
+/// and `<lib>/.gitignore` next to it, see [`shim_gitignore_body`].
 ///
 /// This writes an *installed* R package without running R, which works
 /// because the shim needs no lazy-load database: `loadNamespace()` sources
@@ -882,18 +921,31 @@ pub fn write_shim_package(lib: &Path) -> Result<(), Box<dyn Error>> {
     // The embedded text files may be checked out with CRLF, e.g. on Windows
     // without a .gitattributes rule. R reads either, but the project keeps a
     // copy of them under version control, so write the same bytes everywhere.
-    for (path, contents) in [
-        ("DESCRIPTION", HC_RVENV_PKG_DESCRIPTION),
-        ("NAMESPACE", HC_RVENV_PKG_NAMESPACE),
-        ("LICENSE", HC_RVENV_PKG_LICENSE),
-        // No extension: this is the file `loadNamespace()` sources, and it is
-        // named after the package.
-        ("R/rvenv", HC_RVENV_PKG_CODE),
-    ] {
+    for (path, contents) in SHIM_FILES {
         write_atomically(&pkg.join(path), contents.replace("\r\n", "\n").as_bytes())?;
     }
-    write_atomically(&pkg.join("Meta").join("package.rds"), HC_RVENV_PKG_META)?;
+    write_atomically(&pkg.join(SHIM_META_FILE), HC_RVENV_PKG_META)?;
+    write_atomically(
+        &lib.join(RVENV_GITIGNORE_FILE),
+        shim_gitignore_body().as_bytes(),
+    )?;
     Ok(())
+}
+
+/// The files of the shim library at `lib` that are missing, relative to
+/// `lib`. Empty if the shim is complete. A file can go missing without the
+/// rest if the user's ignore rules kept it out of version control, typically
+/// `*.rds` dropping `Meta/package.rds`.
+pub fn missing_shim_files(lib: &Path) -> Vec<String> {
+    let pkg = Path::new(RVENV_SHIM_PKG);
+    let mut paths: Vec<PathBuf> = SHIM_FILES.iter().map(|(p, _)| pkg.join(p)).collect();
+    paths.push(pkg.join(SHIM_META_FILE));
+    paths.push(PathBuf::from(RVENV_GITIGNORE_FILE));
+    paths
+        .into_iter()
+        .filter(|p| !lib.join(p).exists())
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .collect()
 }
 
 // --------------------------------------------------------------------- init --
@@ -918,6 +970,7 @@ pub fn rvenv_init(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     Ok(vec![
         renviron,
         root.join(RVENV_GITIGNORE_FILE),
+        project_shim_gitignore(root),
         project_shim_package(root),
     ])
 }
@@ -930,7 +983,12 @@ pub fn rvenv_init(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 /// themselves, they set `R_LIBS_USER` on their own. A no-op if the manifest
 /// is missing (nothing to fill in).
 ///
-/// If the shim package is already there, this still creates or updates
+/// If the shim package is there, but some of its files are not, e.g.
+/// because the user's ignore rules kept `Meta/package.rds` out of version
+/// control, this writes it again and says which files were missing. Projects
+/// set up by an older rig also get `.rvenvlib/.gitignore` this way.
+///
+/// If the shim package is complete, this still creates or updates
 /// rig's block in `.Renviron`, so that a deleted `.Renviron` comes back and
 /// projects set up by an older rig pick up fixes to it, e.g. quoting
 /// `RVENV_R_LIBS_USER` for Windows paths.
@@ -938,7 +996,31 @@ pub fn ensure_rvenv_files(root: &Path) -> Result<(), Box<dyn Error>> {
     if !root.join(RPROJ_MANIFEST_FILE).exists() {
         return Ok(());
     }
-    if !project_shim_package(root).exists() {
+    if project_shim_package(root).exists() {
+        let missing = missing_shim_files(&project_shim_library(root));
+        if !missing.is_empty() {
+            write_shim_package(&project_shim_library(root))?;
+            let what = missing
+                .iter()
+                .map(|p| format!("{}/{}", RVENV_SHIM_DIR, p))
+                .collect::<Vec<_>>()
+                .join(", ");
+            // A project from an older rig only lacks the `.gitignore`; the
+            // rest going missing points at the user's ignore rules.
+            let hint = if missing == [RVENV_GITIGNORE_FILE] {
+                String::new()
+            } else {
+                " If these were missing from a fresh clone, your ignore \
+                 rules (e.g. *.rds) probably kept them out of git."
+                    .to_string()
+            };
+            OUTPUT.info(&format!(
+                "Filled in missing {}. Commit all of {}.{}",
+                what, RVENV_SHIM_DIR, hint
+            ));
+            info!("Filled in missing {} in {}", what, root.display());
+        }
+    } else {
         rvenv_init(root)?;
         OUTPUT.info("Filled in missing .Renviron/.rvenvlib for this project");
         info!(
@@ -1117,14 +1199,16 @@ pub fn rvenv_env_vars(venv: &Path) -> Vec<(String, String)> {
 }
 
 /// The repositories the environment installs from, as `R_REPOSITORIES`
-/// entries.
+/// entries. `repos` are the repositories the lock file was solved with, the
+/// ones that are on, in order of precedence, see
+/// [`crate::rproj::RprojLockOptions::repositories`].
 ///
 /// `R_REPOSITORIES` is a plain environment variable R reads at startup, so it
 /// survives `--vanilla` and is inherited by child processes -- unlike
 /// `options(repos = )`, which neither does.
 fn repositories_contents(
     platform: &str,
-    repos: &[ManifestRepository],
+    repos: &[LockRepository],
     bioc_version: Option<&str>,
 ) -> RepositoriesContents {
     let entry = |name: &str, url: &str, menu: &str| RepoFileEntry {
@@ -1145,10 +1229,13 @@ fn repositories_contents(
     // main repository `CRAN` is the usual R idiom for this, the same thing
     // `options(repos = c(CRAN = ...))` does.
     let mut data = vec![];
-    // The manifest's `cran` entry can turn CRAN off, then the first of the
-    // project's own repositories is the main one.
-    let cran_enabled = !repos.iter().any(|r| r.is_cran() && !r.is_enabled());
-    let url_repos: Vec<&ManifestRepository> = repos.iter().filter(|r| r.url.is_some()).collect();
+    // The lock file only lists the repositories that are on. Without `cran`
+    // the first of the project's own repositories is the main one.
+    let cran_enabled = repos.iter().any(|r| r.is_cran());
+    let url_repos: Vec<&LockRepository> = repos
+        .iter()
+        .filter(|r| !r.is_cran() && !r.is_bioc() && r.url.is_some())
+        .collect();
     match ppm_repo_url(platform).filter(|_| cran_enabled) {
         // `rig proj sync` installs P3M binaries for the lock file's target,
         // so an `install.packages()` in the environment should reach the
@@ -1164,22 +1251,19 @@ fn repositories_contents(
         None => {}
     }
     let first_is_ppm = !data.is_empty();
-    // The Bioconductor repositories go where the manifest's `bioc` entry is,
-    // or, without one, right after the main repository.
-    let bioc_entries = || -> Vec<RepoFileEntry> {
-        bioc_version
-            .map(|v| {
-                bioc_repo_urls(platform, v)
-                    .into_iter()
-                    .map(|(name, url)| entry(name, &url, name))
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
-    let has_bioc_entry = repos.iter().any(|r| r.is_bioc());
     for r in repos {
+        // The Bioconductor repositories go where the lock file's `bioc` entry
+        // is.
         if r.is_bioc() {
-            data.extend(bioc_entries());
+            if let Some(v) = bioc_version {
+                for (name, url) in bioc_repo_urls(platform, v) {
+                    data.push(entry(name, &url, name));
+                }
+            }
+            continue;
+        }
+        // CRAN is P3M, above, whatever URL the entry has.
+        if r.is_cran() {
             continue;
         }
         let Some(url) = &r.url else {
@@ -1200,10 +1284,6 @@ fn repositories_contents(
             continue;
         }
         data.push(entry(name, url, &r.name));
-    }
-    if !has_bioc_entry {
-        let at = data.len().min(1);
-        data.splice(at..at, bioc_entries());
     }
     RepositoriesContents {
         data,
@@ -1282,13 +1362,14 @@ fn write_if_changed(
 /// `etc/repositories`, the `bin/` wrappers and the activation scripts -- and
 /// return what actually changed.
 ///
-/// Everything here is derived from `cfg` and the manifest, so this is
+/// Everything here is derived from `cfg` and the lock file's repositories,
+/// `repos` and `bioc_version`, so this is
 /// idempotent: running it twice writes the same bytes, and the second run
 /// reports nothing changed.
 pub fn rvenv_sync(
     root: &Path,
     cfg: &RvenvCfg,
-    repos: &[ManifestRepository],
+    repos: &[LockRepository],
     bioc_version: Option<&str>,
 ) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let venv = project_venv(root);
@@ -1630,6 +1711,26 @@ mod tests {
     }
 
     #[test]
+    fn ensure_rvenv_files_fills_in_a_partial_shim() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join(RPROJ_MANIFEST_FILE), "").unwrap();
+        rvenv_init(root).unwrap();
+        let meta = root.join(".rvenvlib/rvenv/Meta/package.rds");
+        let gitignore = root.join(".rvenvlib/.gitignore");
+        fs::remove_file(&meta).unwrap();
+        fs::remove_file(&gitignore).unwrap();
+        assert_eq!(
+            missing_shim_files(&project_shim_library(root)),
+            ["rvenv/Meta/package.rds", ".gitignore"]
+        );
+        ensure_rvenv_files(root).unwrap();
+        assert!(meta.exists());
+        assert!(gitignore.exists());
+        assert!(missing_shim_files(&project_shim_library(root)).is_empty());
+    }
+
+    #[test]
     fn a_gitignore_is_never_a_conflict() {
         let tmp = tempfile::tempdir().unwrap();
         update_root_gitignore(tmp.path()).unwrap();
@@ -1863,6 +1964,10 @@ mod tests {
         );
         assert_eq!(entries(&pkg.join("R")), ["rvenv"]);
         assert_eq!(entries(&pkg.join("Meta")), ["package.rds"]);
+        assert_eq!(entries(&lib), [".gitignore", "rvenv"]);
+        assert!(fs::read_to_string(lib.join(".gitignore"))
+            .unwrap()
+            .contains("\n!*\n"));
 
         let desc = fs::read_to_string(pkg.join("DESCRIPTION")).unwrap();
         assert!(desc.contains("Package: rvenv\n"));
@@ -2006,7 +2111,7 @@ mod tests {
     fn rvenv_sync_writes_the_machine_specific_layout() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        let written = rvenv_sync(root, &test_cfg(), &[], None).unwrap();
+        let written = rvenv_sync(root, &test_cfg(), &default_repos(), None).unwrap();
         for path in &written {
             assert!(path.exists(), "{} was not written", path.display());
         }
@@ -2039,9 +2144,9 @@ mod tests {
     fn rvenv_sync_is_idempotent() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        let written = rvenv_sync(root, &test_cfg(), &[], None).unwrap();
+        let written = rvenv_sync(root, &test_cfg(), &default_repos(), None).unwrap();
         let before: Vec<Vec<u8>> = written.iter().map(|p| fs::read(p).unwrap()).collect();
-        rvenv_sync(root, &test_cfg(), &[], None).unwrap();
+        rvenv_sync(root, &test_cfg(), &default_repos(), None).unwrap();
         let after: Vec<Vec<u8>> = written.iter().map(|p| fs::read(p).unwrap()).collect();
         assert_eq!(before, after);
     }
@@ -2053,9 +2158,9 @@ mod tests {
         // back empty -- otherwise the message fires on every run.
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        let first = rvenv_sync(root, &test_cfg(), &[], None).unwrap();
+        let first = rvenv_sync(root, &test_cfg(), &default_repos(), None).unwrap();
         assert!(!first.is_empty());
-        let second = rvenv_sync(root, &test_cfg(), &[], None).unwrap();
+        let second = rvenv_sync(root, &test_cfg(), &default_repos(), None).unwrap();
         assert!(second.is_empty());
     }
 
@@ -2067,7 +2172,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let cfg = test_cfg();
-        rvenv_sync(root, &cfg, &[], None).unwrap();
+        rvenv_sync(root, &cfg, &default_repos(), None).unwrap();
 
         for (file, binary) in [
             ("R", "/opt/R/4.6/bin/R"),
@@ -2107,7 +2212,7 @@ mod tests {
     fn every_activation_script_sets_the_same_variables() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        rvenv_sync(root, &test_cfg(), &[], None).unwrap();
+        rvenv_sync(root, &test_cfg(), &default_repos(), None).unwrap();
         for (file, _) in ACTIVATE_TEMPLATES {
             if *file == "deactivate.bat" {
                 continue;
@@ -2125,6 +2230,29 @@ mod tests {
             // own location portably.
             assert!(body.contains(&project_venv(root).display().to_string()));
             assert_no_placeholders(&body, file);
+        }
+    }
+
+    /// The repositories of a lock file solved with the default repositories,
+    /// as `rig proj lock` writes them.
+    fn default_repos() -> Vec<LockRepository> {
+        crate::proj_repos::ProjRepos::default().lock_repositories()
+    }
+
+    /// A lock file repository at `url`.
+    fn repo_at(name: &str, url: &str) -> LockRepository {
+        LockRepository {
+            name: name.to_string(),
+            url: Some(url.to_string()),
+            ..Default::default()
+        }
+    }
+
+    /// A built-in lock file repository, `cran` or `bioc`.
+    fn builtin(name: &str) -> LockRepository {
+        LockRepository {
+            name: name.to_string(),
+            ..Default::default()
         }
     }
 
@@ -2160,7 +2288,7 @@ mod tests {
     fn the_default_repository_is_the_targets_ppm() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        rvenv_sync(root, &test_cfg(), &[], None).unwrap();
+        rvenv_sync(root, &test_cfg(), &default_repos(), None).unwrap();
         assert_eq!(
             written_repositories(root),
             vec![(
@@ -2175,7 +2303,7 @@ mod tests {
     fn a_linux_target_gets_its_own_binary_url() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        rvenv_sync(root, &test_cfg_for("jammy-x86_64"), &[], None).unwrap();
+        rvenv_sync(root, &test_cfg_for("jammy-x86_64"), &default_repos(), None).unwrap();
         assert_eq!(
             written_repositories(root)[0].2,
             format!("{}/cran/__linux__/jammy/latest", ppm_url())
@@ -2188,7 +2316,7 @@ mod tests {
         // P3M target, so there are no binaries to install from.
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        rvenv_sync(root, &test_cfg_for("x86_64"), &[], None).unwrap();
+        rvenv_sync(root, &test_cfg_for("x86_64"), &default_repos(), None).unwrap();
         assert_eq!(
             written_repositories(root),
             vec![(
@@ -2220,8 +2348,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let repos = vec![
-            ManifestRepository::at_url("internal", "https://example.com/internal"),
-            ManifestRepository::at_url("extra", "https://example.com/extra"),
+            repo_at("internal", "https://example.com/internal"),
+            repo_at("extra", "https://example.com/extra"),
+            builtin("bioc"),
+            builtin("cran"),
         ];
         rvenv_sync(root, &test_cfg(), &repos, None).unwrap();
         // `rig proj sync` installs P3M binaries, so an `install.packages()`
@@ -2250,13 +2380,14 @@ mod tests {
     }
 
     #[test]
-    fn bioc_repositories_follow_the_main_one() {
+    fn bioc_repositories_can_come_before_the_project_ones() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        let repos = vec![ManifestRepository::at_url(
-            "internal",
-            "https://example.com/internal",
-        )];
+        let repos = vec![
+            builtin("bioc"),
+            repo_at("internal", "https://example.com/internal"),
+            builtin("cran"),
+        ];
         rvenv_sync(root, &test_cfg_for("jammy-x86_64"), &repos, Some("3.23")).unwrap();
         let names: Vec<String> = written_repositories(root)
             .into_iter()
@@ -2286,12 +2417,12 @@ mod tests {
     fn bioc_repositories_go_where_the_bioc_entry_is() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
+        // As `rig proj lock` writes them for a manifest that only lists
+        // `internal`: the built-in repositories come after it.
         let repos = vec![
-            ManifestRepository::at_url("internal", "https://example.com/internal"),
-            ManifestRepository {
-                name: "bioc".to_string(),
-                ..Default::default()
-            },
+            repo_at("internal", "https://example.com/internal"),
+            builtin("bioc"),
+            builtin("cran"),
         ];
         rvenv_sync(root, &test_cfg_for("macos-arm64"), &repos, Some("3.23")).unwrap();
         let written = written_repositories(root);
@@ -2307,16 +2438,14 @@ mod tests {
     }
 
     #[test]
-    fn a_disabled_cran_entry_drops_ppm() {
+    fn no_cran_entry_drops_ppm() {
+        // The lock file only lists the repositories that are on, so CRAN is
+        // off if it has no `cran` entry.
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let repos = vec![
-            ManifestRepository::at_url("internal", "https://example.com/internal"),
-            ManifestRepository {
-                name: "cran".to_string(),
-                enabled: Some(false),
-                ..Default::default()
-            },
+            repo_at("internal", "https://example.com/internal"),
+            builtin("bioc"),
         ];
         rvenv_sync(root, &test_cfg_for("macos-arm64"), &repos, None).unwrap();
         let written = written_repositories(root);
@@ -2324,12 +2453,8 @@ mod tests {
         assert_eq!(written[0].0, "CRAN");
         assert_eq!(written[0].2, "https://example.com/internal");
 
-        // Only the built-in entries, and CRAN is off: no CRAN entry at all.
-        let repos = vec![ManifestRepository {
-            name: "cran".to_string(),
-            enabled: Some(false),
-            ..Default::default()
-        }];
+        // Only Bioconductor, CRAN is off: no CRAN entry at all.
+        let repos = vec![builtin("bioc")];
         rvenv_sync(root, &test_cfg_for("macos-arm64"), &repos, Some("3.23")).unwrap();
         let written = written_repositories(root);
         assert!(written.iter().all(|(name, _, _)| name != "CRAN"));
@@ -2341,8 +2466,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let repos = vec![
-            ManifestRepository::at_url("internal", "https://example.com/internal"),
-            ManifestRepository::at_url("extra", "https://example.com/extra"),
+            repo_at("internal", "https://example.com/internal"),
+            repo_at("extra", "https://example.com/extra"),
+            builtin("bioc"),
+            builtin("cran"),
         ];
         rvenv_sync(root, &test_cfg_for("x86_64"), &repos, None).unwrap();
         // Without a P3M entry the first project repository is called CRAN in
@@ -2371,10 +2498,10 @@ mod tests {
     fn a_project_repository_called_cran_does_not_duplicate_the_name() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        let repos = vec![ManifestRepository::at_url(
-            "CRAN",
-            "https://cran.r-project.org",
-        )];
+        let repos = vec![
+            repo_at("CRAN", "https://cran.r-project.org"),
+            builtin("bioc"),
+        ];
         rvenv_sync(root, &test_cfg(), &repos, None).unwrap();
         assert_eq!(
             written_repositories(root),

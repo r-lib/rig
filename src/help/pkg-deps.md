@@ -3,8 +3,8 @@ Dependencies of a package in the repositories
 ## Description
 
 Show what a package needs, in a table: every package it depends on, the
-latest version of that package in the repositories, the dependency type (`Depends`,
-`Imports`, `LinkingTo`) and the version requirement, if it has one.
+latest version of that package in the repositories, the dependency type
+(`Depends`, `Imports`, `LinkingTo`) and the version requirement, if it has one.
 
 By default the dependencies of the latest version of the package are shown;
 use `--version` to ask about a specific one, including versions that CRAN has
@@ -12,26 +12,26 @@ archived. Use `--json` for machine readable output.
 
 ## Repositories
 
-rig uses the repositories configured for the R version, i.e. the
-[`rig repos list`](repos.qmd#rig-repos-list) output for the default R version, or for
-the one selected with `--r-version`. If two repositories have the same version
-of a package, the one listed first wins.
+rig uses the repositories configured for the R version, i.e. the [`rig repos
+list`](repos.qmd#rig-repos-list) output for the default R version, or for
+the one selected with `--r-version`. If two repositories have the same
+version of a package, the one listed first wins.
 
-`--with-repos` (or `--index`) and `--without-repos` (or `--no-index`) change
-the repositories for this command only, the setup of the R version stays the
+`--with-repos` (or `--index`) and `--without-repos` (or `--no-index`) change the
+repositories for this command only, the setup of the R version stays the
 same. Both take a comma-separated list and can be repeated. `--with-repos`
-adds repositories, by name, like [`rig repos enable`](repos.qmd#rig-repos-enable),
-by URL, or as `name=URL`, e.g. `--index=rlib=https://r-lib.r-universe.dev`.
-A repository given by URL is a CRAN-like repository and comes before the
-others. `--without-repos=<names>` leaves out repositories, and
-`--without-repos` without names leaves out all configured repositories, so
-only the ones in `--with-repos` are used, e.g.
-`--no-index --index=https://r-lib.r-universe.dev`. URLs cannot contain commas.
+adds repositories, by name, like [`rig repos enable`](repos.qmd#rig-repos-enable), by URL, or as
+`name=URL`, e.g. `--index=rlib=https://r-lib.r-universe.dev`. A repository
+given by URL is a CRAN-like repository and comes before the others.
+`--without-repos=<names>` leaves out repositories, and `--without-repos`
+without names leaves out all configured repositories, so only the ones in
+`--with-repos` are used, e.g. `--no-index
+--index=https://r-lib.r-universe.dev`. URLs cannot contain commas.
 
 For P3M and for Bioconductor's software repository rig reads their full
 package history, from <https://ppm.r-pkg.org> and <https://ppm-bioc.r-pkg.org>,
-so older and archived versions are available, too. Any other repository, e.g.
-CRAN itself, an r-universe, or one added with [`rig repos add`](repos.qmd#rig-repos-add), is read
+so older and archived versions are available, too. Any other repository,
+e.g. CRAN itself, an r-universe, or one added with [`rig repos add`](repos.qmd#rig-repos-add), is read
 from its `PACKAGES` files, so only its current packages are available.
 Bioconductor packages are included if the Bioconductor repositories are
 enabled for the R version.
@@ -54,7 +54,7 @@ and the `Needed by` column naming the packages that pull it in.
 
 See [`rig pkg tree`](#rig-pkg-tree) for a visual dependency tree.
 
-rig follows the dependencies of the *latest* version of every package in
-the tree, so a version requirement that would force an older version, with
-different dependencies, is not taken into account. Use [`rig proj lock`](proj.qmd) for a
-resolution that is consistent across versions.
+rig follows the dependencies of the *latest* version of every package in the
+tree, so a version requirement that would force an older version, with
+different dependencies, is not taken into account. Use [`rig proj lock`](proj.qmd) for
+a resolution that is consistent across versions.

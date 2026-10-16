@@ -10,84 +10,81 @@ its `rproj.lock` and installs the packages into the project library. If the
 project has no `rproj.lock` yet, rig runs [`rig proj lock`](#rig-proj-lock) with its default
 options first. Pass `--frozen` to fail instead, without touching `rproj.toml`
 at all: every package `rproj.lock` lists already carries its own download
-URL, so nothing but the lock file is needed to install from it. The one
-exception is `.rvenv/etc/repositories` (see below), which still comes from
-`rproj.toml` when one is present, and is skipped otherwise.
+URL, and the lock file also records the repositories it was solved with, so
+nothing but the lock file is needed to install from it. The one exception is
+the project's own package, see below.
 
-If `rproj.lock` exists, `rig proj sync` installs from it, even if
-`rproj.toml` changed since. Pass `--locked` to fail instead if `rproj.lock`
-is missing or out of date, see "Checking the lock file" in
-[`rig proj lock`](#rig-proj-lock). This is useful in CI. `--locked` reads
-`rproj.toml`, so it does not work with `--frozen`.
+If `rproj.lock` exists, `rig proj sync` installs from it, even if `rproj.toml`
+changed since. Pass `--locked` to fail instead if `rproj.lock` is missing or
+out of date, see "Checking the lock file" in [`rig proj lock`](#rig-proj-lock). This is
+useful in CI. `--locked` reads `rproj.toml`, so it does not work with `--frozen`.
 
 `--with-repos` (`--index`) and `--without-repos` (`--no-index`) lock again first,
-with the project's repositories changed, see "Repositories" in
-[`rig proj lock`](#rig-proj-lock). They do not work with `--frozen`.
+with the project's repositories changed, see "Repositories" in [`rig proj
+lock`](#rig-proj-lock). They do not work with `--frozen`.
 
-By default sync installs `[dependencies]` (`main`) plus the `dev`
-[dependency group](#rig-proj-lock), and nothing else: no other
-`[dependency-groups.*]` table, and no `[optional-dependencies.*]` extra.
-`--no-dev` leaves the `dev` group out too, installing only `main`. Pass
-`--group <name>` (repeatable, or comma-separated) to also install a
-specific named group, or `--all-groups` for every group the project
-declares.
+By default sync installs `[dependencies]` (`main`) plus the `dev` [dependency
+group](#rig-proj-lock), and nothing else: no other `[dependency-groups.*]` table, and no
+`[optional-dependencies.*]` extra. `--no-dev` leaves the `dev` group out too,
+installing only `main`. Pass `--group <name>` (repeatable, or comma-separated)
+to also install a specific named group, or `--all-groups` for every group the
+project declares.
 
-`--extra <name>` / `--all-extras` do the same for optional-dependency
-extras, none of which are installed unless asked for.
+`--extra <name>` / `--all-extras` do the same for optional-dependency extras,
+none of which are installed unless asked for.
 
-Naming a group always wins over `--no-dev`, which only skips the `dev`
-group that would otherwise be added automatically: `--no-dev --group dev`
-still installs `dev`, and `--group dev` on its own is equivalent to the
-default. The lock file records every group and extra each package belongs
-to, so this selection works the same with or without `--frozen`.
+Naming a group always wins over `--no-dev`, which only skips the `dev` group
+that would otherwise be added automatically: `--no-dev --group dev` still
+installs `dev`, and `--group dev` on its own is equivalent to the default. The
+lock file records every group and extra each package belongs to, so this
+selection works the same with or without `--frozen`.
 
 `--max-concurrent` limits the number of simultaneous installations. It
-defaults to the `concurrent-installs` [config](config.qmd) entry
-(`RIG_CONCURRENT_INSTALLS`), which itself defaults to the number of CPU
-cores.
+defaults to the `concurrent-installs` [config](config.qmd) entry (`RIG_CONCURRENT_INSTALLS`),
+which itself defaults to the number of CPU cores.
 
 By default, sync also removes any package that is in the project library
 but not selected for install by the flags above, e.g. one dropped from
-`rproj.toml`, or a group/extra left out. This only ever removes packages
-that are still in `rproj.lock` but not currently wanted -- nothing is
-removed just because a group/extra selection changed since the last sync.
-Pass `--inexact` to leave those packages alone instead.
+`rproj.toml`, or a group/extra left out. This only ever removes packages that
+are still in `rproj.lock` but not currently wanted -- nothing is removed just
+because a group/extra selection changed since the last sync. Pass `--inexact`
+to leave those packages alone instead.
 
 Pass `--dry-run` to print what sync would install, remove or write, without
 touching the R installation, the project library or `.rvenv`.
 
-`--exclude-newer` runs [`rig proj lock`](#rig-proj-lock) with the same
-option first, even if there is an `rproj.lock` already, to ignore CRAN
-package versions published after a date. The existing lock is kept if it
-was solved with the same cutoff. It cannot be combined with `--frozen`.
+`--exclude-newer` runs [`rig proj lock`](#rig-proj-lock) with the same option first, even if
+there is an `rproj.lock` already, to ignore CRAN package versions published
+after a date. The existing lock is kept if it was solved with the same
+cutoff. It cannot be combined with `--frozen`.
 
 ## System requirements
 
-On Linux, many R packages need system libraries and tools, e.g. `libcurl` for the
-curl package, and a source package needs their development files to compile. A
-package lists these in the `SystemRequirements` field of its `DESCRIPTION`. Before
-installing, rig matches this field against the [r-system-requirements](https://github.com/r-hub/r-system-requirements) rules for
-your Linux distribution, checks which of the needed OS packages are installed
-already, and installs the missing ones with the distribution's package manager
-(`apt-get`, `dnf`, `yum`, `zypper` or `apk`).
+On Linux, many R packages need system libraries and tools, e.g. `libcurl` for
+the curl package, and a source package needs their development files to
+compile. A package lists these in the `SystemRequirements` field of its
+`DESCRIPTION`. Before installing, rig matches this field against the
+[r-system-requirements](https://github.com/r-hub/r-system-requirements) rules for your Linux distribution, checks which of
+the needed OS packages are installed already, and installs the missing ones
+with the distribution's package manager (`apt-get`, `dnf`, `yum`, `zypper` or `apk`).
 
 This is only needed for source packages and for binaries built for one
-distribution. A `manylinux` binary has its libraries built in, so rig does not
-look at its system requirements. On macOS and Windows there are no system
-requirements to install.
+distribution. A `manylinux` binary has its libraries built in, so rig does
+not look at its system requirements. On macOS and Windows there are no
+system requirements to install.
 
-rig installs the OS packages itself if it runs as `root`, or if `sudo` works without
-a password. Otherwise it prints the commands that would install them, and
-carries on: the R packages may still install, and if one fails, rig names the
-system packages it was missing. This is the same in [admin mode and in user mode](../admin-vs-user-mode.qmd):
-OS packages always need administrator rights, even if rig does not need them for
-anything else.
+rig installs the OS packages itself if it runs as `root`, or if `sudo` works
+without a password. Otherwise it prints the commands that would install
+them, and carries on: the R packages may still install, and if one fails,
+rig names the system packages it was missing. This is the same in [admin
+mode and in user mode](../admin-vs-user-mode.qmd): OS packages always need administrator rights, even
+if rig does not need them for anything else.
 
-`--no-sysreqs` turns this off for one run, and `--sysreqs` turns it on even if the
-`sysreqs` [config](config.qmd) entry turns it off. With `--dry-run`, rig shows the missing OS
-packages and the commands, and installs nothing. Set the `sysreqs` [config](config.qmd)
-entry to `print` to always only show them. See [`rig config`](config.qmd) for the `sysreqs`,
-`sysreqs-sudo`, `sysreqs-update` and `sysreqs-rules-url` entries.
+`--no-sysreqs` turns this off for one run, and `--sysreqs` turns it on even if
+the `sysreqs` [config](config.qmd) entry turns it off. With `--dry-run`, rig shows the
+missing OS packages and the commands, and installs nothing. Set the `sysreqs`
+[config](config.qmd) entry to `print` to always only show them. See [`rig config`](config.qmd) for the
+`sysreqs`, `sysreqs-sudo`, `sysreqs-update` and `sysreqs-rules-url` entries.
 
 ## The project's own package
 
@@ -105,11 +102,9 @@ depends on it by name.
 
 The project library defaults to `.rvenv/lib`, inside the project. Set the
 `RIG_PROJ_LIBRARY_ROOT` environment variable, or the `proj-library-root`
-[configuration entry](config.qmd), to a directory to centralize every
-project's library under it instead, one subdirectory per project. `rig
-system dirs --library-root` reports the effective root, or that none is set.
-`--library` still wins outright when passed, to install to a one-off location
-without changing the project environment. It implies `--inexact`.
+[configuration entry](config.qmd), to a directory to centralize every project's library
+under it instead, one subdirectory per project. `rig system dirs
+--library-root` reports the effective root, or that none is set.
 
 When the library is centralized, sync still leaves a symlink at `.rvenv/lib`
 pointing at the real location, so anything that expects a library there
@@ -122,10 +117,10 @@ R rig installs the packages with. It has to be that very version: another
 patch release of the same minor version would run the packages, but it is
 not the R the project was solved for, so rig does not quietly use it.
 
-If that R version is not installed, rig installs it first, the way [`rig add`](add.qmd)
-would. Pass `--no-install-r` to fail instead, e.g. in CI. rig never rewrites
-`rproj.lock` to an R version that is already installed. Run [`rig proj lock`](#rig-proj-lock) to
-change the R version a project is locked for.
+If that R version is not installed, rig installs it first, the way [`rig
+add`](add.qmd) would. Pass `--no-install-r` to fail instead, e.g. in CI. rig
+never rewrites `rproj.lock` to an R version that is already installed. Run
+[`rig proj lock`](#rig-proj-lock) to change the R version a project is locked for.
 
 ## Several targets in one lock file
 
@@ -138,16 +133,16 @@ from the same file.
 On Linux the distro has to match, too: a target for a specific distro and
 release, e.g. `x86_64-unknown-linux-gnu-ubuntu-22.04`, is only used on that
 distro and release. The generic glibc target, `x86_64-unknown-linux-gnu`,
-fits any glibc Linux, but rig prefers the target for this distro if the lock
-file has both. glibc and musl (Alpine) targets do not mix.
+fits any glibc Linux, but rig prefers the target for this distro if the
+lock file has both. glibc and musl (Alpine) targets do not mix.
 
 If more than one target matches this machine's OS (typically because the
 project locks for several R versions), rig picks the highest R version
 among them, with no need for extra flags. Pass `--r-version` and/or
 `--platform` to pick a different one of the matching targets instead.
 `--platform` takes any spelling of the platform, e.g. `macos` picks the
-`aarch64-apple-darwin` target on an arm64 Mac. `rig proj sync` fails if none
-of the lock file's targets match this machine at all.
+`aarch64-apple-darwin` target on an arm64 Mac. `rig proj sync` fails if none of
+the lock file's targets match this machine at all.
 
 ## What sync writes
 
@@ -168,19 +163,19 @@ lives, by default or centralized), and the rest is rewritten on every sync:
   architecture the environment was built for. rig warns when it syncs an
   environment that was built for a different R.
 - `.rvenv/etc/repositories`, which the wrappers point `R_REPOSITORIES` at. The
-  repositories of the project: Posit Package Manager's CRAN for the lock
-  file's target, unless `rproj.toml` turns `cran` off, then the `[[repository]]`
-  entries, and the Bioconductor release of the target.
+  repositories `rproj.lock` was solved with, in the same order: Posit Package
+  Manager's CRAN for the lock file's target first, unless `cran` was off, then
+  the `[[repository]]` entries, and the Bioconductor release of the target.
 
 After a successful sync rig records the lock file it installed from in
 `.synced`, inside the project library (`.rvenv/lib` by default, or the
-centralized location). The `rvenv` package in `.rvenvlib` compares the two,
-and warns in every R session while the project library does not match
+centralized location). The `rvenv` package in `.rvenvlib` compares the two, and
+warns in every R session while the project library does not match
 `rproj.lock`.
 
 ## Workspaces
 
-In a workspace (see [`rig proj lock`](#rig-proj-lock) ) every member shares one `rproj.lock` and
-one package library, both at the workspace root. `rig proj sync` from a
+In a workspace (see [`rig proj lock`](#rig-proj-lock) ) every member shares one `rproj.lock`
+and one package library, both at the workspace root. `rig proj sync` from a
 member directory therefore syncs the whole workspace, and installs the
 union of every member's dependencies into the root's `.rvenv/lib`.

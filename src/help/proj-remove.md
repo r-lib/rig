@@ -14,8 +14,9 @@ typo cannot silently remove the wrong set of packages.
 ## Scripts
 
 `--script script.R` removes the packages from the `# /// script` block of an R
-script, instead of `rproj.toml`, see [scripts with inline dependencies](run.qmd#scripts-with-inline-dependencies). Then rig
-sets up the script's new environment, the same way [`rig proj add --script`](#rig-proj-add) does.
+script, instead of `rproj.toml`, see [scripts with inline dependencies](run.qmd#scripts-with-inline-dependencies). Then
+rig sets up the script's new environment, the same way [`rig proj add
+--script`](#rig-proj-add) does.
 
 ## Options
 

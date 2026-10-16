@@ -1,5 +1,20 @@
 # rig 0.11.1-dev (development version)
 
+* `rig proj import` and `rig proj lock` now handle `Remotes` and
+  `Config/Needs/*` entries for packages with a dot in their name, e.g.
+  `Rdatatable/data.table` (#476).
+
+* `rig proj lock` now keeps relative 'path' dependencies relative in the
+  lock file. The root project is saved with path `"."`, if it is a package.
+
+* `rig proj import` and `rig proj export` now convert all `[build]` entries
+  to and from the `ByteCompile`, `NeedsCompilation`, `LazyData`, `Biarch`
+  and `KeepSource` `DESCRIPTION` fields.
+
+* `rig proj status` now reports whether `rproj.lock` is up to date with
+  `rproj.toml`, e.g. after a manual edit of `rproj.toml`. It runs the same
+  check as `rig proj lock --check` (#466).
+
 * New `prefer-binary` and `exclude-newer` configuration entries (and
   `RIG_PREFER_BINARY` and `RIG_EXCLUDE_NEWER` environment variables) set the
   defaults of `--prefer-binary` and `--exclude-newer` for `rig pkg install`
@@ -15,8 +30,8 @@
 * rig now supports authenticated repositories and Posit Package Manager
   instances. See the new "Authentication" guide.
 
-* `rig proj sync --library <path>` can be used to install into a one-off
-  directory, without changing the project environment.
+* New `rig pkg sync [LOCKFILE]` command installs the packages of a lock file
+  into a library, without touching the project environment.
 
 * A new `--cache-dir` flag, `RIG_CACHE_DIR` environment variable, and
   `cache-dir` configuration entry allow overriding the location of rig's cache.

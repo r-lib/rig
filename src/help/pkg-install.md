@@ -14,25 +14,25 @@ anything.
 ## Repositories
 
 rig installs from the repositories configured for the R version, i.e. the
-[`rig repos list`](repos.qmd#rig-repos-list) output for the default R version, or for
-the one selected with `--r-version`. If two repositories have the same version
-of a package, the one listed first wins.
+[`rig repos list`](repos.qmd#rig-repos-list) output for the default R version, or for the one selected
+with `--r-version`. If two repositories have the same version of a package,
+the one listed first wins.
 
-`--with-repos` (or `--index`) and `--without-repos` (or `--no-index`) change
-the repositories for this command only, the setup of the R version stays the
+`--with-repos` (or `--index`) and `--without-repos` (or `--no-index`) change the
+repositories for this command only, the setup of the R version stays the
 same. Both take a comma-separated list and can be repeated. `--with-repos`
-adds repositories, by name, like [`rig repos enable`](repos.qmd#rig-repos-enable),
-by URL, or as `name=URL`, e.g. `--index=rlib=https://r-lib.r-universe.dev`.
-A repository given by URL is a CRAN-like repository and comes before the
-others. `--without-repos=<names>` leaves out repositories, and
-`--without-repos` without names leaves out all configured repositories, so
-only the ones in `--with-repos` are used, e.g.
-`--no-index --index=https://r-lib.r-universe.dev`. URLs cannot contain commas.
+adds repositories, by name, like [`rig repos enable`](repos.qmd#rig-repos-enable), by URL, or as
+`name=URL`, e.g. `--index=rlib=https://r-lib.r-universe.dev`. A repository
+given by URL is a CRAN-like repository and comes before the others.
+`--without-repos=<names>` leaves out repositories, and `--without-repos`
+without names leaves out all configured repositories, so only the ones in
+`--with-repos` are used, e.g. `--no-index
+--index=https://r-lib.r-universe.dev`. URLs cannot contain commas.
 
 For P3M and for Bioconductor's software repository rig reads their full
 package history, from <https://ppm.r-pkg.org> and <https://ppm-bioc.r-pkg.org>,
-so older and archived versions are available, too. Any other repository, e.g.
-CRAN itself, an r-universe, or one added with [`rig repos add`](repos.qmd#rig-repos-add), is read
+so older and archived versions are available, too. Any other repository,
+e.g. CRAN itself, an r-universe, or one added with [`rig repos add`](repos.qmd#rig-repos-add), is read
 from its `PACKAGES` files, so only its current packages are available.
 
 A CRAN-like repository has binary packages for macOS and Windows, if it has
@@ -42,17 +42,16 @@ A CRAN-like repository has binary packages for macOS and Windows, if it has
 ## Bioconductor packages
 
 rig installs Bioconductor packages if the Bioconductor repositories are
-enabled for the R version, see [`rig repos enable`](repos.qmd#rig-repos-enable), from the
-Bioconductor release of the R version, e.g. Bioconductor 3.23 for R 4.6.
-Then `rig pkg install limma` works like `rig pkg install dplyr`.
-`R_BIOC_VERSION` selects another Bioconductor release. See "Bioconductor packages" in
-[`rig proj lock`](proj.qmd#rig-proj-lock).
+enabled for the R version, see [`rig repos enable`](repos.qmd#rig-repos-enable), from the Bioconductor
+release of the R version, e.g. Bioconductor 3.23 for R 4.6. Then `rig pkg
+install limma` works like `rig pkg install dplyr`. `R_BIOC_VERSION` selects
+another Bioconductor release. See "Bioconductor packages" in [`rig proj
+lock`](proj.qmd#rig-proj-lock).
 
 ## Git, GitHub, GitLab and URL sources
 
 A package can also be given straight from a git repository, [pak's package
-reference](https://pak.r-lib.org/reference/pak_package_sources.html) syntax,
-the same one [`rig proj add`](proj.qmd) accepts:
+reference](https://pak.r-lib.org/reference/pak_package_sources.html) syntax, the same one [`rig proj add`](proj.qmd) accepts:
 
 ```
 rig pkg install r-lib/crayon
@@ -67,20 +66,20 @@ rig pkg install https://cran.rstudio.com/src/contrib/processx_3.9.0.tar.gz
 
 A bare `<owner>/<repo>` (optionally `github::<owner>/<repo>`) is a GitHub
 reference; `<owner>/<repo>/<subdir>` points at a package in a subdirectory of
-the repository. After the path, `@<ref>` pins a branch, tag or commit,
-`#<pr>` a pull request, and `@*release` the latest release.
+the repository. After the path, `@<ref>` pins a branch, tag or commit, `#<pr>`
+a pull request, and `@*release` the latest release.
 
 `gitlab::<group>/<project>` is the same idea for GitLab, including nested
-subgroups (`gitlab::<group>/<subgroup>/<project>`); `@<ref>` pins a branch,
-tag or commit, and `/-/<subdir>` points at a subdirectory. Merge requests and
+subgroups (`gitlab::<group>/<subgroup>/<project>`); `@<ref>` pins a branch, tag
+or commit, and `/-/<subdir>` points at a subdirectory. Merge requests and
 `@*release` are not supported for GitLab. A self-hosted instance is
 `gitlab::<https-url-of-group-and-project>`, e.g.
 `gitlab::https://gitlab.example.com/group/project`.
 
 A `git::<url>` reference works with any git host, not only GitHub or GitLab.
 
-`url::<https-url>` (or a bare `<https-url>`) points straight at a
-package source archive.
+`url::<https-url>` (or a bare `<https-url>`) points straight at a package
+source archive.
 
 The package name is read from the fetched repository's (or archive's) own
 `DESCRIPTION` (which may differ from the repository name); the dependency is
@@ -88,11 +87,11 @@ pinned to an exact commit, or to the archive's sha256 for a `url::` source,
 resolved right away, not to a version range.
 
 rig fetches a git/GitHub/GitLab source with the system `git`, which must be
-installed and on `PATH`. A private repository authenticates exactly the way
-a plain `git clone` would on your machine: a configured credential helper
-(Keychain, Windows Credential Manager, `git credential-store`, etc.),
-`.netrc`, an SSH agent, or credentials already embedded in the URL. There is
-no separate rig-specific token setting. A `url::` source is a plain HTTP(S)
+installed and on `PATH`. A private repository authenticates exactly the way a
+plain `git clone` would on your machine: a configured credential helper
+(Keychain, Windows Credential Manager, `git credential-store`, etc.), `.netrc`,
+an SSH agent, or credentials already embedded in the URL. There is no
+separate rig-specific token setting. A `url::` source is a plain HTTP(S)
 download and needs no such authentication.
 
 ## Local paths
@@ -109,29 +108,29 @@ rig pkg install mypkg_1.0.0.tar.gz
 rig pkg install local::mypkg
 ```
 
-A path can be a package source directory or a package file: a source tarball
-(`.tar.gz`), or a binary package built by `R CMD INSTALL --build` (`.tgz` on
-macOS and Linux, `.zip` on Windows). A source directory or tarball is
+A path can be a package source directory or a package file: a source
+tarball (`.tar.gz`), or a binary package built by `R CMD INSTALL --build` (`.tgz`
+on macOS and Linux, `.zip` on Windows). A source directory or tarball is
 installed with `R CMD INSTALL`, a binary is unpacked into the library
 directly.
 
-An argument counts as a path when it is `.` or `..`, starts with `./`, `../`,
-`~/` or `/` (on Windows also `.\`, `..\`, `\` or a drive letter), or is the
-name of a package file that exists. The `local::` prefix forces a path,
-whatever it looks like.
+An argument counts as a path when it is `.` or `..`, starts with `./`, `../`, `~/` or
+`/` (on Windows also `.\`, `..\`, `\` or a drive letter), or is the name of a
+package file that exists. The `local::` prefix forces a path, whatever it
+looks like.
 
 ## Installing only the dependencies
 
-`--no-install-self` installs the dependencies of the named packages, but
-not the named packages themselves, e.g. to set up a library for working on a
+`--no-install-self` installs the dependencies of the named packages, but not
+the named packages themselves, e.g. to set up a library for working on a
 package from its source directory:
 
 ```
 rig pkg install --no-install-self --dev .
 ```
 
-`--no-install-project` is an alias of `--no-install-self`, for consistency
-with `rig proj sync`.
+`--no-install-project` is an alias of `--no-install-self`, for consistency with
+`rig proj sync`.
 
 A named package is still installed if another package that is being
 installed depends on it.
@@ -161,10 +160,9 @@ a `_logs` directory inside the library, and rig points at the log when an
 installation fails.
 
 `--platform` installs for a platform other than this machine's, e.g.
-`--platform x86_64-unknown-linux-gnu-ubuntu-24.04` (see
-[`rig system detect-platform`](system.qmd#rig-system-detect-platform) for
-the platform strings rig takes), and `--platform source` installs source
-packages only.
+`--platform x86_64-unknown-linux-gnu-ubuntu-24.04` (see [`rig system
+detect-platform`](system.qmd#rig-system-detect-platform) for the platform
+strings rig takes), and `--platform source` installs source packages only.
 
 `--prefer-binary` trades a newer version for an older one that has a binary
 build, which is useful when compiling is expensive; it takes the number of
@@ -174,31 +172,31 @@ To turn it on by default, set the `prefer-binary` [config](config.qmd) entry;
 
 ## System requirements
 
-On Linux, many R packages need system libraries and tools, e.g. `libcurl` for the
-curl package, and a source package needs their development files to compile. A
-package lists these in the `SystemRequirements` field of its `DESCRIPTION`. Before
-installing, rig matches this field against the [r-system-requirements](https://github.com/r-hub/r-system-requirements) rules for
-your Linux distribution, checks which of the needed OS packages are installed
-already, and installs the missing ones with the distribution's package manager
-(`apt-get`, `dnf`, `yum`, `zypper` or `apk`).
+On Linux, many R packages need system libraries and tools, e.g. `libcurl` for
+the curl package, and a source package needs their development files to
+compile. A package lists these in the `SystemRequirements` field of its
+`DESCRIPTION`. Before installing, rig matches this field against the
+[r-system-requirements](https://github.com/r-hub/r-system-requirements) rules for your Linux distribution, checks which of
+the needed OS packages are installed already, and installs the missing ones
+with the distribution's package manager (`apt-get`, `dnf`, `yum`, `zypper` or `apk`).
 
 This is only needed for source packages and for binaries built for one
-distribution. A `manylinux` binary has its libraries built in, so rig does not
-look at its system requirements. On macOS and Windows there are no system
-requirements to install.
+distribution. A `manylinux` binary has its libraries built in, so rig does
+not look at its system requirements. On macOS and Windows there are no
+system requirements to install.
 
-rig installs the OS packages itself if it runs as `root`, or if `sudo` works without
-a password. Otherwise it prints the commands that would install them, and
-carries on: the R packages may still install, and if one fails, rig names the
-system packages it was missing. This is the same in [admin mode and in user mode](../admin-vs-user-mode.qmd):
-OS packages always need administrator rights, even if rig does not need them for
-anything else.
+rig installs the OS packages itself if it runs as `root`, or if `sudo` works
+without a password. Otherwise it prints the commands that would install
+them, and carries on: the R packages may still install, and if one fails,
+rig names the system packages it was missing. This is the same in [admin
+mode and in user mode](../admin-vs-user-mode.qmd): OS packages always need administrator rights, even
+if rig does not need them for anything else.
 
-`--no-sysreqs` turns this off for one run, and `--sysreqs` turns it on even if the
-`sysreqs` [config](config.qmd) entry turns it off. With `--dry-run`, rig shows the missing OS
-packages and the commands, and installs nothing. Set the `sysreqs` [config](config.qmd)
-entry to `print` to always only show them. See [`rig config`](config.qmd) for the `sysreqs`,
-`sysreqs-sudo`, `sysreqs-update` and `sysreqs-rules-url` entries.
+`--no-sysreqs` turns this off for one run, and `--sysreqs` turns it on even if
+the `sysreqs` [config](config.qmd) entry turns it off. With `--dry-run`, rig shows the
+missing OS packages and the commands, and installs nothing. Set the `sysreqs`
+[config](config.qmd) entry to `print` to always only show them. See [`rig config`](config.qmd) for the
+`sysreqs`, `sysreqs-sudo`, `sysreqs-update` and `sysreqs-rules-url` entries.
 
 ## Excluding newer package versions
 
@@ -244,9 +242,9 @@ i.e. the library that [`rig library default`](library.qmd) reports, and the one 
 packages into.
 
 `--library` (`-l`) selects another library. It takes either the name of a
-library of the R version, as [`rig library list`](library.qmd) prints them, or the path of a
-library directory. A library name is tried first, so prefix a relative path
-with `./` (or use an absolute path) if it happens to share a name with a
+library of the R version, as [`rig library list`](library.qmd) prints them, or the path of
+a library directory. A library name is tried first, so prefix a relative
+path with `./` (or use an absolute path) if it happens to share a name with a
 library:
 
 ```

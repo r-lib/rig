@@ -761,6 +761,80 @@ pub struct Build {
     pub lazy_data: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub biarch: Option<bool>,
+    #[serde(
+        rename = "keep-source",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub keep_source: Option<bool>,
+}
+
+impl Build {
+    /// The `DESCRIPTION` field of each `[build]` flag, in the order
+    /// `rig proj export` writes them.
+    pub const DESCRIPTION_FIELDS: [&'static str; 5] = [
+        "ByteCompile",
+        "NeedsCompilation",
+        "LazyData",
+        "Biarch",
+        "KeepSource",
+    ];
+
+    fn flag_mut(&mut self, field: &str) -> Option<&mut Option<bool>> {
+        match field {
+            "ByteCompile" => Some(&mut self.byte_compile),
+            "NeedsCompilation" => Some(&mut self.needs_compilation),
+            "LazyData" => Some(&mut self.lazy_data),
+            "Biarch" => Some(&mut self.biarch),
+            "KeepSource" => Some(&mut self.keep_source),
+            _ => None,
+        }
+    }
+
+    /// The set flags as `DESCRIPTION` fields, e.g. `("LazyData", "true")`.
+    /// `NeedsCompilation` is written as `yes`/`no`, like `R CMD build`
+    /// does, the others as `true`/`false`.
+    pub fn description_fields(&self) -> Vec<(&'static str, &'static str)> {
+        let flags = [
+            self.byte_compile,
+            self.needs_compilation,
+            self.lazy_data,
+            self.biarch,
+            self.keep_source,
+        ];
+        Self::DESCRIPTION_FIELDS
+            .iter()
+            .zip(flags)
+            .filter_map(|(&field, flag)| {
+                let value = match (field, flag?) {
+                    ("NeedsCompilation", true) => "yes",
+                    ("NeedsCompilation", false) => "no",
+                    (_, true) => "true",
+                    (_, false) => "false",
+                };
+                Some((field, value))
+            })
+            .collect()
+    }
+
+    /// Set the flag of `DESCRIPTION` field `field` from its `value`. R
+    /// reads these as logicals, so `yes`/`no` and `true`/`false` are
+    /// accepted, in any case. Returns `false`, and changes nothing, if
+    /// `field` is not a build flag or `value` is not a logical.
+    pub fn set_description_field(&mut self, field: &str, value: &str) -> bool {
+        let value = match value.trim().to_lowercase().as_str() {
+            "yes" | "true" => true,
+            "no" | "false" => false,
+            _ => return false,
+        };
+        match self.flag_mut(field) {
+            Some(flag) => {
+                *flag = Some(value);
+                true
+            }
+            None => false,
+        }
+    }
 }
 
 /// One `[[bin]]` — a named entry-point script run via `rig run <name>`.
@@ -1521,7 +1595,13 @@ impl Rproj {
                         if let Some(path) = &t.path {
                             let path = Path::new(path);
                             if path.is_relative() {
-                                t.path = Some(root.join(path).display().to_string());
+                                // Canonical, so it is the same path after a
+                                // round trip through `rproj.lock`, which
+                                // records it relative to the lock file, see
+                                // `crate::proj::relative_local_paths`.
+                                let joined = root.join(path);
+                                let resolved = joined.canonicalize().unwrap_or(joined);
+                                t.path = Some(resolved.display().to_string());
                             }
                         }
                         out.push((name.clone(), t));
@@ -1530,6 +1610,26 @@ impl Rproj {
             }
         }
         out
+    }
+
+    /// The names of the `path` dependencies whose path is relative, so
+    /// `rproj.lock` records them relative, too, see
+    /// `crate::proj::relative_local_paths`.
+    pub fn relative_path_dependencies(&self) -> Vec<String> {
+        std::iter::once(&self.dependencies)
+            .chain(std::iter::once(&self.linking_dependencies))
+            .chain(self.dependency_groups.values().map(|g| &g.dependencies))
+            .chain(self.optional_dependencies.values())
+            .flat_map(|table| table.iter())
+            .filter_map(|(name, dep)| match dep {
+                Dependency::Detailed(t) => t
+                    .path
+                    .as_ref()
+                    .filter(|p| Path::new(p).is_relative())
+                    .map(|_| name.clone()),
+                _ => None,
+            })
+            .collect()
     }
 
     /// The git/GitHub/url/local-sourced dependencies that end up in a
@@ -1934,6 +2034,12 @@ impl Rproj {
                 .map(|(name, table)| dep_table_to_pak_ref(name, table))
                 .collect();
             writeln!(out, "Remotes:{}", fold_dcf_list(&items))?;
+        }
+
+        if let Some(build) = &self.build {
+            for (field, value) in build.description_fields() {
+                writeln!(out, "{}: {}", field, value)?;
+            }
         }
 
         for (group_name, group) in self.dependency_groups.iter() {
@@ -2390,7 +2496,9 @@ fn config_needs_entry(entry: &str) -> (String, Dependency) {
 /// for `tidyverse/tidytemplate@main`. `pak` reference syntax is
 /// `[<name>=][<type>::]<ref>`, so an explicit name wins; otherwise the name
 /// is the last path component of the reference, without its `@<tag>` /
-/// `#<pull request>` suffix and without a file extension. `None` if that does
+/// `#<pull request>` suffix. A git URL also loses its `.git` suffix, and a
+/// `url::`/`local::` reference its archive extension (`.tar.gz`, `.tgz`,
+/// `.tar`, `.zip`); an `owner/repo` name is kept as is. `None` if that does
 /// not leave a valid package name behind.
 pub(crate) fn pak_ref_name(entry: &str) -> Option<String> {
     if let Some((name, _)) = entry.split_once('=') {
@@ -2400,13 +2508,26 @@ pub(crate) fn pak_ref_name(entry: &str) -> Option<String> {
         }
     }
 
-    let ref_ = match entry.split_once("::") {
-        Some((_type, ref_)) => ref_,
-        None => entry,
+    let (type_, ref_) = match entry.split_once("::") {
+        Some((type_, ref_)) => (Some(type_), ref_),
+        None => (None, entry),
     };
     let ref_ = ref_.split(['@', '#']).next().unwrap_or(ref_);
     let last = ref_.trim_end_matches('/').rsplit('/').next()?;
-    let last = last.split('.').next().unwrap_or(last);
+    // Package names may contain dots (`data.table`), so only strip a known
+    // extension, not everything after the first dot. Archive extensions
+    // only make sense for `url::`/`local::` references, and `.git` only for
+    // a git URL. An `owner/repo` name is kept as is, even `owner/repo.git`.
+    let exts: &[&str] = match type_ {
+        Some("url") | Some("local") => &[".tar.gz", ".tgz", ".tar", ".zip"],
+        Some("git") => &[".git"],
+        _ if ref_.contains("://") => &[".git"],
+        _ => &[],
+    };
+    let last = exts
+        .iter()
+        .find_map(|ext| last.strip_suffix(ext))
+        .unwrap_or(last);
     if is_r_package_name(last) {
         Some(last.to_string())
     } else {
@@ -2758,6 +2879,18 @@ pub struct LockRepository {
     pub metadata: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub explicit: bool,
+}
+
+impl LockRepository {
+    /// Whether this is the built-in Bioconductor entry.
+    pub fn is_bioc(&self) -> bool {
+        self.name.eq_ignore_ascii_case(BIOC_REPOSITORY_NAME)
+    }
+
+    /// Whether this is the built-in CRAN entry.
+    pub fn is_cran(&self) -> bool {
+        self.name.eq_ignore_ascii_case(CRAN_REPOSITORY_NAME)
+    }
 }
 
 impl RprojLockOptions {
@@ -3402,6 +3535,7 @@ mod tests {
             needs_compilation: Some(true),
             lazy_data: None,
             biarch: None,
+            keep_source: Some(false),
         });
         m.bin = vec![Bin {
             name: "report".to_string(),
@@ -5570,6 +5704,47 @@ foo = "bar"
     }
 
     #[test]
+    fn to_description_writes_build_flags() {
+        let mut m = Rproj::minimal("mypkg");
+        m.build = Some(Build {
+            byte_compile: Some(true),
+            needs_compilation: Some(false),
+            lazy_data: None,
+            biarch: None,
+            keep_source: Some(false),
+        });
+
+        let (desc, _) = m.to_description().unwrap();
+        assert!(desc.contains("ByteCompile: true\nNeedsCompilation: no\nKeepSource: false\n"));
+        assert!(!desc.contains("LazyData:"));
+        assert!(!desc.contains("Biarch:"));
+    }
+
+    #[test]
+    fn build_flags_are_read_from_description_fields() {
+        let mut build = Build::default();
+        assert!(build.set_description_field("NeedsCompilation", "yes"));
+        assert!(build.set_description_field("LazyData", "TRUE"));
+        assert!(build.set_description_field("KeepSource", " false "));
+        assert!(build.set_description_field("Biarch", "No"));
+        assert_eq!(
+            build,
+            Build {
+                byte_compile: None,
+                needs_compilation: Some(true),
+                lazy_data: Some(true),
+                biarch: Some(false),
+                keep_source: Some(false),
+            }
+        );
+
+        // Not a logical, or not a build flag: nothing changes.
+        assert!(!build.set_description_field("ByteCompile", "maybe"));
+        assert!(!build.set_description_field("Encoding", "true"));
+        assert_eq!(build.byte_compile, None);
+    }
+
+    #[test]
     fn description_escape_hatch_roundtrips_through_description() {
         let mut m = Rproj::minimal("mypkg");
         m.description.insert(
@@ -5583,6 +5758,37 @@ foo = "bar"
         // The manifest survives a TOML round trip.
         let text = toml::to_string_pretty(&m).unwrap();
         assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), m);
+    }
+
+    #[test]
+    fn pak_ref_name_keeps_dots_in_package_names() {
+        let cases = [
+            ("Rdatatable/data.table", Some("data.table")),
+            ("Rdatatable/data.table@master", Some("data.table")),
+            ("github::Rdatatable/data.table#123", Some("data.table")),
+            (
+                "git::https://github.com/Rdatatable/data.table.git",
+                Some("data.table"),
+            ),
+            ("git::https://github.com/r-lib/cli.git", Some("cli")),
+            (
+                "url::https://example.com/data.table.tar.gz",
+                Some("data.table"),
+            ),
+            ("url::https://example.com/mypkg_1.0.0.tar.gz", None),
+            ("owner/foo.zip", Some("foo.zip")),
+            ("owner/repo.git", Some("repo.git")),
+            ("github::owner/repo.git@main", Some("repo.git")),
+            (
+                "gitlab::https://gitlab.example.com/group/pkg.git",
+                Some("pkg"),
+            ),
+            ("owner/foo.tar@main", Some("foo.tar")),
+            ("data.table=foo/bar", Some("data.table")),
+        ];
+        for (entry, want) in cases {
+            assert_eq!(pak_ref_name(entry).as_deref(), want, "{}", entry);
+        }
     }
 
     #[test]

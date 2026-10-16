@@ -14,6 +14,5 @@ rig system blas set reference 4.4.1
 This command only works on macOS. It skips (with a warning) any R version
 that does not ship the requested library.
 
-In admin mode this command probably needs `sudo`:
-`sudo rig system blas set accelerate`, otherwise rig will ask for your
-password.
+In admin mode this command probably needs `sudo`: `sudo rig system blas set
+accelerate`, otherwise rig will ask for your password.

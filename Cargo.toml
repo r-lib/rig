@@ -37,7 +37,7 @@ path = "src/shim/main.rs"
 
 [dependencies]
 # CLI
-clap = { version = "4.3.8", features = ["cargo", "color"] }
+clap = { version = "4.3.8", features = ["cargo", "color", "wrap_help"] }
 # to ignore a SIGINT (CTRL+C) when running external commands
 ctrlc = "3.4"
 # to read/write the repositories files

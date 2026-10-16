@@ -30,19 +30,19 @@ website:
     # collapse them. collapse-level must exceed the sidebar's nesting depth.
     collapse-level: 4
     contents:
-      - section: "Tutorials"
+      - section: "Getting started"
         href: tutorial.qmd
-        contents:
-          - text: "User mode"
-            file: tutorial-user.qmd
-          - text: "Admin mode"
-            file: tutorial-admin.qmd
-          - text: "Migrate to user mode"
-            file: tutorial-migrate.qmd
-      - section: "Guide"
         contents:
           - text: "Installing rig"
             file: install.qmd
+          - text: "As an R user"
+            file: tutorial-user.qmd
+          - text: "As an R admin"
+            file: tutorial-admin.qmd
+          - text: "Migrating to user mode"
+            file: tutorial-migrate.qmd
+      - section: "Guides"
+        contents:
           - text: "Admin mode vs user mode"
             file: admin-vs-user-mode.qmd
           - text: "Managing R packages"

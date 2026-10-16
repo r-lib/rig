@@ -610,43 +610,71 @@ is_retired() {
     grep -q '^r_version = "4.5"$' rproj.lock
 }
 
-@test "proj sync --library" {
+@test "pkg sync" {
     cd "$BATS_TEST_TMPDIR"
-    rm -rf libproj shared-lib dry-lib && mkdir libproj
-    cd libproj
+    rm -rf pkgsync && mkdir -p pkgsync/proj pkgsync/run
+    cd pkgsync/proj
     run rig proj init -r 4.5
     [[ "$status" -eq 0 ]]
     run rig proj add --no-lock cli
     [[ "$status" -eq 0 ]]
     run rig proj lock
     [[ "$status" -eq 0 ]]
+    cp rproj.lock ../app.lock
+    cd ../run
+
+    # a lock file that is not there is an error, and creates nothing
+    run rig pkg sync ../nope.lock --library ../lib
+    [[ "$status" -ne 0 ]]
+    [[ ! -e ../lib ]]
+    # a lock file is used as it is, and nothing is removed
+    run rig pkg sync ../app.lock --frozen
+    [[ "$status" -ne 0 ]]
+    run rig pkg sync ../app.lock --inexact
+    [[ "$status" -ne 0 ]]
 
     # a dry run creates nothing
-    run rig proj sync --dry-run --library ../dry-lib --no-install-r --no-sysreqs
+    run rig pkg sync ../app.lock --library ../lib --dry-run --no-install-r --no-sysreqs
     [[ "$status" -eq 0 ]]
-    [[ ! -e ../dry-lib && ! -e .rvenv/rvenv.cfg ]]
+    [[ ! -e ../lib ]]
 
-    # only the library is written, the project environment is left alone,
-    # even when sync has to lock first
-    rm rproj.lock .Renviron
-    run rig proj sync --library ../shared-lib --no-install-r --no-sysreqs
+    # from a directory with no project files, only the library is written,
+    # and it gets no sync stamp
+    run rig pkg sync ../app.lock --library ../lib --no-install-r --no-sysreqs
     [[ "$status" -eq 0 ]]
-    [[ -f rproj.lock && ! -e .Renviron ]]
-    [[ -d ../shared-lib/cli ]]
-    [[ ! -e .rvenv/rvenv.cfg && ! -e .rvenv/lib ]]
+    [[ -z "$(ls -A .)" ]]
+    [[ -d ../lib/cli && ! -e ../lib/.synced ]]
 
     # packages already in the library are left alone, even if the lock file
     # does not list them
-    mkdir ../shared-lib/extra
-    printf 'Package: extra\nVersion: 1.0\n' > ../shared-lib/extra/DESCRIPTION
-    run rig proj sync --library ../shared-lib --no-install-r --no-sysreqs
+    mkdir ../lib/extra
+    printf 'Package: extra\nVersion: 1.0\n' > ../lib/extra/DESCRIPTION
+    run rig pkg sync ../app.lock -l ../lib --no-install-r --no-sysreqs
     [[ "$status" -eq 0 ]]
-    [[ -d ../shared-lib/extra && -d ../shared-lib/cli ]]
+    [[ -d ../lib/extra && -d ../lib/cli ]]
 
-    # a sync without --library uses the project library
-    run rig proj sync --no-install-r --no-sysreqs
+    # the project environment is left alone, also for the project's own lock
+    # file, which is the default
+    cd ../proj
+    run rig pkg sync --library ../lib2 --no-install-r --no-sysreqs
     [[ "$status" -eq 0 ]]
-    [[ -d .rvenv/lib/cli && ! -L .rvenv/lib ]]
+    [[ -d ../lib2/cli ]]
+    [[ ! -e .rvenv/rvenv.cfg && ! -e .rvenv/lib ]]
+
+    # the project's own package is installed from the directory of the lock
+    # file, which needs the project there
+    sed -i 's/^type = "project"$/type = "package"/' rproj.toml
+    run rig proj lock
+    [[ "$status" -eq 0 ]]
+    cp rproj.lock ../pkg.lock
+    cd ../run
+    run rig pkg sync ../pkg.lock --library ../pkg-lib --no-install-r --no-sysreqs
+    [[ "$status" -ne 0 ]]
+    [[ ! -e ../pkg-lib ]]
+    run rig pkg sync ../pkg.lock --library ../pkg-lib \
+        --no-install-project --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ -d ../pkg-lib/cli ]]
 }
 
 @test "run script with inline dependencies" {
