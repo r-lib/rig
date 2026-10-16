@@ -119,7 +119,7 @@ where
 
     if let Some(archive) = archive {
         // A binary's archives all sit together in one `packages` directory
-        // (see `lockfile_package_info`), so the shared unpack cache is keyed
+        // (see `lockfile_package_path`), so the shared unpack cache is keyed
         // on the archive's own file name; a rig-built package already lives
         // in its own hash-keyed directory, so its name alone is unique there.
         let key = if pkg.binary {

@@ -541,8 +541,10 @@ fn check_package(
                 Some(x) => x,
                 None => continue,
             };
-            let same = match &inst.hash {
-                Some(hash) => hash == sha,
+            // A package is identified by its hash, or by the commit or file it
+            // was fetched from when it has none.
+            let same = match inst.hash.as_ref().or(inst.remote_sha.as_ref()) {
+                Some(identity) => identity == sha,
                 None => inst.version == *ver,
             };
             if same {
@@ -1133,6 +1135,34 @@ mod tests {
             problems[0].details,
             "compiled against another build of cpp11 0.5.0"
         );
+    }
+
+    #[test]
+    fn a_recorded_linkingto_remote_sha_is_compared() {
+        let fs = (
+            "fs",
+            "Package: fs\nVersion: 1.6.4\nLinkingTo: cpp11\n\
+             RemoteLinkingToHashes: cpp11@0.5.0=aaa\n",
+        );
+        let (_tmp, lib) = library(&[
+            ("cpp11", "Package: cpp11\nVersion: 0.5.0\nRemoteSha: bbb\n"),
+            fs,
+        ]);
+        let problems = diagnose(&lib, &[], &r44(), &NONE);
+        assert_eq!(
+            summary(&problems),
+            vec![one("fs", Severity::Error, Kind::Abi, Some("cpp11"))]
+        );
+        assert_eq!(
+            problems[0].details,
+            "compiled against another build of cpp11 0.5.0"
+        );
+
+        let (_tmp, lib) = library(&[
+            ("cpp11", "Package: cpp11\nVersion: 0.5.0\nRemoteSha: aaa\n"),
+            fs,
+        ]);
+        assert!(diagnose(&lib, &[], &r44(), &NONE).is_empty());
     }
 
     #[test]
