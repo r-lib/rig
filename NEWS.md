@@ -1,5 +1,9 @@
 # rig 0.11.1-dev (development version)
 
+* `rig proj import` and `rig proj lock` now handle `Remotes` and
+  `Config/Needs/*` entries for packages with a dot in their name, e.g.
+  `Rdatatable/data.table` (#476).
+
 * `rig proj lock` now keeps relative 'path' dependencies relative in the
   lock file. The root project is saved with path `"."`, if it is a package.
 

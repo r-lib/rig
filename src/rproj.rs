@@ -2485,7 +2485,9 @@ fn config_needs_entry(entry: &str) -> (String, Dependency) {
 /// for `tidyverse/tidytemplate@main`. `pak` reference syntax is
 /// `[<name>=][<type>::]<ref>`, so an explicit name wins; otherwise the name
 /// is the last path component of the reference, without its `@<tag>` /
-/// `#<pull request>` suffix and without a file extension. `None` if that does
+/// `#<pull request>` suffix. A git URL also loses its `.git` suffix, and a
+/// `url::`/`local::` reference its archive extension (`.tar.gz`, `.tgz`,
+/// `.tar`, `.zip`); an `owner/repo` name is kept as is. `None` if that does
 /// not leave a valid package name behind.
 pub(crate) fn pak_ref_name(entry: &str) -> Option<String> {
     if let Some((name, _)) = entry.split_once('=') {
@@ -2495,13 +2497,26 @@ pub(crate) fn pak_ref_name(entry: &str) -> Option<String> {
         }
     }
 
-    let ref_ = match entry.split_once("::") {
-        Some((_type, ref_)) => ref_,
-        None => entry,
+    let (type_, ref_) = match entry.split_once("::") {
+        Some((type_, ref_)) => (Some(type_), ref_),
+        None => (None, entry),
     };
     let ref_ = ref_.split(['@', '#']).next().unwrap_or(ref_);
     let last = ref_.trim_end_matches('/').rsplit('/').next()?;
-    let last = last.split('.').next().unwrap_or(last);
+    // Package names may contain dots (`data.table`), so only strip a known
+    // extension, not everything after the first dot. Archive extensions
+    // only make sense for `url::`/`local::` references, and `.git` only for
+    // a git URL. An `owner/repo` name is kept as is, even `owner/repo.git`.
+    let exts: &[&str] = match type_ {
+        Some("url") | Some("local") => &[".tar.gz", ".tgz", ".tar", ".zip"],
+        Some("git") => &[".git"],
+        _ if ref_.contains("://") => &[".git"],
+        _ => &[],
+    };
+    let last = exts
+        .iter()
+        .find_map(|ext| last.strip_suffix(ext))
+        .unwrap_or(last);
     if is_r_package_name(last) {
         Some(last.to_string())
     } else {
@@ -5732,6 +5747,37 @@ foo = "bar"
         // The manifest survives a TOML round trip.
         let text = toml::to_string_pretty(&m).unwrap();
         assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), m);
+    }
+
+    #[test]
+    fn pak_ref_name_keeps_dots_in_package_names() {
+        let cases = [
+            ("Rdatatable/data.table", Some("data.table")),
+            ("Rdatatable/data.table@master", Some("data.table")),
+            ("github::Rdatatable/data.table#123", Some("data.table")),
+            (
+                "git::https://github.com/Rdatatable/data.table.git",
+                Some("data.table"),
+            ),
+            ("git::https://github.com/r-lib/cli.git", Some("cli")),
+            (
+                "url::https://example.com/data.table.tar.gz",
+                Some("data.table"),
+            ),
+            ("url::https://example.com/mypkg_1.0.0.tar.gz", None),
+            ("owner/foo.zip", Some("foo.zip")),
+            ("owner/repo.git", Some("repo.git")),
+            ("github::owner/repo.git@main", Some("repo.git")),
+            (
+                "gitlab::https://gitlab.example.com/group/pkg.git",
+                Some("pkg"),
+            ),
+            ("owner/foo.tar@main", Some("foo.tar")),
+            ("data.table=foo/bar", Some("data.table")),
+        ];
+        for (entry, want) in cases {
+            assert_eq!(pak_ref_name(entry).as_deref(), want, "{}", entry);
+        }
     }
 
     #[test]
