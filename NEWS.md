@@ -27,6 +27,9 @@
 * rig now sends a `User-Agent` header with its HTTP requests, e.g.
   `rig/0.11.1 (+https://github.com/r-lib/rig)`.
 
+* rig now supports authenticated repositories and Posit Package Manager
+  instances. See the new "Authentication" guide.
+
 * New `rig pkg sync [LOCKFILE]` command installs the packages of a lock file
   into a library, without touching the project environment.
 

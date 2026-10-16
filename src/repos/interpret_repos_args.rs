@@ -224,6 +224,8 @@ pub(crate) fn parse_repo_url(
     } else {
         "local".to_string()
     };
+    // A password is only kept in memory, nothing downstream sees it.
+    let url = crate::auth::register_repo(&name, &url);
     Ok(Some((name, url)))
 }
 
@@ -631,7 +633,8 @@ mod tests {
                 ),
                 (
                     "mine".to_string(),
-                    "https://user:pw@example.org:8080/cran".to_string()
+                    // the password is only kept in memory, see `auth::register_repo`
+                    "https://user@example.org:8080/cran".to_string()
                 ),
                 ("local".to_string(), "file:///tmp/repo".to_string()),
             ]

@@ -18,8 +18,8 @@ use crate::windows::*;
 use crate::linux::*;
 
 mod config;
-pub use config::{get_repos_config, repo_metadata_urls, RepoEntry, Repository};
-mod configured;
+pub use config::{get_custom_repos, get_repos_config, repo_metadata_urls, RepoEntry, Repository};
+pub(crate) mod configured;
 pub(crate) use configured::{configured_repos, resolve_bioc_vars};
 pub(crate) mod interpret_repos_args;
 mod repos_add;

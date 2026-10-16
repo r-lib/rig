@@ -132,6 +132,13 @@ fn check_repo_url(url: &str) -> Result<String, Box<dyn Error>> {
             url
         );
     }
+    if crate::auth::url_has_password(url) {
+        bail!(
+            "Invalid repository URL: '{}'. It must not include a password. \
+             Use `rig auth login --username` or see `rig auth --help` for other ways to give one",
+            crate::auth::redact_url(url)
+        );
+    }
     Ok(url.trim_end_matches('/').to_string())
 }
 

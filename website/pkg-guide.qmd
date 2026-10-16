@@ -133,3 +133,5 @@ own user libraries never do.
   reproducible dependency management.
 - [Admin mode vs user mode](admin-vs-user-mode.qmd) for when installing or
   removing a package needs elevated privileges.
+- [Authentication](auth.qmd) for repositories that need a
+  password or a token.

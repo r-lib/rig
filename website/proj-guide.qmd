@@ -200,3 +200,7 @@ inherit a shared version requirement by name instead of repeating it. See
 - [`rig run`](reference/run.qmd), which starts R configured for a project.
 - [Managing R packages](pkg-guide.qmd) for installing packages outside of a
   project.
+- [Authentication](auth.qmd) for repositories that need a
+  password or a token. Never put a password into a repository URL in
+  `rproj.toml`, rig refuses it. The username is fine, and `rproj.lock`
+  keeps only the username, too.

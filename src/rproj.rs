@@ -976,6 +976,17 @@ impl Rproj {
                 if repo.url.is_none() {
                     bail!("`[[repository]]` `{}` needs a `url`", repo.name);
                 }
+                if repo
+                    .url
+                    .as_deref()
+                    .is_some_and(crate::auth::url_has_password)
+                {
+                    bail!(
+                        "the `url` of `[[repository]]` `{}` must not include a password, \
+                         see `rig auth --help` for other ways to give one",
+                        repo.name
+                    );
+                }
                 if repo.version.is_some() || repo.enabled.is_some() {
                     bail!(
                         "`[[repository]]` `{}` cannot have a `version` or `enabled`, \

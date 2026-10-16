@@ -136,7 +136,7 @@ pub fn write_etag_file(path: &Path, etag: Option<&str>) {
 #[tokio::main]
 pub async fn get_etag_(url: &str) -> Option<String> {
     let client = http_client();
-    let resp = match client.head(url).send().await {
+    let resp = match crate::auth::head(&client, url).send().await {
         Ok(resp) => resp,
         Err(err) => {
             debug!("Cannot get the ETag of {}: {}", url, err);
@@ -165,7 +165,7 @@ pub async fn download_file(
     let mut path = opath.to_os_string();
     path.push(".tmp");
     let path = Path::new(&path);
-    let resp = client.get(url).send().await;
+    let resp = crate::auth::get(client, url).send().await;
     let resp = match resp {
         Ok(resp) => resp.error_for_status(),
         Err(err) => {
@@ -177,9 +177,10 @@ pub async fn download_file(
     let resp = match resp {
         Ok(resp) => resp,
         Err(err) => {
-            OUTPUT.error(&format!("HTTP error at {}: {}", url, err));
+            let hint = err.status().map(crate::auth::status_hint).unwrap_or("");
+            OUTPUT.error(&format!("HTTP error at {}: {}{}", url, err, hint));
             error!("HTTP error at {}: {}", url, err);
-            bail!("HTTP error at {}: {}", url, err.to_string())
+            bail!("HTTP error at {}: {}{}", url, err.to_string(), hint)
         }
     };
 
@@ -274,8 +275,10 @@ impl std::fmt::Display for UnexpectedStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Failed to download {}, status: {}",
-            self.url, self.status
+            "Failed to download {}, status: {}{}",
+            self.url,
+            self.status,
+            crate::auth::status_hint(self.status)
         )
     }
 }
@@ -290,7 +293,7 @@ async fn download_if_newer_quiet(
     local_path: &PathBuf,
     etag: Option<&str>,
 ) -> Result<(bool, Option<String>), Box<dyn Error>> {
-    let mut req = client.get(url);
+    let mut req = crate::auth::get(client, url);
     if local_path.exists() {
         if let Some(etag_value) = etag {
             req = req.header("If-None-Match", etag_value);
@@ -388,7 +391,11 @@ async fn download_first_available(
                     debug!("Cannot download from {}: {}", url, e);
                 }
                 let reason = match e.downcast_ref::<UnexpectedStatus>() {
-                    Some(unexpected) => unexpected.status.to_string(),
+                    Some(unexpected) => format!(
+                        "{}{}",
+                        unexpected.status,
+                        crate::auth::status_hint(unexpected.status)
+                    ),
                     None => e.to_string(),
                 };
                 failures.push(format!("{} ({})", url, reason));
@@ -499,7 +506,7 @@ pub async fn fetch_optional_if_modified(
     url: &str,
     etag: Option<&str>,
 ) -> Result<ConditionalFetch, Box<dyn Error>> {
-    let mut req = client.get(url);
+    let mut req = crate::auth::get(client, url);
     if let Some(etag) = etag {
         req = req.header("If-None-Match", etag);
     }
@@ -526,7 +533,12 @@ pub async fn fetch_optional_if_modified(
 
         status => {
             error!("Failed to download {}, status: {}", url, status);
-            bail!("Failed to download {}, status: {}", url, status);
+            bail!(
+                "Failed to download {}, status: {}{}",
+                url,
+                status,
+                crate::auth::status_hint(status)
+            );
         }
     }
 }
@@ -576,8 +588,7 @@ pub async fn fetch_range_suffix(
     from: u64,
 ) -> Result<RangeFetch, Box<dyn Error>> {
     info!("Fetching {} from byte {}", url, from);
-    let resp = client
-        .get(url)
+    let resp = crate::auth::get(client, url)
         .header("Range", format!("bytes={}-", from))
         .send()
         .await?;
@@ -635,14 +646,16 @@ pub struct UrlProbe {
 pub async fn probe_url(client: &reqwest::Client, url: &str) -> UrlProbe {
     info!("Probing {}", url);
     let start = std::time::Instant::now();
-    let mut resp = client.head(url).timeout(PROBE_TIMEOUT).send().await;
+    let mut resp = crate::auth::head(client, url)
+        .timeout(PROBE_TIMEOUT)
+        .send()
+        .await;
 
     if let Ok(r) = &resp {
         if r.status() == StatusCode::METHOD_NOT_ALLOWED || r.status() == StatusCode::NOT_IMPLEMENTED
         {
             debug!("HEAD not supported by {}, retrying with a ranged GET", url);
-            resp = client
-                .get(url)
+            resp = crate::auth::get(client, url)
                 .header("Range", "bytes=0-0")
                 .timeout(PROBE_TIMEOUT)
                 .send()
@@ -735,7 +748,7 @@ async fn download_optional_if_newer(
     local_path: &PathBuf,
     etag: Option<&str>,
 ) -> Result<Option<(bool, Option<String>)>, Box<dyn Error>> {
-    let mut req = client.get(url);
+    let mut req = crate::auth::get(client, url);
     if local_path.exists() {
         if let Some(etag_value) = etag {
             req = req.header("If-None-Match", etag_value);
@@ -768,9 +781,13 @@ async fn download_optional_if_newer(
         }
 
         status => {
-            OUTPUT.error(&format!("Failed to download {}, status: {}", url, status));
+            let hint = crate::auth::status_hint(status);
+            OUTPUT.error(&format!(
+                "Failed to download {}, status: {}{}",
+                url, status, hint
+            ));
             error!("Failed to download {}, status: {}", url, status);
-            bail!("Failed to download {}, status: {}", url, status);
+            bail!("Failed to download {}, status: {}{}", url, status, hint);
         }
     }
 }
@@ -994,8 +1011,7 @@ pub async fn download_json(
 ) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
     let vers: Vec<Result<serde_json::Value, Box<dyn Error>>> =
         future::join_all(urls.into_iter().map(|url| async move {
-            let json = client
-                .get(url)
+            let json = crate::auth::get(client, &url)
                 .send()
                 .await?
                 .error_for_status()?
@@ -1282,5 +1298,139 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), 200);
+    }
+
+    /// `http://127.0.0.1:port` -> `http://<userinfo>@127.0.0.1:port`
+    fn with_userinfo(uri: &str, userinfo: &str) -> String {
+        uri.replacen("://", &format!("://{}@", userinfo), 1)
+    }
+
+    #[tokio::test]
+    async fn test_password_in_url_is_sent_as_basic_auth() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/cran/src/contrib/PACKAGES"))
+            // alice:pw
+            .and(header("authorization", "Basic YWxpY2U6cHc="))
+            .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let url = format!(
+            "{}/cran/src/contrib/PACKAGES",
+            with_userinfo(&mock_server.uri(), "alice:pw")
+        );
+        let client = crate::utils::http_client();
+        match fetch_optional_if_modified(&client, &url, None)
+            .await
+            .unwrap()
+        {
+            ConditionalFetch::Fetched { bytes, .. } => assert_eq!(bytes, b"ok"),
+            _ => panic!("expected content"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_registered_repo_credentials_apply_to_package_urls() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/repo/src/contrib/pkg_1.0.tar.gz"))
+            // bob:s3cret
+            .and(header("authorization", "Basic Ym9iOnMzY3JldA=="))
+            .respond_with(ResponseTemplate::new(200).set_body_string("pkg"))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        // As with `--with-repos`: the password is registered, and only the
+        // URL with the username is used from then on.
+        let repo = crate::repos::feed::CranlikeRepo::new(
+            "authtest-dl",
+            &format!("{}/repo", with_userinfo(&mock_server.uri(), "bob:s3cret")),
+        );
+        assert!(!repo.url.contains("s3cret"));
+        let url = format!("{}/src/contrib/pkg_1.0.tar.gz", repo.url);
+        let client = crate::utils::http_client();
+        let resp = crate::auth::get(&client, &url).send().await.unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn test_no_auth_for_other_hosts() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/public"))
+            .and(wiremock::matchers::header_exists("authorization"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/public"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+        let client = crate::utils::http_client();
+        let url = format!("{}/public", mock_server.uri());
+        let resp = crate::auth::get(&client, &url).send().await.unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn test_auth_dropped_on_cross_host_redirect() {
+        let auth_server = MockServer::start().await;
+        let other_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/file"))
+            .and(header("authorization", "Basic YWxpY2U6cHc="))
+            .respond_with(
+                ResponseTemplate::new(302)
+                    .insert_header("location", format!("{}/file", other_server.uri())),
+            )
+            .expect(1)
+            .mount(&auth_server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/file"))
+            .and(wiremock::matchers::header_exists("authorization"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&other_server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/file"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("moved"))
+            .mount(&other_server)
+            .await;
+
+        let url = format!("{}/file", with_userinfo(&auth_server.uri(), "alice:pw"));
+        let client = crate::utils::http_client();
+        let resp = crate::auth::get(&client, &url).send().await.unwrap();
+        assert_eq!(resp.status(), 200);
+        assert_eq!(resp.text().await.unwrap(), "moved");
+    }
+
+    #[tokio::test]
+    async fn test_auth_error_hint_and_no_password_in_error() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&mock_server)
+            .await;
+        let url = format!("{}/x", with_userinfo(&mock_server.uri(), "alice:topsecret"));
+        let client = crate::utils::http_client();
+        let err = fetch_optional_if_modified(&client, &url, None)
+            .await
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(err.contains("rig auth status"), "{}", err);
+
+        // a connection error: the URL in reqwest's message has no password
+        let err = crate::auth::get(&client, "http://alice:topsecret@127.0.0.1:1/x")
+            .send()
+            .await
+            .err()
+            .unwrap();
+        assert!(!format!("{:?} {}", err, err).contains("topsecret"));
     }
 }

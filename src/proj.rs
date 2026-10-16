@@ -809,6 +809,13 @@ pub(crate) fn parse_add_repos(
     let mut new: Vec<Repository> = vec![];
     let mut pin: Option<String> = None;
     for item in items {
+        if crate::auth::url_has_password(item.split_once('=').map_or(item.as_str(), |x| x.1)) {
+            bail!(
+                "The repository URL must not include a password, it would be saved in {}. \
+                 See `rig auth --help` for other ways to give one.",
+                RPROJ_MANIFEST_FILE
+            );
+        }
         let name = match parse_repo_url(&item)? {
             Some((name, url)) => {
                 let known = existing

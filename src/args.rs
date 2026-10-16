@@ -3065,6 +3065,93 @@ pub fn rig_app() -> Command {
 
     rig = rig.subcommand(cmd_ppm);
 
+    let auth_url = || {
+        Arg::new("url")
+            .help("URL or name of a repository, or URL of a Package Manager instance (default: PACKAGEMANAGER_ADDRESS)")
+            .required(false)
+    };
+    let auth_username = || {
+        Arg::new("username")
+            .help("username, for the system credential store")
+            .long("username")
+            .short('u')
+            .num_args(1)
+            .required(false)
+    };
+    let cmd_auth = Command::new("auth")
+        .about(ABOUT_AUTH)
+        .long_about(HELP_AUTH)
+        .display_order(0)
+        .arg_required_else_help(true)
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .num_args(0)
+                .required(false),
+        )
+        .subcommand(
+            Command::new("login")
+                .about(ABOUT_AUTH_LOGIN)
+                .long_about(HELP_AUTH_LOGIN)
+                .display_order(0)
+                .arg(auth_url())
+                .arg(auth_username())
+                .arg(
+                    Arg::new("password")
+                        .help("password, `-` reads it from the standard input (default: ask)")
+                        .long("password")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-browser")
+                        .help("do not open the browser for SSO, only print the URL")
+                        .long("no-browser")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("logout")
+                .about(ABOUT_AUTH_LOGOUT)
+                .long_about(HELP_AUTH_LOGOUT)
+                .display_order(0)
+                .arg(auth_url())
+                .arg(auth_username()),
+        )
+        .subcommand(
+            Command::new("status")
+                .about(ABOUT_AUTH_STATUS)
+                .long_about(HELP_AUTH_STATUS)
+                .display_order(0)
+                .arg(Arg::new("url").help("only show this URL").required(false))
+                .arg(
+                    Arg::new("connect")
+                        .help("check PPM SSO tokens with the server")
+                        .long("connect")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("token")
+                .about(ABOUT_AUTH_TOKEN)
+                .long_about(HELP_AUTH_TOKEN)
+                .display_order(0)
+                .arg(auth_url())
+                .arg(auth_username()),
+        );
+
+    rig = rig.subcommand(cmd_auth);
+
     let cmd_repos_setup = Command::new("setup")
         .about(ABOUT_REPOS_SETUP)
         .long_about(HELP_REPOS_SETUP)
