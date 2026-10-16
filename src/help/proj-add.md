@@ -119,7 +119,10 @@ rig proj add local::mypkg
 The path is recorded in `rproj.toml` relative to the project's own directory
 (not the directory `rig proj add` was run from), so the manifest stays
 correct after the project is moved or checked out elsewhere, as long as the
-local package stays in the same place relative to it.
+local package stays in the same place relative to it. `rproj.lock` keeps a
+relative path relative too, to the directory of `rproj.lock`, which is the
+workspace root in a workspace. A path given as absolute stays absolute in
+both files.
 
 ## Version requirements
 

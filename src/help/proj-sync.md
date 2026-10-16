@@ -10,9 +10,9 @@ its `rproj.lock` and installs the packages into the project library. If the
 project has no `rproj.lock` yet, rig runs [`rig proj lock`](#rig-proj-lock) with its default
 options first. Pass `--frozen` to fail instead, without touching `rproj.toml`
 at all: every package `rproj.lock` lists already carries its own download
-URL, so nothing but the lock file is needed to install from it. The one
-exception is `.rvenv/etc/repositories` (see below), which still comes from
-`rproj.toml` when one is present, and is skipped otherwise.
+URL, and the lock file also records the repositories it was solved with, so
+nothing but the lock file is needed to install from it. The one exception is
+the project's own package, see below.
 
 If `rproj.lock` exists, `rig proj sync` installs from it, even if `rproj.toml`
 changed since. Pass `--locked` to fail instead if `rproj.lock` is missing or
@@ -166,9 +166,9 @@ lives, by default or centralized), and the rest is rewritten on every sync:
   architecture the environment was built for. rig warns when it syncs an
   environment that was built for a different R.
 - `.rvenv/etc/repositories`, which the wrappers point `R_REPOSITORIES` at. The
-  repositories of the project: Posit Package Manager's CRAN for the lock
-  file's target, unless `rproj.toml` turns `cran` off, then the `[[repository]]`
-  entries, and the Bioconductor release of the target.
+  repositories `rproj.lock` was solved with, in the same order: Posit Package
+  Manager's CRAN for the lock file's target first, unless `cran` was off, then
+  the `[[repository]]` entries, and the Bioconductor release of the target.
 
 After a successful sync rig records the lock file it installed from in
 `.synced`, inside the project library (`.rvenv/lib` by default, or the

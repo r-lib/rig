@@ -1,5 +1,8 @@
 # rig 0.11.1-dev (development version)
 
+* `rig proj lock` now keeps relative 'path' dependencies relative in the
+  lock file. The root project is saved with path `"."`, if it is a package.
+
 * `rig proj import` and `rig proj export` now convert all `[build]` entries
   to and from the `ByteCompile`, `NeedsCompilation`, `LazyData`, `Biarch`
   and `KeepSource` `DESCRIPTION` fields.
