@@ -196,7 +196,7 @@ is_retired() {
 
 @test "add" {
     if ! rig ls | grep -q '^[* ] 4.5.1'; then
-	run rig -v add 4.5.1
+	run rig -v add 4.5.1 --with-site-library
 	[[ "$status" -eq 0 ]]
 	run rig ls
 	echo "$output" | grep -q "^[* ] 4.5.1"
@@ -354,7 +354,7 @@ is_retired() {
 
 @test "rm" {
     if ! rig ls | grep -q '^[* ] 4.0.5$'; then
-        run rig add 4.0 --without-pak --without-site-library
+        run rig add 4.0 --without-pak
         [[ "$status" -eq 0 ]]
         run rig ls
         echo "$output" | grep -q "^[* ] 4[.]0[.]5"

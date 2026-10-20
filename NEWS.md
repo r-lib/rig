@@ -1,8 +1,9 @@
 # rig 0.11.1-dev (development version)
 
-* `rig add` now creates the site library (`R_HOME/site-library`) of the
-  new R version, so R puts it on `.libPaths()`. Use
-  `--without-site-library` to skip this.
+* New `rig add --with-site-library` option to create the site library
+  (`R_HOME/site-library`) of the new R version, so R puts it on
+  `.libPaths()`. The default is `--without-site-library`, which does not
+  create it.
 
 * `rig pkg install` and `rig proj sync` now install git, GitHub and
   `url::` package sources on Windows again. rig passed `\\?\` paths

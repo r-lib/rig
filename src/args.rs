@@ -507,7 +507,7 @@ pub fn rig_app() -> Command {
         )
         .arg(
             Arg::new("with-site-library")
-                .help("Create a site library for the new R version (default).")
+                .help("Create a site library for the new R version.")
                 .long("with-site-library")
                 .num_args(0)
                 .required(false)
@@ -515,7 +515,7 @@ pub fn rig_app() -> Command {
         )
         .arg(
             Arg::new("without-site-library")
-                .help("Do not create a site library for the new R version.")
+                .help("Do not create a site library for the new R version (default).")
                 .long("without-site-library")
                 .num_args(0)
                 .required(false),
