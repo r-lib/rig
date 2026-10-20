@@ -1236,14 +1236,25 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     }
     let vers = sc_get_list()?;
     let rroot = get_r_root()?;
-    let base = Path::new(&rroot);
-    let binpath = get_r_binpath()?;
+    let binary_dir = Path::new(&binary_dir);
+    make_version_links(binary_dir, Path::new(&rroot), &vers)?;
+    remove_dangling_links(binary_dir)?;
+    Ok(())
+}
 
-    // Create new links, `R-<version>` and `Rscript-<version>`
+// Create the `R-<version>` and `Rscript-<version>` quick links in
+// `binary_dir` for the R versions in `vers`, installed in `rroot`. Existing
+// links are left alone.
+fn make_version_links(
+    binary_dir: &Path,
+    rroot: &Path,
+    vers: &[String],
+) -> Result<(), Box<dyn Error>> {
+    let binpath = get_r_binpath()?;
     for ver in vers {
-        let rbin = base.join(binpath.replace("{}", &ver));
+        let rbin = rroot.join(binpath.replace("{}", ver));
         for prog in ["R", "Rscript"] {
-            let linkfile = Path::new(&binary_dir).join(format!("{}-{}", prog, ver));
+            let linkfile = binary_dir.join(format!("{}-{}", prog, ver));
             let target = rbin.with_file_name(prog);
             if !linkfile.exists() {
                 OUTPUT.status(&format!(
@@ -1256,10 +1267,14 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
             }
         }
     }
+    Ok(())
+}
 
-    // Remove dangling links
-    let paths = std::fs::read_dir(&binary_dir)?;
-    let re = Regex::new("^(R|Rscript)-([0-9]+[.][0-9]+[.][0-9]+|oldrel|next|release|devel)$")?;
+// Remove the version and alias quick links in `binary_dir` whose target
+// does not exist any more, e.g. after `rig rm`.
+fn remove_dangling_links(binary_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let paths = std::fs::read_dir(binary_dir)?;
+    let re = re_admin_link()?;
     for file in paths {
         let path = file?.path();
         // If no path name, then path ends with ..., so we can skip
@@ -3206,5 +3221,83 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
         assert!(!re.is_match("Rscript"));
         assert!(!re.is_match("R-4.6")); // incomplete version
         assert!(!re.is_match("Rfoo"));
+    }
+
+    // A fake R installation root with `<root>/<ver>/bin/{R,Rscript}`.
+    fn fake_r_root(root: &Path, vers: &[&str]) {
+        for ver in vers {
+            let bin = root.join(ver).join("bin");
+            std::fs::create_dir_all(&bin).unwrap();
+            std::fs::write(bin.join("R"), "").unwrap();
+            std::fs::write(bin.join("Rscript"), "").unwrap();
+        }
+    }
+
+    #[test]
+    fn make_version_links_creates_r_and_rscript_links() {
+        let root = tempfile::tempdir().unwrap();
+        let bindir = tempfile::tempdir().unwrap();
+        fake_r_root(root.path(), &["4.5.1", "devel"]);
+        let vers = vec!["4.5.1".to_string(), "devel".to_string()];
+
+        make_version_links(bindir.path(), root.path(), &vers).unwrap();
+
+        for ver in ["4.5.1", "devel"] {
+            for prog in ["R", "Rscript"] {
+                let link = bindir.path().join(format!("{}-{}", prog, ver));
+                assert_eq!(
+                    std::fs::read_link(&link).unwrap(),
+                    root.path().join(ver).join("bin").join(prog)
+                );
+            }
+        }
+        // No plain `R` / `Rscript` links.
+        assert!(bindir.path().join("R").symlink_metadata().is_err());
+        assert!(bindir.path().join("Rscript").symlink_metadata().is_err());
+    }
+
+    #[test]
+    fn make_version_links_keeps_existing_links() {
+        let root = tempfile::tempdir().unwrap();
+        let bindir = tempfile::tempdir().unwrap();
+        fake_r_root(root.path(), &["4.5.1"]);
+        let other = root.path().join("other");
+        std::fs::write(&other, "").unwrap();
+        let link = bindir.path().join("Rscript-4.5.1");
+        symlink(&other, &link).unwrap();
+
+        make_version_links(bindir.path(), root.path(), &["4.5.1".to_string()]).unwrap();
+
+        assert_eq!(std::fs::read_link(&link).unwrap(), other);
+        assert!(bindir.path().join("R-4.5.1").exists());
+    }
+
+    #[test]
+    fn remove_dangling_links_removes_only_dangling_version_links() {
+        let root = tempfile::tempdir().unwrap();
+        let bindir = tempfile::tempdir().unwrap();
+        fake_r_root(root.path(), &["4.4.3", "4.5.1"]);
+        let vers = vec!["4.4.3".to_string(), "4.5.1".to_string()];
+        make_version_links(bindir.path(), root.path(), &vers).unwrap();
+        // Dangling links that are not rig quick links are left alone.
+        let unrelated = bindir.path().join("Rscript-foo");
+        symlink(root.path().join("nope"), &unrelated).unwrap();
+        // So are regular files with a quick link name.
+        let file = bindir.path().join("R-4.0.5");
+        std::fs::write(&file, "").unwrap();
+
+        std::fs::remove_dir_all(root.path().join("4.4.3")).unwrap();
+        remove_dangling_links(bindir.path()).unwrap();
+
+        assert!(bindir.path().join("R-4.4.3").symlink_metadata().is_err());
+        assert!(bindir
+            .path()
+            .join("Rscript-4.4.3")
+            .symlink_metadata()
+            .is_err());
+        assert!(bindir.path().join("R-4.5.1").exists());
+        assert!(bindir.path().join("Rscript-4.5.1").exists());
+        assert!(unrelated.symlink_metadata().is_ok());
+        assert!(file.exists());
     }
 }
