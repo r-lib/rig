@@ -54,6 +54,15 @@ minor branch. E.g. it is not possible to have R 4.6.0 and R 4.6.1 installed
 at the same time. Adding one of them will automatically remove the other.
 In user mode there is no such restriction.
 
+`rig add` creates the `R-<version>` and `Rscript-<version>` quick links of the
+new version, e.g. `R-4.6.1` and `Rscript-4.6.1`, see `rig system make-links`. If
+there is no default R version yet, it also makes the new version the default,
+which creates the plain `R` and `Rscript` links. With `--without-default` rig
+does not set a default R version and does not create the `R` and `Rscript`
+links, only the versioned ones. (On macOS in admin mode rig also removes the
+`R` and `Rscript` links that the CRAN installer creates, unless they existed
+before.) You can still set a default later with `rig default`.
+
 If the requested version is already installed, `rig add` does nothing (other
 than making sure any implied alias, e.g. `release`, still points at it)
 instead of reinstalling it. Use `--reinstall` to reinstall anyway. R-devel
@@ -98,6 +107,9 @@ rig add 4.6.1
 
 # Install a version and print information about it as JSON
 rig add --json release
+
+# Install a version, only with the R-<version> and Rscript-<version> links
+rig add 4.6 --without-default
 
 # Install latest version within a minor branch
 rig add 4.6

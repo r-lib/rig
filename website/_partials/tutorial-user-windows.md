@@ -113,9 +113,10 @@ also creates versioned quick links, so you can always reach a specific version
 without switching:
 
 ``` powershell
-R                                # the default version
-R-4.5.3                          # a specific version
-Rscript -e 'R.version.string'    # the default version, non-interactively
+R                                    # the default version
+R-4.5.3                              # a specific version
+Rscript -e 'R.version.string'        # the default version, non-interactively
+Rscript-4.5.3 -e 'R.version.string'  # a specific version, non-interactively
 ```
 
 The quick links are in your user profile, so switching the default never raises

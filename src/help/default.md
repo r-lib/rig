@@ -19,7 +19,8 @@ needed. In admin mode this command can change the default version without
 it as `sudo rig default ...`.
 
 You don't need to update the default R version to just run a non-default R
-version. You can use the `R-<ver>` links, see `rig system make-links`. Or, you
+version. You can use the `R-<ver>` and `Rscript-<ver>` links, see `rig system
+make-links`. Or, you
 can also use `rig run` to run an R script or app with a certain R version.
 
 `rig switch` is an alias of `rig default`.

@@ -1,5 +1,13 @@
 # rig 0.11.1-dev (development version)
 
+* rig now creates `Rscript-<version>` quick links next to the
+  `R-<version>` ones, e.g. `Rscript-4.6.1`.
+
+* New `rig add --without-default` option: do not make the new R version
+  the default, even if there is no default yet, and do not create the
+  plain `R` and `Rscript` links. The versioned quick links are still
+  created, and `rig default` can set a default later.
+
 * `rig pkg install` and `rig proj sync` now install git, GitHub and
   `url::` package sources on Windows again. rig passed `\\?\` paths
   to `R CMD INSTALL`, which R rejected (#485).

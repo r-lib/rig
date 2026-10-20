@@ -185,6 +185,9 @@ teardown() {
     run R-4.1 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]1[.][0-9]$"
+    run Rscript-4.1 -e 'cat(as.character(getRversion()))'
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^4[.]1[.][0-9]$"
 
     if ! rig ls | grep -q '^[* ] 4.0'; then
         run sudo rig add 4.0 -a x86_64
