@@ -1,5 +1,9 @@
 # rig 0.11.1-dev (development version)
 
+* `rig pkg install` and `rig proj sync` now install git, GitHub and
+  `url::` package sources on Windows again. rig passed `\\?\` paths
+  to `R CMD INSTALL`, which R rejected (#485).
+
 * `rig proj import` and `rig proj lock` now handle `Remotes` and
   `Config/Needs/*` entries for packages with a dot in their name, e.g.
   `Rdatatable/data.table` (#476).

@@ -201,6 +201,69 @@ pub fn normalize_modes(_dir: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// A path in a form that R accepts on the command line.
+///
+/// On Windows `canonicalize()` returns a verbatim `\\?\C:\...` path, which R
+/// does not handle: `R CMD INSTALL` joins `/DESCRIPTION` onto a package
+/// directory, and Windows does not normalize `/` in a verbatim path, so the
+/// package looks invalid. Older R versions do not know about verbatim paths
+/// at all. So drop the `\\?\` prefix and use `/` as the separator, which every
+/// R version supports. Elsewhere the path is returned unchanged.
+pub fn r_path(path: &Path) -> PathBuf {
+    if cfg!(windows) {
+        match path.to_str() {
+            Some(s) => PathBuf::from(windows_r_path(s)),
+            None => path.to_path_buf(),
+        }
+    } else {
+        path.to_path_buf()
+    }
+}
+
+/// The longest path, in UTF-16 units, that Windows accepts without long path
+/// support. `MAX_PATH` is 260, including the terminating NUL.
+const WINDOWS_MAX_PATH: usize = 259;
+
+/// A hint for a failed `R CMD INSTALL`, if one of `paths` is too long for a
+/// Windows without long path support. Since `r_path()` gives R a plain path,
+/// such a path only works with R 4.3.0 or later, and only if long paths are
+/// enabled in Windows. Never a hint on other systems.
+pub fn long_path_hint(paths: &[&Path]) -> Option<String> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let long: Vec<String> = paths
+        .iter()
+        .filter(|p| is_too_long_for_windows(p))
+        .map(|p| p.display().to_string())
+        .collect();
+    if long.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "\n  These paths are longer than {} characters: {}\n  \
+         R needs long path support to use them: R 4.3.0 or later, and\n  \
+         `LongPathsEnabled` set in the Windows registry. Or use a shorter path.",
+        WINDOWS_MAX_PATH,
+        long.join(", ")
+    ))
+}
+
+fn is_too_long_for_windows(path: &Path) -> bool {
+    path.to_string_lossy().encode_utf16().count() > WINDOWS_MAX_PATH
+}
+
+fn windows_r_path(path: &str) -> String {
+    let plain = if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{}", rest)
+    } else if let Some(rest) = path.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        path.to_string()
+    };
+    plain.replace('\\', "/")
+}
+
 pub fn calculate_hash(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s);
@@ -1235,5 +1298,32 @@ mod tests {
         assert_eq!(mode(&root), 0o700);
         // Not what a link points to.
         assert_eq!(mode(&outside), 0o666);
+    }
+}
+
+#[cfg(test)]
+mod r_path_tests {
+    use super::*;
+
+    #[test]
+    fn test_windows_r_path() {
+        assert_eq!(
+            windows_r_path(r"\\?\C:\Users\me\AppData\Local\pkg"),
+            "C:/Users/me/AppData/Local/pkg"
+        );
+        assert_eq!(
+            windows_r_path(r"\\?\UNC\server\share\lib"),
+            "//server/share/lib"
+        );
+        assert_eq!(windows_r_path(r"C:\Temp\lib"), "C:/Temp/lib");
+        assert_eq!(windows_r_path("C:/Temp/lib"), "C:/Temp/lib");
+    }
+
+    #[test]
+    fn test_is_too_long_for_windows() {
+        let ok = format!("C:/{}", "a".repeat(WINDOWS_MAX_PATH - 3));
+        assert!(!is_too_long_for_windows(Path::new(&ok)));
+        let long = format!("{}a", ok);
+        assert!(is_too_long_for_windows(Path::new(&long)));
     }
 }

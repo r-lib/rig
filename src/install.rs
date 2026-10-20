@@ -605,12 +605,14 @@ where
         package_path_abs
     };
 
+    let library_path_r = crate::utils::r_path(&library_path_abs);
+    let package_path_r = crate::utils::r_path(&package_path_abs);
     let status = Command::new(r_binary)
         .arg("CMD")
         .arg("INSTALL")
         .arg("-l")
-        .arg(&library_path_abs)
-        .arg(&package_path_abs)
+        .arg(&library_path_r)
+        .arg(&package_path_r)
         .current_dir(run_dir.path())
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_file_stderr))
@@ -647,11 +649,14 @@ where
         // A missing system library is the most common reason a source
         // package fails to compile.
         let missing = crate::sysreqs::still_missing(package_name);
-        let hint = if missing.is_empty() {
+        let mut hint = if missing.is_empty() {
             String::new()
         } else {
             format!("\n  Missing system packages: {}", missing.join(", "))
         };
+        if let Some(long) = crate::utils::long_path_hint(&[&library_path_r, &package_path_r]) {
+            hint.push_str(&long);
+        }
         OUTPUT.error(&format!(
             "Failed to install {}\n  See log: {}{}",
             package_name,
