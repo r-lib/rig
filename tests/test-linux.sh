@@ -196,10 +196,11 @@ is_retired() {
 
 @test "add" {
     if ! rig ls | grep -q '^[* ] 4.5.1'; then
-	run rig -v add 4.5.1
+	run rig -v add 4.5.1 --with-site-library
 	[[ "$status" -eq 0 ]]
 	run rig ls
 	echo "$output" | grep -q "^[* ] 4.5.1"
+	[[ -d "$(R-4.5.1 RHOME)/site-library" ]]
     fi
     run R-4.5.1 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
@@ -357,6 +358,7 @@ is_retired() {
         [[ "$status" -eq 0 ]]
         run rig ls
         echo "$output" | grep -q "^[* ] 4[.]0[.]5"
+        [[ ! -e "$(R-4.0.5 RHOME)/site-library" ]]
     fi
     run rig rm 4.0.5
     [[ "$status" -eq 0 ]]
