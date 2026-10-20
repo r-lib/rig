@@ -506,6 +506,17 @@ pub fn rig_app() -> Command {
                 .required(false),
         )
         .arg(
+            Arg::new("without-default")
+                .help(
+                    "Do not make this R version the default, even if there is no\n\
+                    default yet, and do not create the R and Rscript links.\n\
+                    The R-<version> and Rscript-<version> links are still created.",
+                )
+                .long("without-default")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
             Arg::new("pak-version")
                 .help("pak version to install.")
                 .long("pak-version")

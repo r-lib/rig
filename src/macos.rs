@@ -130,6 +130,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     let mode = get_mode()?;
     let alias = get_alias(args);
     let reinstall = args.get_flag("reinstall");
+    let without_default = args.get_flag("without-default");
     // `devel`/`next` are rebuilt daily under the same version number, so
     // they are reinstalled, unless the installer's ETag says that the
     // installed build is the current one. Everything else only matches an
@@ -240,7 +241,11 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
         dirname
     } else {
         let dirname = fver.installdir.clone();
+        let default_links = existing_default_links();
         safe_install(target, &dirname, arch)?;
+        if without_default {
+            remove_new_default_links(&default_links);
+        }
         dirname
     };
     if rolling {
@@ -249,7 +254,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
 
     // This should not happen currently on macOS, a .pkg installer
     // sets the default, but prepare for the future
-    set_default_if_none(dirname.to_string())?;
+    if !without_default {
+        set_default_if_none(dirname.to_string())?;
+    }
 
     sc_system_forget()?;
     system_no_openmp(Some(vec![dirname.to_string()]))?;
@@ -275,6 +282,43 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
         name: dirname.to_string(),
         new_install: true,
     }))
+}
+
+// The CRAN installer creates the `R` and `Rscript` links in `/usr/local/bin`.
+// `existing_default_links()` records which of them exist before running the
+// installer, and `remove_new_default_links()` removes the ones the installer
+// added, for `rig add --without-default`.
+const INSTALLER_LINKS_DIR: &str = "/usr/local/bin";
+
+fn existing_default_links() -> Vec<bool> {
+    ["R", "Rscript"]
+        .iter()
+        .map(|name| {
+            Path::new(INSTALLER_LINKS_DIR)
+                .join(name)
+                .symlink_metadata()
+                .is_ok()
+        })
+        .collect()
+}
+
+fn remove_new_default_links(existing: &[bool]) {
+    for (name, existed) in ["R", "Rscript"].iter().zip(existing) {
+        if *existed {
+            continue;
+        }
+        let path = Path::new(INSTALLER_LINKS_DIR).join(name);
+        // Only remove symlinks that point into the R framework.
+        if let Ok(tgt) = std::fs::read_link(&path) {
+            if tgt.to_string_lossy().contains("R.framework") {
+                debug!("Removing {} created by the installer", path.display());
+                if let Err(e) = std::fs::remove_file(&path) {
+                    OUTPUT.warn(&format!("Cannot remove {}: {}", path.display(), e));
+                    warn!("Cannot remove {}: {}", path.display(), e);
+                }
+            }
+        }
+    }
 }
 
 fn random_string() -> String {
@@ -826,9 +870,13 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
             );
             continue;
         }
-        let linkfile = Path::new(&binary_dir).join("R-".to_string() + &ver);
-        let target = base.join(&ver).join(binpath);
-        if !linkfile.exists() {
+        let rbin = base.join(&ver).join(binpath);
+        for prog in ["R", "Rscript"] {
+            let linkfile = Path::new(&binary_dir).join(format!("{}-{}", prog, ver));
+            let target = rbin.with_file_name(prog);
+            if linkfile.exists() {
+                continue;
+            }
             debug!("Adding {} -> {}", linkfile.display(), target.display());
             if let Err(err) = symlink(&target, &linkfile) {
                 umask(old_umask);
@@ -851,7 +899,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     // Remove dangling links
     debug!("Cleaning up dangling quick links");
     let paths = std::fs::read_dir(&binary_dir)?;
-    let re = Regex::new("^R-[0-9]+[.][0-9]+")?;
+    let re = re_version_link();
     let re2 = re_alias();
     for file in paths {
         let path = file?.path();
@@ -882,6 +930,11 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+// `R-<version>` and `Rscript-<version>` quick links.
+fn re_version_link() -> Regex {
+    Regex::new("^(R|Rscript)-[0-9]+[.][0-9]+").unwrap()
 }
 
 pub fn re_alias() -> Regex {
@@ -1830,7 +1883,7 @@ fn admin_cleanup_needed(keep_install: bool, keep_links: bool) -> Result<bool, Bo
             }
         }
     }
-    let re_ver = Regex::new("^R-[0-9]+[.][0-9]+")?;
+    let re_ver = re_version_link();
     let re_al = re_alias();
     if let Ok(paths) = std::fs::read_dir(bindir) {
         for de in paths.flatten() {
@@ -1906,7 +1959,7 @@ fn forget_admin_packages() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-// Remove the admin-mode `R`, `Rscript`, `R-*` and alias quick links from
+// Remove the admin-mode `R`, `Rscript`, `R-*`, `Rscript-*` and alias quick links from
 // `/usr/local/bin`. Only symlinks pointing into the R framework are removed,
 // to avoid touching unrelated files.
 fn remove_admin_links() -> Result<(), Box<dyn Error>> {
@@ -1915,7 +1968,7 @@ fn remove_admin_links() -> Result<(), Box<dyn Error>> {
         Ok(p) => p,
         Err(_) => return Ok(()),
     };
-    let re_ver = Regex::new("^R-[0-9]+[.][0-9]+")?;
+    let re_ver = re_version_link();
     let re_al = re_alias();
     for de in paths.flatten() {
         let path = de.path();

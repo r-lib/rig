@@ -558,7 +558,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
             }
         }
         Some(ref dirname) => {
-            set_default_if_none(dirname.to_string())?;
+            if !args.get_flag("without-default") {
+                set_default_if_none(dirname.to_string())?;
+            }
             library_update_rprofile(&dirname.to_string())?;
         }
     };
@@ -1208,29 +1210,37 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     }
 
     for ver in vers {
-        let filename = "R-".to_string() + &ver + ".exe";
-        let linkfile = linkdir.join(&filename);
-        new_links.push(filename);
         let ver_rroot = get_r_root_for(&ver)?;
         let ver_base = version_dir_key(&ver);
         let ver_dir = r_dirname(&ver_base)?;
         let target_dir = Path::new(&ver_rroot).join(&ver_dir);
-        let target = format!("{}\\{}\\bin\\R.exe", ver_rroot, ver_dir);
+        for prog in ["R", "Rscript"] {
+            let filename = format!("{}-{}.exe", prog, ver);
+            let linkfile = linkdir.join(&filename);
+            new_links.push(filename);
+            let target = format!("{}\\{}\\bin\\{}.exe", ver_rroot, ver_dir, prog);
 
-        let op;
-        if linkfile.exists() {
-            op = "Updating";
-            if let Some((orig_target, orig_marker)) = read_shim_link(&linkfile) {
-                if orig_target == target && orig_marker.is_empty() {
-                    continue;
+            let op;
+            if linkfile.exists() {
+                op = "Updating";
+                if let Some((orig_target, orig_marker)) = read_shim_link(&linkfile) {
+                    if orig_target == target && orig_marker.is_empty() {
+                        continue;
+                    }
                 }
-            }
-        } else {
-            op = "Adding";
-        };
-        OUTPUT.status(&format!("{} R-{} -> {}", op, ver, target_dir.display()));
-        info!("{} R-{} -> {}", op, ver, target_dir.display());
-        write_shim_link(&linkfile, &target, "")?;
+            } else {
+                op = "Adding";
+            };
+            OUTPUT.status(&format!(
+                "{} {}-{} -> {}",
+                op,
+                prog,
+                ver,
+                target_dir.display()
+            ));
+            info!("{} {}-{} -> {}", op, prog, ver, target_dir.display());
+            write_shim_link(&linkfile, &target, "")?;
+        }
     }
 
     // Delete the ones we don't need
@@ -1259,7 +1269,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                 if !filename.ends_with(".exe") {
                     continue;
                 }
-                if !filename.starts_with("R-") {
+                if !filename.starts_with("R-") && !filename.starts_with("Rscript-") {
                     continue;
                 }
                 if re_als.is_match(&filename) {
@@ -2088,6 +2098,7 @@ fn admin_cleanup_needed(keep_install: bool, keep_links: bool) -> Result<bool, Bo
                 || name == "Rscript.exe"
                 || name == "RS.exe"
                 || (name.starts_with("R-") && (name.ends_with(".bat") || name.ends_with(".exe")))
+                || (name.starts_with("Rscript-") && name.ends_with(".exe"))
                 || re.is_match(name)
             {
                 return Ok(true);
@@ -2190,7 +2201,8 @@ fn remove_admin_links() -> Result<(), Box<dyn Error>> {
             || name == "Rscript.exe"
             || name == "RS.exe"
             || re.is_match(&name)
-            || (name.starts_with("R-") && (name.ends_with(".bat") || name.ends_with(".exe")));
+            || (name.starts_with("R-") && (name.ends_with(".bat") || name.ends_with(".exe")))
+            || (name.starts_with("Rscript-") && name.ends_with(".exe"));
         if !is_link {
             continue;
         }

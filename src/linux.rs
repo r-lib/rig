@@ -384,14 +384,19 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
 
     crate::cache::remove_download_if_no_cache(&target);
 
-    set_default_if_none(dirname.to_string())?;
+    let without_default = args.get_flag("without-default");
+    if !without_default {
+        set_default_if_none(dirname.to_string())?;
+    }
 
     // In user mode, make sure the `R`/`Rscript` aliases in the binary directory
     // exist and point at the current default. `set_default_if_none` only creates
     // them on the very first install; refresh them here so they are present even
     // when a default was already set.
     if mode == Mode::User {
-        make_current_r_links()?;
+        if !without_default {
+            make_current_r_links()?;
+        }
         if let Err(e) = ensure_positron_setup(None) {
             OUTPUT.warn(&format!("Could not update Positron settings: {}", e));
             warn!("Could not update Positron settings: {}", e);
@@ -1234,24 +1239,27 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     let base = Path::new(&rroot);
     let binpath = get_r_binpath()?;
 
-    // Create new links
+    // Create new links, `R-<version>` and `Rscript-<version>`
     for ver in vers {
-        let linkfile = Path::new(&binary_dir).join("R-".to_string() + &ver);
-        let target = base.join(binpath.replace("{}", &ver));
-        if !linkfile.exists() {
-            OUTPUT.status(&format!(
-                "Adding {} -> {}",
-                linkfile.display(),
-                target.display()
-            ));
-            info!("Adding {} -> {}", linkfile.display(), target.display());
-            symlink(&target, &linkfile)?;
+        let rbin = base.join(binpath.replace("{}", &ver));
+        for prog in ["R", "Rscript"] {
+            let linkfile = Path::new(&binary_dir).join(format!("{}-{}", prog, ver));
+            let target = rbin.with_file_name(prog);
+            if !linkfile.exists() {
+                OUTPUT.status(&format!(
+                    "Adding {} -> {}",
+                    linkfile.display(),
+                    target.display()
+                ));
+                info!("Adding {} -> {}", linkfile.display(), target.display());
+                symlink(&target, &linkfile)?;
+            }
         }
     }
 
     // Remove dangling links
     let paths = std::fs::read_dir(&binary_dir)?;
-    let re = Regex::new("^R-([0-9]+[.][0-9]+[.][0-9]+|oldrel|next|release|devel)$")?;
+    let re = Regex::new("^(R|Rscript)-([0-9]+[.][0-9]+[.][0-9]+|oldrel|next|release|devel)$")?;
     for file in paths {
         let path = file?.path();
         // If no path name, then path ends with ..., so we can skip
@@ -1807,7 +1815,7 @@ fn clean_admin_installations(keep_install: bool, keep_links: bool) -> Result<(),
 
 fn re_admin_link() -> Result<Regex, Box<dyn Error>> {
     Ok(Regex::new(
-        "^R-([0-9]+[.][0-9]+[.][0-9]+|oldrel|next|release|devel)$",
+        "^(R|Rscript)-([0-9]+[.][0-9]+[.][0-9]+|oldrel|next|release|devel)$",
     )?)
 }
 
@@ -3191,6 +3199,8 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
         assert!(re.is_match("R-oldrel"));
         assert!(re.is_match("R-devel"));
         assert!(re.is_match("R-next"));
+        assert!(re.is_match("Rscript-4.6.0"));
+        assert!(re.is_match("Rscript-devel"));
         // Not version/alias links.
         assert!(!re.is_match("R"));
         assert!(!re.is_match("Rscript"));

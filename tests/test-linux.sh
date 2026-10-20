@@ -204,6 +204,11 @@ is_retired() {
     run R-4.5.1 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]5[.]1$"
+    run rig system make-links
+    [[ "$status" -eq 0 ]]
+    run Rscript-4.5.1 -e 'cat(as.character(getRversion()))'
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^4[.]5[.]1$"
 
     if ! rig ls | grep -q '^[* ] 4.4.3'; then
 	run rig add 4.4

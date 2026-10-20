@@ -68,9 +68,10 @@ also creates versioned quick links, so you can always reach a specific version
 without switching:
 
 ```sh
-R                              # the default version
-R-4.5.3                        # a specific version
-Rscript -e 'R.version.string'  # the default version, non-interactively
+R                                    # the default version
+R-4.5.3                              # a specific version
+Rscript -e 'R.version.string'        # the default version, non-interactively
+Rscript-4.5.3 -e 'R.version.string'  # a specific version, non-interactively
 ```
 
 In admin mode `rig default` works without `sudo` as long as your account is in
