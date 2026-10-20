@@ -506,6 +506,21 @@ pub fn rig_app() -> Command {
                 .required(false),
         )
         .arg(
+            Arg::new("with-site-library")
+                .help("Create a site library for the new R version (default).")
+                .long("with-site-library")
+                .num_args(0)
+                .required(false)
+                .conflicts_with("without-site-library"),
+        )
+        .arg(
+            Arg::new("without-site-library")
+                .help("Do not create a site library for the new R version.")
+                .long("without-site-library")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
             Arg::new("pak-version")
                 .help("pak version to install.")
                 .long("pak-version")

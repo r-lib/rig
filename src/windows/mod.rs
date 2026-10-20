@@ -562,6 +562,15 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
             library_update_rprofile(&dirname.to_string())?;
         }
     };
+    if !args.get_flag("without-site-library") {
+        match dirname {
+            None => {
+                OUTPUT.warn("Cannot create site library, cannot determine installation directory");
+                warn!("Cannot create site library, cannot determine installation directory");
+            }
+            Some(ref dirname) => create_site_library(dirname)?,
+        }
+    }
     sc_system_make_links()?;
     match dirname {
         None => {}

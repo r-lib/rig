@@ -253,6 +253,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
 
     sc_system_forget()?;
     system_no_openmp(Some(vec![dirname.to_string()]))?;
+    if !args.get_flag("without-site-library") {
+        create_site_library(&dirname)?;
+    }
     system_fix_permissions(Some(vec![dirname.to_string()]))?;
     library_update_rprofile(&dirname.to_string())?;
     sc_system_make_links()?;

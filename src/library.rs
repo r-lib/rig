@@ -337,6 +337,48 @@ pub fn sc_library_set_default(name: &str, rver: Option<&str>) -> Result<(), Box<
     Ok(())
 }
 
+/// Create the `R_HOME/site-library` directory of an R installation. R only
+/// adds the site library to `.libPaths()` if this directory exists.
+pub fn create_site_library(rver: &str) -> Result<(), Box<dyn Error>> {
+    // The system profile is at `R_HOME/library/base/R/Rprofile`.
+    let rprofile = get_system_profile(rver)?;
+    let rhome = match rprofile.ancestors().nth(4) {
+        Some(x) => x.to_path_buf(),
+        None => {
+            OUTPUT.error(&format!(
+                "Cannot determine R_HOME for R {} from {}",
+                rver,
+                rprofile.display()
+            ));
+            error!(
+                "Cannot determine R_HOME for R {} from {}",
+                rver,
+                rprofile.display()
+            );
+            bail!("Cannot determine R_HOME for R {}", rver);
+        }
+    };
+    let site = rhome.join("site-library");
+    if site.exists() {
+        debug!("Site library already exists at {}", site.display());
+        return Ok(());
+    }
+
+    OUTPUT.status(&format!("Creating site library at {}", site.display()));
+    info!("Creating site library at {}", site.display());
+    if let Err(e) = std::fs::create_dir_all(&site) {
+        OUTPUT.error(&format!(
+            "Cannot create site library at {}: {}",
+            site.display(),
+            e
+        ));
+        error!("Cannot create site library at {}: {}", site.display(), e);
+        bail!("Cannot create site library at {}: {}", site.display(), e);
+    }
+
+    Ok(())
+}
+
 pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
     let rprofile = get_system_profile(rver)?;
     let lines = match read_lines(&rprofile) {

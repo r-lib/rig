@@ -54,6 +54,14 @@ minor branch. E.g. it is not possible to have R 4.6.0 and R 4.6.1 installed
 at the same time. Adding one of them will automatically remove the other.
 In user mode there is no such restriction.
 
+After installing R, rig creates a site library, the `site-library`
+directory in the R home directory (`R.home()`), if it does not exist yet. R
+only uses a site library if this directory exists, and then puts it on
+`.libPaths()` after the user library. In admin mode the site library is
+shared by all users of the machine, and only administrators can install
+packages into it. In user mode it is inside your own R installation. Use
+`--without-site-library` to skip creating it.
+
 If the requested version is already installed, `rig add` does nothing (other
 than making sure any implied alias, e.g. `release`, still points at it)
 instead of reinstalling it. Use `--reinstall` to reinstall anyway. R-devel
@@ -98,6 +106,9 @@ rig add 4.6.1
 
 # Install a version and print information about it as JSON
 rig add --json release
+
+# Install the latest release, without creating a site library
+rig add release --without-site-library
 
 # Install latest version within a minor branch
 rig add 4.6
