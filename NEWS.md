@@ -1,5 +1,10 @@
 # rig 0.11.1-dev (development version)
 
+* rig on Linux now uses an updated embedded root certificate bundle
+  (webpki-root-certs 1.0.10), which drops the compromised
+  "emSign ECC Root CA - G3" root (see [GHSA-hq85-5cpj-mr62](
+    https://github.com/astral-sh/uv/security/advisories/GHSA-hq85-5cpj-mr62)).
+
 * `rig pkg install` and `rig proj sync` now install git, GitHub and
   `url::` package sources on Windows again. rig passed `\\?\` paths
   to `R CMD INSTALL`, which R rejected (#485).
