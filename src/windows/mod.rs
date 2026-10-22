@@ -368,6 +368,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
 
     let alias = get_alias(args);
     let reinstall = args.get_flag("reinstall");
+    crate::utils::set_skip_path_setup(args.get_flag("without-path"));
     // `devel`/`next` are rebuilt daily under the same version number, so
     // they are reinstalled, unless the installer's ETag says that the
     // installed build is the current one. Everything else only matches an
@@ -1286,7 +1287,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         };
     }
 
-    if get_mode()? == Mode::User {
+    if get_mode()? == Mode::User && !crate::utils::skip_path_setup() {
         add_user_bin_to_path()?;
     }
 

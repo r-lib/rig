@@ -531,6 +531,17 @@ pub fn rig_app() -> Command {
                 .required(false),
         )
         .arg(
+            Arg::new("without-path")
+                .help(
+                    "Do not put rig's quick-link directory on the PATH (user mode):\n\
+                    rig otherwise edits the shell startup files on macOS and Linux,\n\
+                    and the user PATH on Windows, when it is missing.",
+                )
+                .long("without-path")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
             Arg::new("json")
                 .help("JSON output")
                 .long("json")
@@ -3837,6 +3848,13 @@ mod tests {
             .unwrap();
         let (_name, sub) = matches.subcommand().unwrap();
         assert!(sub.get_flag("no-default"));
+        assert!(!sub.get_flag("without-path"));
+
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "add", "--without-path", "4.6.1"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        assert!(sub.get_flag("without-path"));
     }
 
     #[test]

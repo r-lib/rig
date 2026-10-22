@@ -61,6 +61,12 @@ on macOS rig installs a LaunchAgent that sets `RSTUDIO_WHICH_R` at login.
 Use `--no-default` to leave the default alone and only install R, e.g. when
 another tool runs rig and manages the R versions itself.
 
+In user mode rig also puts its quick-link directory (`~/.local/bin`,
+`%USERPROFILE%\.local\bin` on Windows) on the PATH when it is missing: it
+adds a line to the shell startup files on macOS and Linux, and prepends the
+directory to the user PATH in the registry on Windows. `--without-path`
+skips that as well.
+
 If the requested version is already installed, `rig add` does nothing (other
 than making sure any implied alias, e.g. `release`, still points at it)
 instead of reinstalling it. Use `--reinstall` to reinstall anyway. R-devel

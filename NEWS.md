@@ -1,9 +1,11 @@
 # rig 0.11.1-dev (development version)
 
 * New `rig add --no-default` option to install an R version without
-  making it the default when no default R version is set yet. Tools that
-  run rig to install R, like RStudio, can use it to leave the user's
-  default R, quick links and IDE settings alone.
+  making it the default when no default R version is set yet, and
+  `rig add --without-path` to skip putting rig's quick-link directory on
+  the PATH (the shell startup files on macOS and Linux, the user PATH on
+  Windows). Tools that run rig to install R, like RStudio, can use them to
+  leave the user's default R, quick links, PATH and IDE settings alone.
 
 * rig on Linux now uses an updated embedded root certificate bundle
   (webpki-root-certs 1.0.10), which drops the compromised
