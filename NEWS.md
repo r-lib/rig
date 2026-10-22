@@ -1,5 +1,10 @@
 # rig 0.11.1-dev (development version)
 
+* New `rig add --no-default` option to install an R version without
+  making it the default when no default R version is set yet. Tools that
+  run rig to install R, like RStudio, can use it to leave the user's
+  default R, quick links and IDE settings alone.
+
 * rig on Linux now uses an updated embedded root certificate bundle
   (webpki-root-certs 1.0.10), which drops the compromised
   "emSign ECC Root CA - G3" root (see [GHSA-hq85-5cpj-mr62](

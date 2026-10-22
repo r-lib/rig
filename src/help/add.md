@@ -54,6 +54,13 @@ minor branch. E.g. it is not possible to have R 4.6.0 and R 4.6.1 installed
 at the same time. Adding one of them will automatically remove the other.
 In user mode there is no such restriction.
 
+If no default R version is set yet, `rig add` makes the new version the
+default, as `rig default` would. In user mode that creates the `R` and
+`Rscript` quick links, and registers the version with RStudio and Positron:
+on macOS rig installs a LaunchAgent that sets `RSTUDIO_WHICH_R` at login.
+Use `--no-default` to leave the default alone and only install R, e.g. when
+another tool runs rig and manages the R versions itself.
+
 If the requested version is already installed, `rig add` does nothing (other
 than making sure any implied alias, e.g. `release`, still points at it)
 instead of reinstalling it. Use `--reinstall` to reinstall anyway. R-devel

@@ -558,7 +558,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
             }
         }
         Some(ref dirname) => {
-            set_default_if_none(dirname.to_string())?;
+            if !args.get_flag("no-default") {
+                set_default_if_none(dirname.to_string())?;
+            }
             library_update_rprofile(&dirname.to_string())?;
         }
     };

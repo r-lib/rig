@@ -249,7 +249,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
 
     // This should not happen currently on macOS, a .pkg installer
     // sets the default, but prepare for the future
-    set_default_if_none(dirname.to_string())?;
+    if !args.get_flag("no-default") {
+        set_default_if_none(dirname.to_string())?;
+    }
 
     sc_system_forget()?;
     system_no_openmp(Some(vec![dirname.to_string()]))?;

@@ -384,14 +384,19 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
 
     crate::cache::remove_download_if_no_cache(&target);
 
-    set_default_if_none(dirname.to_string())?;
+    if !args.get_flag("no-default") {
+        set_default_if_none(dirname.to_string())?;
+    }
 
     // In user mode, make sure the `R`/`Rscript` aliases in the binary directory
     // exist and point at the current default. `set_default_if_none` only creates
     // them on the very first install; refresh them here so they are present even
-    // when a default was already set.
+    // when a default was already set. (With `--no-default` there may be no
+    // default at all, and then there is nothing to point them at.)
     if mode == Mode::User {
-        make_current_r_links()?;
+        if sc_get_default()?.is_some() {
+            make_current_r_links()?;
+        }
         if let Err(e) = ensure_positron_setup(None) {
             OUTPUT.warn(&format!("Could not update Positron settings: {}", e));
             warn!("Could not update Positron settings: {}", e);
