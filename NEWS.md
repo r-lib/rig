@@ -1,5 +1,9 @@
 # rig 0.11.1-dev (development version)
 
+* `rig list`, `rig add` and other commands no longer fail with
+  "No such file or directory" on macOS in user mode when `~/.local/bin`
+  does not exist yet, e.g. for a user who has never installed R with rig.
+
 * rig on Linux now uses an updated embedded root certificate bundle
   (webpki-root-certs 1.0.10), which drops the compromised
   "emSign ECC Root CA - G3" root (see [GHSA-hq85-5cpj-mr62](
