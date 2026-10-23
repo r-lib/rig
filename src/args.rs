@@ -3836,7 +3836,7 @@ mod tests {
     }
 
     #[test]
-    fn add_no_default_is_off_unless_given() {
+    fn add_no_default_and_without_path_are_off_unless_given() {
         let matches = rig_app()
             .try_get_matches_from(["rig", "add", "4.6.1"])
             .unwrap();

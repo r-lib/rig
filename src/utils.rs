@@ -4,6 +4,7 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 
 use regex::Regex;
@@ -807,20 +808,19 @@ fish_add_path --prepend --move \"$HOME/.local/bin\"
 // `rig add --without-path`: leave the user's PATH setup (shell startup files
 // on macOS and Linux, the user PATH on Windows) alone. Set once from the
 // parsed arguments; the PATH is edited from helpers that take no arguments.
-static SKIP_PATH_SETUP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static SKIP_PATH_SETUP: AtomicBool = AtomicBool::new(false);
 
 pub fn set_skip_path_setup(skip: bool) {
-    SKIP_PATH_SETUP.store(skip, std::sync::atomic::Ordering::Relaxed);
+    SKIP_PATH_SETUP.store(skip, Ordering::Relaxed);
 }
 
 pub fn skip_path_setup() -> bool {
-    SKIP_PATH_SETUP.load(std::sync::atomic::Ordering::Relaxed)
+    SKIP_PATH_SETUP.load(Ordering::Relaxed)
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
     use crate::output::OUTPUT;
-    use std::sync::atomic::{AtomicBool, Ordering};
 
     static ADD_DONE: AtomicBool = AtomicBool::new(false);
     static WARN_DONE: AtomicBool = AtomicBool::new(false);
