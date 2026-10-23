@@ -1,5 +1,12 @@
 # rig 0.11.1-dev (development version)
 
+* New `rig add --no-default` option to install an R version without
+  making it the default when no default R version is set yet, and
+  `rig add --without-path` to skip putting rig's quick-link directory on
+  the PATH (the shell startup files on macOS and Linux, the user PATH on
+  Windows). Tools that run rig to install R, like RStudio, can use them to
+  leave the user's default R, quick links, PATH and IDE settings alone.
+
 * `rig list`, `rig add` and other commands no longer fail with
   on macOS in user mode when `~/.local/bin` does not exist yet (#491).
 
