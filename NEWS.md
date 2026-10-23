@@ -89,6 +89,10 @@
 * `rig proj renv import` now warns about packages from unsupported sources (e.g.
   a URL or a local file) so they can be manually adjusted.
 
+* `rig proj renv import --exact-versions` imports exactly the package and R
+  versions of an `renv.lock`, which improves compatibility with existing renv
+  projects at the expense of rig's more advanced resolution functionality.
+
 # rig 0.11.0
 
 ## Custom repositories
