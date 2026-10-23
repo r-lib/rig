@@ -53,6 +53,23 @@ to leave those packages alone instead.
 Pass `--dry-run` to print what sync would install, remove or write, without
 touching the R installation, the project library or `.rvenv`.
 
+Pass `--check` to check that the project environment is in sync with
+`rproj.lock`, without changing anything. It prints the same report as
+`--dry-run`, and then exits with status 1 if sync would install, update or
+remove a package, refresh `.rvenv`, or create `rproj.lock`. It exits with
+status 0 if the environment is in sync, and with status 2 on any other
+error, e.g. if there is no project in the current directory. Unlike [`rig proj status`](#rig-proj-status), it looks at the
+packages that are actually in the project library, so it also notices
+packages that were installed or removed by hand. This is useful in CI, or
+to check that a project's installation is still intact:
+
+```sh
+rig proj sync --frozen --check
+```
+
+`--check` does not work with `--exclude-newer`, `--with-repos` or
+`--without-repos`, which would lock again first.
+
 `--exclude-newer` runs [`rig proj lock`](#rig-proj-lock) with the same option first, even if
 there is an `rproj.lock` already, to ignore CRAN package versions published
 after a date. The existing lock is kept if it was solved with the same
