@@ -76,6 +76,9 @@
   `rig proj sync` accepts `--no-install-self` as an alias of
   `--no-install-project`.
 
+* Compiled source packages from private Posit Package Manager instances are now
+  cached correctly.
+
 # rig 0.11.0
 
 ## Custom repositories
