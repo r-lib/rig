@@ -235,37 +235,83 @@ fn update_registry_default1(key: &RegKey, ver: &str) -> Result<(), Box<dyn Error
     Ok(())
 }
 
+// The R-core keys rig records an R version (and the default) under: the
+// WOW6432Node view for x86_64 R on an aarch64 host, the native view otherwise.
+fn r_reg_paths_for(name: &str) -> [&'static str; 2] {
+    if get_native_arch() == "aarch64" && arch_of_name(name) == "x86_64" {
+        [
+            "SOFTWARE\\WOW6432Node\\R-core\\R",
+            "SOFTWARE\\WOW6432Node\\R-core\\R64",
+        ]
+    } else {
+        ["SOFTWARE\\R-core\\R", "SOFTWARE\\R-core\\R64"]
+    }
+}
+
 fn update_registry_default_to(default: &str) -> Result<(), Box<dyn Error>> {
     let hive = r_registry_hive()?;
-    let native = get_native_arch();
-    let arch = arch_of_name(default);
-
-    if native == "aarch64" && arch == "x86_64" {
-        // x86_64 R on aarch64 host: update both WOW6432Node R and R64 keys
-        let r32r = hive.create_subkey("SOFTWARE\\WOW6432Node\\R-core\\R");
-        if let Ok(x) = r32r {
-            let (key, _) = x;
-            update_registry_default1(&key, default)?;
-        }
-        let r32r64 = hive.create_subkey("SOFTWARE\\WOW6432Node\\R-core\\R64");
-        if let Ok(x) = r32r64 {
-            let (key, _) = x;
-            update_registry_default1(&key, default)?;
-        }
-    } else {
-        // native arch: update both R and R64 keys
-        let r64r = hive.create_subkey("SOFTWARE\\R-core\\R");
-        if let Ok(x) = r64r {
-            let (key, _) = x;
-            update_registry_default1(&key, default)?;
-        }
-        let r64r64 = hive.create_subkey("SOFTWARE\\R-core\\R64");
-        if let Ok(x) = r64r64 {
-            let (key, _) = x;
+    for path in r_reg_paths_for(default) {
+        if let Ok((key, _)) = hive.create_subkey(path) {
             update_registry_default1(&key, default)?;
         }
     }
     Ok(())
+}
+
+// Record an installed R version, like the installer's `recordversion` task.
+// User mode disables that task, because the installer would record the
+// temporary install directory (and pre-4.1 installers would write to HKLM).
+pub(super) fn register_r_version(name: &str, install_dir: &str) -> Result<(), Box<dyn Error>> {
+    let hive = r_registry_hive()?;
+    let subkey = version_dir_key(name);
+    for path in r_reg_paths_for(name) {
+        let (key, _) = hive.create_subkey(format!("{}\\{}", path, subkey))?;
+        key.set_value("InstallPath", &install_dir)?;
+    }
+    Ok(())
+}
+
+// Delete the R "Add/Remove Programs" entries whose InstallLocation is `dir`.
+// Pre-4.1 R installers ignore /CURRENTUSER and write the entry to HKLM, which
+// a user-mode rig usually cannot modify, so failures are only reported.
+pub(super) fn remove_r_uninstall_entries(dir: &str) {
+    let dir = dir.trim_end_matches('\\');
+    for (hive_name, hive) in [("HKCU", HKEY_CURRENT_USER), ("HKLM", HKEY_LOCAL_MACHINE)] {
+        let hive = RegKey::predef(hive);
+        for path in UNINSTALL_REG_PATHS {
+            let Ok(parent) = hive.open_subkey(path) else {
+                continue;
+            };
+            for nm in subkey_names(&parent)
+                .into_iter()
+                .filter(|x| x.starts_with("R for Windows"))
+            {
+                let Ok(loc) = parent
+                    .open_subkey(&nm)
+                    .and_then(|k| k.get_value::<String, _>("InstallLocation"))
+                else {
+                    continue;
+                };
+                if !loc.trim_end_matches('\\').eq_ignore_ascii_case(dir) {
+                    continue;
+                }
+                let full = format!("{}\\{}", path, nm);
+                match hive.delete_subkey_all(&full) {
+                    Ok(()) => debug!("Removed uninstaller entry {}\\{}", hive_name, full),
+                    Err(e) => {
+                        let msg = format!(
+                            "Could not remove the stale uninstaller entry {0}\\{1}: {2}. \
+                             Remove it from an administrator terminal with \
+                             `reg delete \"{0}\\{1}\" /f`.",
+                            hive_name, full, e
+                        );
+                        OUTPUT.warn(&msg);
+                        warn!("{}", msg);
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub(super) fn update_registry_default() -> Result<(), Box<dyn Error>> {
