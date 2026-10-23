@@ -76,6 +76,16 @@
   `rig proj sync` accepts `--no-install-self` as an alias of
   `--no-install-project`.
 
+* `rig proj renv import` now imports the package repositories of the `renv.lock`
+  file, mapping known CRAN and Bioconductor aliases to the built-in repositories
+  when possible and writing explicit `[[repository]]` entries otherwise. The
+  built-in repositories that the lock file does not use are turned off. A lock
+  file with a Bioconductor release also locks the R version to one that matches
+  it.
+
+* `rig proj renv import` now warns about packages from unsupported sources (e.g.
+  GitHub) so they can be manually adjusted.
+
 # rig 0.11.0
 
 ## Custom repositories

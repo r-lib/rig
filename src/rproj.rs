@@ -655,6 +655,14 @@ pub struct DepTable {
     pub vignette_builder: Option<bool>,
 }
 
+impl DepTable {
+    /// Whether the package comes from git, a URL or a local path, instead of
+    /// a package repository.
+    pub fn has_other_source(&self) -> bool {
+        self.git.is_some() || self.url.is_some() || self.path.is_some()
+    }
+}
+
 /// A `[dependency-groups.<name>]` entry: package specs plus an optional
 /// `include-groups` list that pulls in other groups.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
@@ -713,6 +721,14 @@ impl Repository {
         Repository {
             name: name.to_string(),
             ..Default::default()
+        }
+    }
+
+    /// The entry of a built-in repository, turned off.
+    pub fn disabled(name: &str) -> Repository {
+        Repository {
+            enabled: Some(false),
+            ..Repository::builtin(name)
         }
     }
 
@@ -1002,7 +1018,7 @@ impl Rproj {
             if table.repository.is_none() {
                 continue;
             }
-            if table.git.is_some() || table.url.is_some() || table.path.is_some() {
+            if table.has_other_source() {
                 bail!(
                     "Dependency `{}` has both a `repository` and a git, URL or local source",
                     pkg
@@ -1590,7 +1606,7 @@ impl Rproj {
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {
-                    if t.git.is_some() || t.url.is_some() || t.path.is_some() {
+                    if t.has_other_source() {
                         let mut t = (**t).clone();
                         if let Some(path) = &t.path {
                             let path = Path::new(path);
@@ -1666,7 +1682,7 @@ impl Rproj {
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {
-                    if t.git.is_some() || t.url.is_some() || t.path.is_some() {
+                    if t.has_other_source() {
                         out.push((name.clone(), (**t).clone()));
                     }
                 }
@@ -2321,7 +2337,7 @@ fn format_group_entry(name: &str, dep: &Dependency) -> Result<(String, bool), Bo
         if let Some(ref_) = &table.ref_ {
             return Ok((ref_.clone(), false));
         }
-        if table.git.is_some() || table.url.is_some() || table.path.is_some() {
+        if table.has_other_source() {
             return Ok((dep_table_to_pak_ref(name, table), false));
         }
     }
