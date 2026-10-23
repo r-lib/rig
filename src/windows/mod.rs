@@ -4,8 +4,8 @@ pub use registry::sc_system_script_assoc;
 use registry::{
     add_user_bin_to_path, admin_rtools_paths, clean_admin_registry, clean_admin_rtools_registry,
     get_latest_install_path, list_admin_rtools, list_rtools, maybe_update_registry_default,
-    sc_rtools_ls, unset_registry_default, update_registry_default, LegacyRtoolsRegRelocation,
-    RtoolsVersion,
+    register_r_version, remove_r_uninstall_entries, sc_rtools_ls, unset_registry_default,
+    update_registry_default, LegacyRtoolsRegRelocation, RtoolsVersion,
 };
 
 use regex::Regex;
@@ -455,17 +455,27 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     OUTPUT.status(&format!("Installing {}", target_path.display()));
     info!("Installing {}", target_path.display());
 
+    let user_mode = get_mode()? == Mode::User;
+
     let mut cmd_args = vec![os("/VERYSILENT"), os("/SUPPRESSMSGBOXES")];
     if args.get_flag("without-translations") {
         cmd_args.push(os("/components=main,x64,i386"));
     }
-    if args.get_flag("with-desktop-icon") {
-        cmd_args.push(os("/mergetasks=desktopicon"));
+    let mut mergetasks = vec![if args.get_flag("with-desktop-icon") {
+        "desktopicon"
     } else {
-        cmd_args.push(os("/mergetasks=!desktopicon"));
+        "!desktopicon"
+    }];
+    if user_mode {
+        // The installer would record the temp dir; see register_r_version().
+        mergetasks.push("!recordversion");
     }
+    cmd_args.push(OsString::from(format!(
+        "/mergetasks={}",
+        mergetasks.join(",")
+    )));
 
-    let dirname = if get_mode()? == Mode::User {
+    let dirname = if user_mode {
         let r_root = get_r_root_arch(&installed_arch)?;
         std::fs::create_dir_all(&r_root)?;
         let temp_dir = format!("{}\\.rig-install-{}", r_root, std::process::id());
@@ -476,7 +486,11 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
         std::fs::create_dir_all(&temp_dir)?;
         cmd_args.push(os("/CURRENTUSER"));
         cmd_args.push(OsString::from(format!("/DIR={}", temp_dir)));
-        run(target, cmd_args, "installer")?;
+        let res = run(target, cmd_args, "installer");
+        // The installer's uninstaller entry points to the temp dir, which
+        // never survives the install.
+        remove_r_uninstall_entries(&temp_dir);
+        res?;
 
         // The installer must have populated the temp dir. If it did not (e.g.
         // it failed silently or exited before finishing), fail clearly here
@@ -524,6 +538,13 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
             ));
             error!("Cannot move R installation into {}: {}", final_dir, err);
             return Err(err.into());
+        }
+        if let Err(e) = register_r_version(&rig_name, &final_dir) {
+            OUTPUT.warn(&format!(
+                "Could not record R {} in the registry: {}",
+                rig_name, e
+            ));
+            warn!("Could not record R {} in the registry: {}", rig_name, e);
         }
         OUTPUT.status(&format!("Installed R as '{}'", rig_name));
         info!("Installed R as '{}' in {}", rig_name, final_dir);
