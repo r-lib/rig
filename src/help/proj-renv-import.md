@@ -26,9 +26,12 @@ repositories when possible and writing explicit `[[repository]]` entries
 otherwise. Built-in repositories are disabled if the lock file does not use
 them.
 
-Packages from any other source (e.g. GitHub, a URL or a local file) are
-currently imported as ordinary version requirements. rig prints a warning that
-they may need manual adjustment.
+A package that renv installed from GitHub, GitLab, Bitbucket or a git URL
+becomes a `git` dependency.
+
+Packages from any other source (e.g. a URL or a local file) are currently
+imported as ordinary version requirements. rig prints a warning that they may
+need manual adjustment.
 
 ## Files
 

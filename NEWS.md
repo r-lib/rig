@@ -83,8 +83,11 @@
   file with a Bioconductor release also locks the R version to one that matches
   it.
 
+* `rig proj renv import` now imports packages that renv installed from
+  GitHub, GitLab, Bitbucket or git as `git` dependencies.
+
 * `rig proj renv import` now warns about packages from unsupported sources (e.g.
-  GitHub) so they can be manually adjusted.
+  a URL or a local file) so they can be manually adjusted.
 
 # rig 0.11.0
 
