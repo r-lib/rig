@@ -2257,6 +2257,18 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false),
                 )
+                .arg(
+                    Arg::new("check")
+                        .help(
+                            "Check that the project environment is in sync with\n\
+                            rproj.lock, without changing anything. Fails if sync\n\
+                            would install, remove or update anything.",
+                        )
+                        .long("check")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with_all(["exclude-newer", "with-repos", "without-repos"]),
+                )
                 .args(sysreqs_args()),
         );
     let cmd_renv = Command::new("renv")
@@ -4062,6 +4074,30 @@ mod tests {
         let (_name, sub) = matches.subcommand().unwrap();
         let (_name, sub) = sub.subcommand().unwrap();
         assert!(sub.get_flag("frozen"));
+    }
+
+    #[test]
+    fn proj_sync_check_flag() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--frozen", "--check"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert!(sub.get_flag("check"));
+        assert!(sub.get_flag("frozen"));
+        assert!(rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "sync",
+                "--check",
+                "--exclude-newer",
+                "7 days"
+            ])
+            .is_err());
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--check", "--with-repos", "bioc"])
+            .is_err());
     }
 
     #[test]

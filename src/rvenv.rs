@@ -1032,6 +1032,26 @@ pub fn ensure_rvenv_files(root: &Path) -> Result<(), Box<dyn Error>> {
     refresh_project_renviron(root)
 }
 
+/// What [`ensure_rvenv_files`] would fill in, without writing anything:
+/// `None` if the project's `.Renviron` and shim package are all there, or the
+/// project has no `rproj.toml`. For `rig proj sync --dry-run` and `--check`.
+pub fn rvenv_files_missing(root: &Path) -> Option<String> {
+    if !root.join(RPROJ_MANIFEST_FILE).exists() {
+        return None;
+    }
+    if !project_shim_package(root).exists() {
+        return Some(".Renviron/.rvenvlib".to_string());
+    }
+    let mut missing: Vec<String> = missing_shim_files(&project_shim_library(root))
+        .iter()
+        .map(|p| format!("{}/{}", RVENV_SHIM_DIR, p))
+        .collect();
+    if !root.join(RVENV_RENVIRON_FILE).exists() {
+        missing.insert(0, RVENV_RENVIRON_FILE.to_string());
+    }
+    (!missing.is_empty()).then(|| missing.join(", "))
+}
+
 /// Create the project's `.Renviron`, or add or update rig's block in it, and
 /// say so if anything changed.
 fn refresh_project_renviron(root: &Path) -> Result<(), Box<dyn Error>> {
