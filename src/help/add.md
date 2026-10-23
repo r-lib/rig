@@ -58,8 +58,12 @@ If no default R version is set yet, `rig add` makes the new version the
 default, as `rig default` would. In user mode that creates the `R` and
 `Rscript` quick links, and registers the version with RStudio and Positron:
 on macOS rig installs a LaunchAgent that sets `RSTUDIO_WHICH_R` at login.
-Use `--no-default` to leave the default alone and only install R, e.g. when
-another tool runs rig and manages the R versions itself.
+In admin mode it creates the `R` and `Rscript` quick links in
+`/usr/local/bin` (`C:\Program Files\R\bin` on Windows), updates the
+`Current` link of the R framework on macOS, and records the default R
+version in the registry on Windows. Use `--no-default` to leave the default
+alone and only install R, e.g. when another tool runs rig and manages the R
+versions itself.
 
 In user mode rig also puts its quick-link directory (`~/.local/bin`,
 `%USERPROFILE%\.local\bin` on Windows) on the PATH when it is missing: it
