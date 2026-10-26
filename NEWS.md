@@ -1,4 +1,4 @@
-# rig 0.11.1-dev (development version)
+# rig 0.11.1
 
 * New `rig proj sync --check` option to check that the project
   environment is in sync with `rproj.lock`. It exits with status 1 if sync
