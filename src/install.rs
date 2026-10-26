@@ -89,8 +89,10 @@ pub struct PackageInfo {
 ///
 /// A built package is unpacked into the library and R is never started; only a
 /// source tarball goes through `R CMD INSTALL`. A built package whose archive
-/// does not have the expected layout falls back to `R CMD INSTALL` too, rather
-/// than failing: the repository, not rig, decides what a "binary" is.
+/// does not have the expected layout, or is a source package after all, falls
+/// back to `R CMD INSTALL` too, rather than failing: the repository, not rig,
+/// decides what a "binary" is. A source package is never kept in the cache of
+/// unpacked binaries.
 ///
 /// A source package that rig has already compiled once is unpacked from
 /// [`crate::built`] instead of compiled again, which is the same operation on
@@ -148,6 +150,13 @@ where
                 );
                 return Ok(());
             }
+            Err(err) if err.downcast_ref::<crate::built::SourceArchive>().is_some() => {
+                // The repository has no binary package of this version.
+                info!(
+                    "{} {} was served as a source package, building it from source",
+                    pkg.name, pkg.version
+                );
+            }
             Err(err) => {
                 // Not fatal: `R CMD INSTALL` copes with more layouts than we
                 // do, so let it try before giving up on the package.
@@ -178,9 +187,9 @@ where
 /// package. `key` identifies the shared unpack cache entry, see
 /// [`crate::built::ensure_unpacked`].
 ///
-/// Errors if the archive is not a single directory named after the package,
-/// which is what a built package always is, and what a source tarball
-/// masquerading as one is not.
+/// Errors if the archive is not a single directory named after the package
+/// that holds a built package, which is what a source tarball masquerading as
+/// one is not.
 fn install_from_cache(
     pkg: &PackageInfo,
     archive: &Path,
@@ -1222,6 +1231,53 @@ mod tests {
         assert!(!lib.join("foo").exists());
         // No staging directory is left behind.
         assert_eq!(std::fs::read_dir(&lib).unwrap().count(), 0);
+    }
+
+    /// A repository answers a binary URL with a source tarball where it has no
+    /// binary package. That has the package's name as its top level directory,
+    /// but no `Built` field, and must go through `R CMD INSTALL`, not into the
+    /// library, and not into the cache of unpacked binaries.
+    #[test]
+    fn a_source_tarball_served_as_a_binary_is_not_unpacked() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = tmp.path().join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        let archive = tmp.path().join("foo_1.0.0.tar.gz");
+        tarball(
+            &archive,
+            "foo",
+            "Package: foo\nVersion: 1.0.0\nPackaged: 2024-01-01 00:00:00 UTC; me\n",
+            &["R/foo.R", "src/foo.c"],
+        );
+
+        let err = install_from_cache(
+            &info("foo", &archive, Some("abc"), &[]),
+            &archive,
+            key(&archive),
+            &lib,
+        )
+        .unwrap_err();
+        assert!(
+            err.downcast_ref::<crate::built::SourceArchive>().is_some(),
+            "{}",
+            err
+        );
+        assert!(!lib.join("foo").exists());
+        // Neither a staging directory nor an unpacked copy is left behind.
+        assert_eq!(std::fs::read_dir(&lib).unwrap().count(), 0);
+        let unpacked = tmp.path().join("unpacked");
+        assert!(!unpacked.exists() || std::fs::read_dir(&unpacked).unwrap().count() == 0);
+
+        // The same archive is not a source package once it was built.
+        tarball(&archive, "foo", DESC, &["libs/foo.so"]);
+        install_from_cache(
+            &info("foo", &archive, Some("abc"), &[]),
+            &archive,
+            key(&archive),
+            &lib,
+        )
+        .unwrap();
+        assert!(lib.join("foo/libs/foo.so").exists());
     }
 
     /// A failed install must not take the installed version with it.

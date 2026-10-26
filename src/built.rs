@@ -158,7 +158,8 @@ impl BuiltCache {
 /// in one `packages` directory, so callers there key on the archive's own
 /// file name instead. `pkg_name` is only used to check the archive's layout:
 /// installing errors, rather than silently caching something wrong, if the
-/// single top-level directory the archive unpacks to is not named `pkg_name`.
+/// single top-level directory the archive unpacks to is not named `pkg_name`,
+/// or is in fact a source package.
 pub fn ensure_unpacked(
     archive: &Path,
     key: &str,
@@ -205,6 +206,17 @@ pub fn ensure_unpacked(
         );
     }
 
+    let built = std::fs::read(unpacked.join("DESCRIPTION"))
+        .map(|bytes| description_is_built(&String::from_utf8_lossy(&bytes)))
+        .unwrap_or(false);
+    if !built {
+        let _ = std::fs::remove_dir_all(&tmp);
+        return Err(Box::new(SourceArchive {
+            archive: archive.to_path_buf(),
+            package: pkg_name.to_string(),
+        }));
+    }
+
     // Another rig may have finished unpacking the same entry first.
     if !target.is_dir() {
         if let Err(err) = std::fs::rename(&unpacked, &target) {
@@ -216,6 +228,32 @@ pub fn ensure_unpacked(
     }
     let _ = std::fs::remove_dir_all(&tmp);
     Ok(target)
+}
+
+/// The archive of a source package served in place of a binary one.
+#[derive(Debug)]
+pub struct SourceArchive {
+    archive: PathBuf,
+    package: String,
+}
+
+impl std::fmt::Display for SourceArchive {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} is a source package of {}, not a built one",
+            self.archive.display(),
+            self.package
+        )
+    }
+}
+
+impl Error for SourceArchive {}
+
+/// Whether the text of a `DESCRIPTION` is that of a built package, which
+/// `R CMD INSTALL` gave a `Built` field. A source package has none.
+fn description_is_built(description: &str) -> bool {
+    description.lines().any(|line| line.starts_with("Built:"))
 }
 
 /// A directory name for the platform a build belongs to.
@@ -545,6 +583,18 @@ mod tests {
             version: None,
         };
         assert_eq!(platform_id(&macos), "aarch64-darwin24");
+    }
+
+    #[test]
+    fn only_a_built_package_has_a_built_field() {
+        assert!(description_is_built(
+            "Package: foo\nBuilt: R 4.4.0; ; 2024-04-25 19:46:10 UTC; unix\n"
+        ));
+        assert!(!description_is_built(
+            "Package: foo\nVersion: 1.0\nPackaged: 2024-01-01 00:00:00 UTC; me\n"
+        ));
+        // Not the value of another field.
+        assert!(!description_is_built("Title: Not Built: really\n"));
     }
 
     #[test]
