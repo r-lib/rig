@@ -120,8 +120,10 @@ impl BuiltCache {
     /// stays exactly the one `R CMD INSTALL --build` would have given the
     /// archive.
     ///
-    /// A package with neither has no entry: without one there is nothing to
-    /// tell one build of a version from another.
+    /// A package with neither has no entry here: without one there is nothing
+    /// to tell one build of a version from another. The sync of a lock that
+    /// does not record them identifies the build by the downloaded file
+    /// instead, see [`crate::proj::lockfile_package_info`].
     pub fn path(&self, pkg: &PackageInfo) -> Option<PathBuf> {
         let ingredients = format!("{}\n{}", format_linkingto(&pkg.linkingto), self.makevars);
         let identity = pkg
@@ -136,6 +138,92 @@ impl BuiltCache {
             self.r_platform.as_deref(),
         )))
     }
+
+    /// A cache in `dir`, for testing.
+    #[cfg(test)]
+    pub(crate) fn in_dir(dir: &Path) -> BuiltCache {
+        BuiltCache {
+            dir: dir.to_path_buf(),
+            r_platform: Some("x86_64-pc-linux-gnu".to_string()),
+            makevars: String::new(),
+            kind: built_kind(),
+        }
+    }
+}
+
+/// The text of the `DESCRIPTION` of the package in `archive`, if any.
+pub fn read_archive_description(archive: &Path) -> Option<String> {
+    use std::io::Read;
+
+    let mut header = [0u8; 6];
+    let n = std::fs::File::open(archive).ok()?.read(&mut header).ok()?;
+    let header = &header[..n];
+    let file = std::fs::File::open(archive).ok()?;
+
+    if header.starts_with(&[0x50, 0x4B]) {
+        let mut ar = zip::ZipArchive::new(file).ok()?;
+        let name = (0..ar.len()).find_map(|i| {
+            let name = ar.name_for_index(i)?;
+            is_top_level_description(name).then(|| name.to_string())
+        })?;
+        let mut text = String::new();
+        ar.by_name(&name).ok()?.read_to_string(&mut text).ok()?;
+        Some(text)
+    } else if header.starts_with(&[0x1F, 0x8B]) {
+        read_tar_description(flate2::read::GzDecoder::new(file))
+    } else if header.starts_with(&[0x28, 0xB5, 0x2F, 0xFD]) {
+        read_tar_description(zstd::stream::Decoder::new(file).ok()?)
+    } else if header.starts_with(&[0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00]) {
+        read_tar_description(xz2::read::XzDecoder::new(file))
+    } else {
+        None
+    }
+}
+
+fn read_tar_description<R: std::io::Read>(reader: R) -> Option<String> {
+    let mut ar = tar::Archive::new(reader);
+    for entry in ar.entries().ok()? {
+        let mut entry = entry.ok()?;
+        let is_description = entry
+            .path()
+            .ok()
+            .and_then(|p| p.to_str().map(is_top_level_description))
+            .unwrap_or(false);
+        if is_description {
+            let mut text = String::new();
+            std::io::Read::read_to_string(&mut entry, &mut text).ok()?;
+            return Some(text);
+        }
+    }
+    None
+}
+
+/// Whether an archive entry is `<package>/DESCRIPTION`.
+fn is_top_level_description(name: &str) -> bool {
+    let name = name.strip_prefix("./").unwrap_or(name);
+    match name.split_once('/') {
+        Some((top, "DESCRIPTION")) => !top.is_empty(),
+        _ => false,
+    }
+}
+
+/// The names in the `LinkingTo` field of the text of a `DESCRIPTION`, without
+/// version requirements, in the order they are listed.
+pub fn linkingto_names(description: &str) -> Vec<String> {
+    let Ok(parsed) = crate::dcf::parse_dcf(description) else {
+        return vec![];
+    };
+    let Some(paragraph) = parsed.iter().next() else {
+        return vec![];
+    };
+    let mut names: Vec<String> = vec![];
+    for item in paragraph.get("LinkingTo").unwrap_or_default().split(',') {
+        let name = item.split('(').next().unwrap_or_default().trim();
+        if !name.is_empty() && !names.iter().any(|n| n == name) {
+            names.push(name.to_string());
+        }
+    }
+    names
 }
 
 /// Unpack `archive` into a shared cache directory next to it, the first time
@@ -471,15 +559,6 @@ mod tests {
         }
     }
 
-    fn cache(dir: &Path) -> BuiltCache {
-        BuiltCache {
-            dir: dir.to_path_buf(),
-            r_platform: Some("x86_64-pc-linux-gnu".to_string()),
-            makevars: "".to_string(),
-            kind: BuiltKind::Tarball,
-        }
-    }
-
     #[test]
     fn the_file_name_is_the_one_r_would_use() {
         assert_eq!(
@@ -550,13 +629,15 @@ mod tests {
     #[test]
     fn a_package_without_a_hash_is_not_cached() {
         let tmp = tempfile::tempdir().unwrap();
-        assert!(cache(tmp.path()).path(&info("foo", None, &[])).is_none());
+        assert!(BuiltCache::in_dir(tmp.path())
+            .path(&info("foo", None, &[]))
+            .is_none());
     }
 
     #[test]
     fn the_key_changes_with_what_the_package_is_compiled_against() {
         let tmp = tempfile::tempdir().unwrap();
-        let cache = cache(tmp.path());
+        let cache = BuiltCache::in_dir(tmp.path());
         let plain = cache.path(&info("foo", Some("abc"), &[])).unwrap();
         let linked = cache
             .path(&info("foo", Some("abc"), &[("Rcpp", "1.0.0", "def")]))
@@ -570,12 +651,85 @@ mod tests {
     #[test]
     fn the_key_changes_with_makevars() {
         let tmp = tempfile::tempdir().unwrap();
-        let mut with = cache(tmp.path());
+        let mut with = BuiltCache::in_dir(tmp.path());
         with.makevars = "CFLAGS=-O0\n".to_string();
         assert_ne!(
-            cache(tmp.path()).path(&info("foo", Some("abc"), &[])),
+            BuiltCache::in_dir(tmp.path()).path(&info("foo", Some("abc"), &[])),
             with.path(&info("foo", Some("abc"), &[]))
         );
+    }
+
+    fn write_tar_gz(path: &Path, entries: &[(&str, &str)]) {
+        let enc = flate2::write::GzEncoder::new(
+            std::fs::File::create(path).unwrap(),
+            flate2::Compression::fast(),
+        );
+        let mut ar = tar::Builder::new(enc);
+        for (name, text) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(text.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            ar.append_data(&mut header, name, text.as_bytes()).unwrap();
+        }
+        ar.into_inner().unwrap().finish().unwrap();
+    }
+
+    #[test]
+    fn the_description_is_read_out_of_an_archive() {
+        let tmp = tempfile::tempdir().unwrap();
+        let tarball = tmp.path().join("foo_1.0.0.tar.gz");
+        // Only the package's own top-level `DESCRIPTION` counts.
+        write_tar_gz(
+            &tarball,
+            &[
+                ("foo/tests/DESCRIPTION", "Package: other\n"),
+                ("foo/DESCRIPTION", "Package: foo\nVersion: 1.0.0\n"),
+            ],
+        );
+        assert_eq!(
+            read_archive_description(&tarball).as_deref(),
+            Some("Package: foo\nVersion: 1.0.0\n")
+        );
+
+        let zip = tmp.path().join("foo_1.0.0.zip");
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip).unwrap());
+        zw.start_file("foo/DESCRIPTION", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        std::io::Write::write_all(&mut zw, b"Package: foo\nBuilt: R 4.4.0\n").unwrap();
+        zw.finish().unwrap();
+        assert_eq!(
+            read_archive_description(&zip).as_deref(),
+            Some("Package: foo\nBuilt: R 4.4.0\n")
+        );
+    }
+
+    #[test]
+    fn something_that_is_not_a_package_archive_has_no_description() {
+        let tmp = tempfile::tempdir().unwrap();
+        let junk = tmp.path().join("junk.tar.gz");
+        std::fs::write(&junk, "SOURCE").unwrap();
+        assert_eq!(read_archive_description(&junk), None);
+        assert_eq!(
+            read_archive_description(&tmp.path().join("missing.tar.gz")),
+            None
+        );
+
+        let empty = tmp.path().join("empty.tar.gz");
+        write_tar_gz(&empty, &[("foo/R/foo.R", "x\n")]);
+        assert_eq!(read_archive_description(&empty), None);
+    }
+
+    #[test]
+    fn linkingto_names_drop_versions_and_whitespace() {
+        assert_eq!(
+            linkingto_names(
+                "Package: foo\nImports: Rcpp\nLinkingTo: Rcpp (>= 1.0),\n    cpp11,\n    BH\n"
+            ),
+            vec!["Rcpp", "cpp11", "BH"]
+        );
+        assert!(linkingto_names("Package: foo\nImports: Rcpp\n").is_empty());
+        assert!(linkingto_names("").is_empty());
     }
 
     #[test]

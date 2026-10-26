@@ -233,14 +233,13 @@ pub fn sc_pkg_install(
     let packages: Vec<PackageInfo> = todo
         .iter()
         .map(|p| {
-            let mut info = lockfile_package_info(p, &cache_dir, built.as_ref());
-            // A package whose dependency is already installed must not wait for
-            // it: the installer only starts a package once every name in its
-            // `dependencies` has been installed *by this run*, and a name that
-            // is not being installed at all would stall the whole batch.
-            info.dependencies
-                .retain(|d| installing.contains(d.as_str()));
-            info
+            lockfile_package_info(
+                p,
+                &lockfile.packages,
+                &installing,
+                &cache_dir,
+                built.as_ref(),
+            )
         })
         .collect();
 

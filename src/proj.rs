@@ -2462,7 +2462,7 @@ fn absolute_local_paths(lock: &mut RprojLock, root: &Path) {
 /// its content digest (`compute_dir_stat_digest`, empty/`None` if it could not
 /// be computed). Mirrors the "local" `RemoteType` case
 /// [`RprojLockTarget::from_solution`] already writes for a real `path`
-/// dependency, so [`lockfile_package_info`]/[`fetch_git_lockfile_packages`]
+/// dependency, so [`lockfile_package_path`]/[`fetch_git_lockfile_packages`]
 /// handle it with no changes: `target` is empty, since the installer reads
 /// `RemoteUrl` directly instead of downloading or caching anything.
 /// `sources` holds the project's `file://` URL, see [`project_source_url`],
@@ -6336,12 +6336,7 @@ pub(crate) fn proj_sync(
     let installing: HashSet<&str> = todo.iter().map(|p| p.package.as_str()).collect();
     let packages: Vec<PackageInfo> = todo
         .iter()
-        .map(|pkg| {
-            let mut info = lockfile_package_info(pkg, &cache_dir, built.as_ref());
-            info.dependencies
-                .retain(|d| installing.contains(d.as_str()));
-            info
-        })
+        .map(|pkg| lockfile_package_info(pkg, wanted, &installing, &cache_dir, built.as_ref()))
         .collect();
 
     let max_concurrent = match opts.max_concurrent {
@@ -6382,9 +6377,18 @@ pub(crate) fn proj_sync(
 ///
 /// `built` is the cache of packages rig compiled itself, and only a source
 /// package has anything to do with it: a binary is already built, and rig has
-/// nothing to add to it.
+/// nothing to add to it. A source package's place in it is keyed on what the
+/// lock records about its build, if anything.
+///
+/// A package whose lock entry records nothing is identified by its
+/// downloaded file instead, see [`identify_build`].
+///
+/// `lock_packages` is every package the lock has for the target, and
+/// `installing` names the ones being installed, `pkg` among them.
 pub(crate) fn lockfile_package_info(
     pkg: &RprojLockPackage,
+    lock_packages: &[RprojLockPackage],
+    installing: &HashSet<&str>,
     cache_dir: &Path,
     built: Option<&BuiltCache>,
 ) -> PackageInfo {
@@ -6394,29 +6398,21 @@ pub(crate) fn lockfile_package_info(
             remote.insert(field.to_string(), value.clone());
         }
     }
-    // Where to install from comes from `sources` alone, see `LockSource`: a
-    // local package is installed from where it already is; a git/GitHub/url
-    // package from its fetched directory (a git checkout or an extracted
-    // archive), or `<target>/<subdir>` within it; an ordinary CRAN/PPM
-    // package from the downloaded file itself.
-    let source = lock_package_source(pkg);
-    let local = matches!(source, Some(LockSource::Local { .. }));
-    let file_path = match &source {
-        Some(LockSource::Local { path }) => PathBuf::from(path),
-        _ => {
-            let base = cache_dir.join("packages").join(&pkg.target);
-            match source.as_ref().and_then(|s| s.subdir()) {
-                Some(subdir) => base.join(subdir),
-                None => base,
-            }
-        }
-    };
     let mut info = PackageInfo {
         name: pkg.package.clone(),
         version: pkg.version.clone(),
         binary: pkg.binary,
-        file_path,
-        dependencies: pkg.dependencies.clone(),
+        file_path: lockfile_package_path(pkg, cache_dir),
+        // A package whose dependency is already installed must not wait for
+        // it: the installer only starts a package once every name in its
+        // `dependencies` has been installed *by this run*, and a name that is
+        // not being installed at all would stall the whole batch.
+        dependencies: pkg
+            .dependencies
+            .iter()
+            .filter(|d| installing.contains(d.as_str()))
+            .cloned()
+            .collect(),
         hash: pkg.metadata.get(REMOTE_HASH_FIELD).cloned(),
         linkingto: pkg
             .metadata
@@ -6426,14 +6422,89 @@ pub(crate) fn lockfile_package_info(
         built: None,
         remote,
     };
-    // The build cache is keyed on the source's content hash -- a stat digest
-    // (path/size/mtime, not content) for a local directory, a real content
-    // sha256 for a local file (see `read_local_package`) -- recorded as
-    // `RemoteSha` in `info.remote` just like a git/GitHub/url source's.
-    if !info.binary && (!local || info.remote.contains_key(REMOTE_SHA_FIELD)) {
-        info.built = built.and_then(|cache| cache.path(&info));
+    let Some(cache) = built.filter(|_| !info.binary) else {
+        return info;
+    };
+    match lock_package_source(pkg) {
+        // A local package is keyed on its `RemoteSha`, which is a stat digest
+        // (path/size/mtime, not content) for a directory and a real content
+        // sha256 for a file (see `read_local_package`).
+        Some(LockSource::Local { .. }) => {
+            if info.remote.contains_key(REMOTE_SHA_FIELD) {
+                info.built = cache.path(&info);
+            }
+        }
+        _ => {
+            if !info.hash.is_some() && !info.remote.contains_key(REMOTE_SHA_FIELD) {
+                identify_build(&mut info, lock_packages, installing, cache_dir);
+            }
+            info.built = cache.path(&info);
+        }
     }
     info
+}
+
+/// Where to install a lockfile entry from.
+fn lockfile_package_path(pkg: &RprojLockPackage, cache_dir: &Path) -> PathBuf {
+    let source = lock_package_source(pkg);
+    match &source {
+        Some(LockSource::Local { path }) => PathBuf::from(path),
+        _ => {
+            let base = cache_dir.join("packages").join(&pkg.target);
+            match source.as_ref().and_then(|s| s.subdir()) {
+                Some(subdir) => base.join(subdir),
+                None => base,
+            }
+        }
+    }
+}
+
+/// Identify the build of `info` by its downloaded file (when possible).
+fn identify_build(
+    info: &mut PackageInfo,
+    lock_packages: &[RprojLockPackage],
+    installing: &HashSet<&str>,
+    cache_dir: &Path,
+) {
+    let digest = |path: &Path| crate::utils::calculate_file_hash(path).ok();
+    let Some(description) = crate::built::read_archive_description(&info.file_path) else {
+        debug!("Not caching {}: no readable DESCRIPTION", info.name);
+        return;
+    };
+    let Some(identity) = digest(&info.file_path) else {
+        debug!("Not caching {}: cannot hash its source", info.name);
+        return;
+    };
+
+    let mut linkingto: Vec<(String, String, String)> = vec![];
+    for name in crate::built::linkingto_names(&description) {
+        let Some(dep) = lock_packages.iter().find(|p| p.package == name) else {
+            continue;
+        };
+        let recorded = dep
+            .metadata
+            .get(REMOTE_HASH_FIELD)
+            .or_else(|| dep.metadata.get(REMOTE_SHA_FIELD))
+            .cloned();
+        let dep_identity = match recorded {
+            Some(identity) => Some(identity),
+            None if installing.contains(name.as_str()) => {
+                digest(&lockfile_package_path(dep, cache_dir))
+            }
+            None => None,
+        };
+        let Some(dep_identity) = dep_identity else {
+            debug!(
+                "Not caching {}: cannot identify its LinkingTo package {}",
+                info.name, name
+            );
+            return;
+        };
+        linkingto.push((name, dep.version.clone(), dep_identity));
+    }
+    linkingto.sort();
+    info.hash = Some(identity);
+    info.linkingto = linkingto;
 }
 
 /// Cache package files forever. They are immutable on PPM.
@@ -7582,17 +7653,333 @@ mod tests {
         pkg
     }
 
+    // ----------------------------------------------------------------
+    // Packages whose lock entry does not identify their build
+
+    /// A source tarball of `name` at `path`, with the given `DESCRIPTION`
+    /// fields and a distinguishing `payload`.
+    fn source_tarball(path: &Path, name: &str, fields: &str, payload: &str) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let enc = flate2::write::GzEncoder::new(
+            fs::File::create(path).unwrap(),
+            flate2::Compression::fast(),
+        );
+        let mut ar = tar::Builder::new(enc);
+        let description = format!("Package: {name}\nVersion: 1.0.0\n{fields}");
+        for (entry, text) in [
+            ("DESCRIPTION", description.as_str()),
+            ("src/code.c", payload),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(text.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            ar.append_data(&mut header, format!("{name}/{entry}"), text.as_bytes())
+                .unwrap();
+        }
+        ar.into_inner().unwrap().finish().unwrap();
+    }
+
+    /// A lock entry without a hash, as a repository without checksums gives
+    /// it, for the file `<cache>/packages/<target>`.
+    fn unrecorded(name: &str, deps: &[&str], binary: bool) -> RprojLockPackage {
+        let mut pkg = locked(name, deps);
+        pkg.binary = binary;
+        pkg.target = if binary {
+            format!("bin/linux/jammy-x86_64/4.4/{name}_1.0.0.tar.gz")
+        } else {
+            format!("src/contrib/{name}_1.0.0.tar.gz")
+        };
+        pkg
+    }
+
+    /// Where each of `lock` would be cached, after the lock is planned.
+    fn planned_builds(
+        lock: &[RprojLockPackage],
+        cache: &Path,
+        built: &BuiltCache,
+    ) -> Vec<PackageInfo> {
+        let installing: HashSet<&str> = lock.iter().map(|p| p.package.as_str()).collect();
+        lock.iter()
+            .map(|p| lockfile_package_info(p, lock, &installing, cache, Some(built)))
+            .collect()
+    }
+
+    fn built_of(infos: &[PackageInfo], name: &str) -> Option<PathBuf> {
+        infos.iter().find(|i| i.name == name).unwrap().built.clone()
+    }
+
+    #[test]
+    fn a_build_without_a_recorded_identity_is_keyed_by_its_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = tmp.path().join("cache");
+        let built = BuiltCache::in_dir(&tmp.path().join("built"));
+        let packages = cache.join("packages");
+        source_tarball(
+            &packages.join("src/contrib/cpp11_1.0.0.tar.gz"),
+            "cpp11",
+            "",
+            "a",
+        );
+        source_tarball(
+            &packages.join("src/contrib/foo_1.0.0.tar.gz"),
+            "foo",
+            "LinkingTo: cpp11 (>= 0.1), notinthelock\n",
+            "foo",
+        );
+        // A binary package is not built, so it has no place in the cache.
+        source_tarball(
+            &packages.join("bin/linux/jammy-x86_64/4.4/bar_1.0.0.tar.gz"),
+            "bar",
+            "Built: R 4.4.0; x86_64-pc-linux-gnu; 2024-01-01 00:00:00 UTC; unix\n",
+            "bar",
+        );
+        let lock = vec![
+            unrecorded("cpp11", &[], false),
+            unrecorded("foo", &["cpp11"], false),
+            unrecorded("bar", &[], true),
+        ];
+
+        let infos = planned_builds(&lock, &cache, &built);
+        for name in ["cpp11", "foo"] {
+            assert!(built_of(&infos, name).is_some(), "{name}");
+        }
+        assert_eq!(built_of(&infos, "bar"), None);
+        assert!(infos.iter().find(|i| i.name == "bar").unwrap().binary);
+        // The identities are recorded as the packages' provenance.
+        let cpp11 = infos.iter().find(|i| i.name == "cpp11").unwrap();
+        let foo = infos.iter().find(|i| i.name == "foo").unwrap();
+        let cpp11_hash = cpp11.hash.clone().unwrap();
+        assert_eq!(
+            foo.linkingto,
+            vec![("cpp11".to_string(), "1.0.0".to_string(), cpp11_hash)]
+        );
+        assert!(foo.hash.is_some());
+        let bar = infos.iter().find(|i| i.name == "bar").unwrap();
+        assert!(bar.hash.is_none() && bar.linkingto.is_empty());
+
+        // The same files give the same keys.
+        let again = planned_builds(&lock, &cache, &built);
+        for name in ["cpp11", "foo"] {
+            assert_eq!(built_of(&infos, name), built_of(&again, name), "{name}");
+        }
+
+        // A different file for a package that is linked to changes the
+        // dependent's key as well as its own.
+        source_tarball(
+            &packages.join("src/contrib/cpp11_1.0.0.tar.gz"),
+            "cpp11",
+            "",
+            "b",
+        );
+        let changed = planned_builds(&lock, &cache, &built);
+        assert_ne!(built_of(&infos, "cpp11"), built_of(&changed, "cpp11"));
+        assert_ne!(built_of(&infos, "foo"), built_of(&changed, "foo"));
+
+        // So does a different version of it.
+        source_tarball(
+            &packages.join("src/contrib/cpp11_1.0.0.tar.gz"),
+            "cpp11",
+            "",
+            "a",
+        );
+        let mut newer = lock.clone();
+        newer[0].version = "1.0.1".to_string();
+        let versioned = planned_builds(&newer, &cache, &built);
+        assert_ne!(built_of(&infos, "foo"), built_of(&versioned, "foo"));
+    }
+
+    #[test]
+    fn a_recorded_identity_is_left_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = tmp.path().join("cache");
+        let built = BuiltCache::in_dir(&tmp.path().join("built"));
+        source_tarball(
+            &cache.join("packages/src/contrib/foo_1.0.0.tar.gz"),
+            "foo",
+            "",
+            "x",
+        );
+        let mut pkg = unrecorded("foo", &[], false);
+        pkg.metadata
+            .insert(REMOTE_HASH_FIELD.to_string(), "abc".to_string());
+        let lock = vec![pkg];
+        let after = planned_builds(&lock, &cache, &built);
+        assert_eq!(after[0].hash.as_deref(), Some("abc"));
+        assert!(after[0].built.is_some());
+        assert_eq!(after[0].built, built.path(&after[0]));
+    }
+
+    #[test]
+    fn a_build_that_cannot_be_identified_is_not_cached() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = tmp.path().join("cache");
+        let built = BuiltCache::in_dir(&tmp.path().join("built"));
+        let packages = cache.join("packages");
+        source_tarball(
+            &packages.join("src/contrib/foo_1.0.0.tar.gz"),
+            "foo",
+            "LinkingTo: cpp11\n",
+            "x",
+        );
+        // `cpp11` is in the lock but its file is not there.
+        let lock = vec![
+            unrecorded("cpp11", &[], false),
+            unrecorded("foo", &["cpp11"], false),
+        ];
+        let infos = planned_builds(&lock, &cache, &built);
+        assert_eq!(built_of(&infos, "foo"), None);
+    }
+
+    /// A `LinkingTo` package without a hash that is installed already is not
+    /// known to be the file the lock points at, so it does not identify the
+    /// build of a package compiled against it.
+    #[test]
+    fn an_installed_linkingto_package_without_a_hash_is_not_identified() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = tmp.path().join("cache");
+        let built = BuiltCache::in_dir(&tmp.path().join("built"));
+        let packages = cache.join("packages");
+        source_tarball(
+            &packages.join("src/contrib/cpp11_1.0.0.tar.gz"),
+            "cpp11",
+            "",
+            "a",
+        );
+        source_tarball(
+            &packages.join("src/contrib/foo_1.0.0.tar.gz"),
+            "foo",
+            "LinkingTo: cpp11\n",
+            "foo",
+        );
+        let lock = vec![
+            unrecorded("cpp11", &[], false),
+            unrecorded("foo", &["cpp11"], false),
+        ];
+        // Only `foo` is installed, `cpp11` is up to date in the library.
+        let installing = HashSet::from(["foo"]);
+        let info = lockfile_package_info(&lock[1], &lock, &installing, &cache, Some(&built));
+        assert_eq!(info.built, None);
+
+        // With a hash in the lock, the installed one is the one the lock has.
+        let mut recorded = lock.clone();
+        recorded[0]
+            .metadata
+            .insert(REMOTE_HASH_FIELD.to_string(), "abc".to_string());
+        let info =
+            lockfile_package_info(&recorded[1], &recorded, &installing, &cache, Some(&built));
+        assert!(info.built.is_some());
+    }
+
+    /// An `R` that installs what `R CMD INSTALL -l LIB TARBALL` is given by
+    /// writing a built package, and logs every install it does.
+    #[cfg(unix)]
+    fn fake_r(dir: &Path) -> (String, PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let log = dir.join("installs.log");
+        let r = dir.join("R");
+        fs::write(
+            &r,
+            format!(
+                "#!/bin/sh\n\
+                 name=$(basename \"$5\" | cut -d_ -f1)\n\
+                 echo \"$name\" >> '{}'\n\
+                 mkdir -p \"$4/$name/libs\"\n\
+                 printf 'Package: %s\\nVersion: 1.0.0\\nBuilt: R 4.4.0\\n' \"$name\" > \"$4/$name/DESCRIPTION\"\n\
+                 echo compiled > \"$4/$name/libs/$name.so\"\n",
+                log.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&r, fs::Permissions::from_mode(0o755)).unwrap();
+        (r.to_str().unwrap().to_string(), log)
+    }
+
+    #[cfg(unix)]
+    fn compiled(log: &Path) -> Vec<String> {
+        let mut names: Vec<String> = fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .map(String::from)
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// The second library a lock is synced into gets the packages the first
+    /// one compiled, also without a `RemoteHash` in the lock.
+    #[cfg(unix)]
+    #[test]
+    fn a_second_library_reuses_what_the_first_one_compiled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = tmp.path().join("cache");
+        let built = BuiltCache::in_dir(&tmp.path().join("built"));
+        let packages = cache.join("packages");
+        source_tarball(
+            &packages.join("src/contrib/cpp11_1.0.0.tar.gz"),
+            "cpp11",
+            "",
+            "a",
+        );
+        source_tarball(
+            &packages.join("src/contrib/foo_1.0.0.tar.gz"),
+            "foo",
+            "LinkingTo: cpp11\n",
+            "foo",
+        );
+        let lock = vec![
+            unrecorded("cpp11", &[], false),
+            unrecorded("foo", &["cpp11"], false),
+        ];
+        let (r, log) = fake_r(tmp.path());
+        let sync = |library: &str| {
+            let library = tmp.path().join(library);
+            fs::create_dir_all(&library).unwrap();
+            let infos = planned_builds(&lock, &cache, &built);
+            install_packages(infos, &library, &r, 2).unwrap();
+            library
+        };
+
+        let first = sync("lib1");
+        assert_eq!(compiled(&log), vec!["cpp11", "foo"]);
+        let second = sync("lib2");
+        assert_eq!(compiled(&log), vec!["cpp11", "foo"]);
+        for lib in [&first, &second] {
+            for name in ["cpp11", "foo"] {
+                assert!(lib.join(name).join(format!("libs/{name}.so")).exists());
+            }
+            // What it was built from is recorded.
+            let desc = fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
+            assert!(desc.contains("RemoteHash"), "{desc}");
+            assert!(
+                desc.contains("RemoteLinkingToHashes: cpp11@1.0.0="),
+                "{desc}"
+            );
+        }
+
+        // A changed dependency compiles it and what is linked to it again,
+        // but not the rest.
+        source_tarball(
+            &packages.join("src/contrib/cpp11_1.0.0.tar.gz"),
+            "cpp11",
+            "",
+            "b",
+        );
+        sync("lib3");
+        assert_eq!(compiled(&log), vec!["cpp11", "cpp11", "foo", "foo"]);
+    }
+
     /// Where to install from comes from `sources`, not from `metadata`: a
     /// git package's subdir, and a local package's path.
     #[test]
-    fn lockfile_package_info_reads_the_install_location_from_sources() {
+    fn lockfile_package_path_reads_the_install_location_from_sources() {
         let cache = Path::new("/cache");
         let mut git = locked("mypkg", &[]);
         git.metadata.clear();
         git.sources = vec!["git+https://example.com/repo.git#commit=3f2a&subdir=pkgs/mypkg".into()];
         git.target = "git/git/3f2a".to_string();
         assert_eq!(
-            lockfile_package_info(&git, cache, None).file_path,
+            lockfile_package_path(&git, cache),
             cache
                 .join("packages")
                 .join("git/git/3f2a")
@@ -7605,8 +7992,7 @@ mod tests {
         local.sources = vec![reqwest::Url::from_directory_path(&dir).unwrap().to_string()];
         local.target = String::new();
         assert_eq!(
-            lockfile_package_info(&local, cache, None)
-                .file_path
+            lockfile_package_path(&local, cache)
                 .components()
                 .collect::<Vec<_>>(),
             dir.components().collect::<Vec<_>>()
