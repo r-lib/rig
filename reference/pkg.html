@@ -369,6 +369,12 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Authentication</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../scripts.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Scripts</span></a>
   </div>
@@ -406,6 +412,12 @@ ul.task-list li input[type="checkbox"] {
   <div class="sidebar-item-container"> 
   <a href="../reference/add.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig add</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig auth</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -597,14 +609,20 @@ ul.task-list li input[type="checkbox"] {
   <li><a href="#arguments-5" id="toc-arguments-5" class="nav-link" data-scroll-target="#arguments-5">Arguments</a></li>
   <li><a href="#options-7" id="toc-options-7" class="nav-link" data-scroll-target="#options-7">Options</a></li>
   </ul></li>
+  <li><a href="#rig-pkg-sync" id="toc-rig-pkg-sync" class="nav-link" data-scroll-target="#rig-pkg-sync"><code>rig pkg sync</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-8" id="toc-usage-8" class="nav-link" data-scroll-target="#usage-8">Usage</a></li>
+  <li><a href="#arguments-6" id="toc-arguments-6" class="nav-link" data-scroll-target="#arguments-6">Arguments</a></li>
+  <li><a href="#options-8" id="toc-options-8" class="nav-link" data-scroll-target="#options-8">Options</a></li>
+  </ul></li>
   <li><a href="#rig-pkg-tree" id="toc-rig-pkg-tree" class="nav-link" data-scroll-target="#rig-pkg-tree"><code>rig pkg tree</code></a>
   <ul class="collapse">
   <li><a href="#repositories-4" id="toc-repositories-4" class="nav-link" data-scroll-target="#repositories-4">Repositories</a></li>
   <li><a href="#reading-the-tree" id="toc-reading-the-tree" class="nav-link" data-scroll-target="#reading-the-tree">Reading the tree</a></li>
   <li><a href="#inverting-the-tree" id="toc-inverting-the-tree" class="nav-link" data-scroll-target="#inverting-the-tree">Inverting the tree</a></li>
-  <li><a href="#usage-8" id="toc-usage-8" class="nav-link" data-scroll-target="#usage-8">Usage</a></li>
-  <li><a href="#arguments-6" id="toc-arguments-6" class="nav-link" data-scroll-target="#arguments-6">Arguments</a></li>
-  <li><a href="#options-8" id="toc-options-8" class="nav-link" data-scroll-target="#options-8">Options</a></li>
+  <li><a href="#usage-9" id="toc-usage-9" class="nav-link" data-scroll-target="#usage-9">Usage</a></li>
+  <li><a href="#arguments-7" id="toc-arguments-7" class="nav-link" data-scroll-target="#arguments-7">Arguments</a></li>
+  <li><a href="#options-9" id="toc-options-9" class="nav-link" data-scroll-target="#options-9">Options</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -669,6 +687,10 @@ Remove packages from a library (alias: <code>rm</code>)
 <dd>
 Search for CRAN packages
 </dd>
+<dt><a href="#rig-pkg-sync"><code>sync</code></a></dt>
+<dd>
+Install the packages of a lock file into a library
+</dd>
 <dt><a href="#rig-pkg-tree"><code>tree</code></a></dt>
 <dd>
 Dependency tree of a package in the repositories
@@ -681,8 +703,8 @@ Dependency tree of a package in the repositories
 <section id="repositories" class="level3">
 <h3 class="anchored" data-anchor-id="repositories">Repositories</h3>
 <p>rig uses the repositories configured for the R version, i.e.&nbsp;the <a href="../reference/repos.html#rig-repos-list"><code>rig repos list</code></a> output for the default R version, or for the one selected with <code>--r-version</code>. If two repositories have the same version of a package, the one listed first wins.</p>
-<p><code>--with-repos</code> (or <code>--index</code>) and <code>--without-repos</code> (or <code>--no-index</code>) change the repositories for this command only, the setup of the R version stays the same. Both take a comma-separated list and can be repeated. <code>--with-repos</code> adds repositories, by name, like <a href="../reference/repos.html#rig-repos-enable"><code>rig repos enable</code></a>, by URL, or as <code>name=URL</code>, e.g.&nbsp;<code>--index=rlib=https://r-lib.r-universe.dev</code>. A repository given by URL is a CRAN-like repository and comes before the others. <code>--without-repos=&lt;names&gt;</code> leaves out repositories, and <code>--without-repos</code> without names leaves out all configured repositories, so only the ones in <code>--with-repos</code> are used, e.g. <code>--no-index --index=https://r-lib.r-universe.dev</code>. URLs cannot contain commas.</p>
-<p>For P3M and for Bioconductor’s software repository rig reads their full package history, from <a href="https://ppm.r-pkg.org" class="uri">https://ppm.r-pkg.org</a> and <a href="https://ppm-bioc.r-pkg.org" class="uri">https://ppm-bioc.r-pkg.org</a>, so older and archived versions are available, too. Any other repository, e.g. CRAN itself, an r-universe, or one added with <a href="../reference/repos.html#rig-repos-add"><code>rig repos add</code></a>, is read from its <code>PACKAGES</code> files, so only its current packages are available. If the Bioconductor repositories are enabled, the list includes the packages of the Bioconductor release of the R version, e.g.&nbsp;Bioconductor 3.23 for R 4.6. Without any R version rig lists CRAN, and the newest Bioconductor release.</p>
+<p><code>--with-repos</code> (or <code>--index</code>) and <code>--without-repos</code> (or <code>--no-index</code>) change the repositories for this command only, the setup of the R version stays the same. Both take a comma-separated list and can be repeated. <code>--with-repos</code> adds repositories, by name, like <a href="../reference/repos.html#rig-repos-enable"><code>rig repos enable</code></a>, by URL, or as <code>name=URL</code>, e.g.&nbsp;<code>--index=rlib=https://r-lib.r-universe.dev</code>. A repository given by URL is a CRAN-like repository and comes before the others. <code>--without-repos=&lt;names&gt;</code> leaves out repositories, and <code>--without-repos</code> without names leaves out all configured repositories, so only the ones in <code>--with-repos</code> are used, e.g.&nbsp;<code>--no-index --index=https://r-lib.r-universe.dev</code>. URLs cannot contain commas.</p>
+<p>For P3M and for Bioconductor’s software repository rig reads their full package history, from <a href="https://ppm.r-pkg.org" class="uri">https://ppm.r-pkg.org</a> and <a href="https://ppm-bioc.r-pkg.org" class="uri">https://ppm-bioc.r-pkg.org</a>, so older and archived versions are available, too. Any other repository, e.g.&nbsp;CRAN itself, an r-universe, or one added with <a href="../reference/repos.html#rig-repos-add"><code>rig repos add</code></a>, is read from its <code>PACKAGES</code> files, so only its current packages are available. If the Bioconductor repositories are enabled, the list includes the packages of the Bioconductor release of the R version, e.g.&nbsp;Bioconductor 3.23 for R 4.6. Without any R version rig lists CRAN, and the newest Bioconductor release.</p>
 <p>Packages CRAN or Bioconductor has archived are omitted by default; pass <code>--include-archived</code> to list them as well.</p>
 <p>Use <code>--json</code> to print the full listing as JSON, including the complete dependency lists for every package. See <a href="#rig-pkg-info"><code>rig pkg info</code></a> for a detailed view of a single package, and <code>rig pkg info --versions</code> to list all versions of a package.</p>
 </section>
@@ -696,6 +718,10 @@ Dependency tree of a package in the repositories
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -728,7 +754,7 @@ Also use these repositories, a comma-separated list of repository names, URLs or
 </dd>
 <dt><code>--without-repos[=&lt;REPOS&gt;]</code></dt>
 <dd>
-Do not use these repositories, a comma-separated list. Without a value, do not use any of the configured repositories, only the ones in <code>--with-repos</code>. Can be repeated.
+Do not use these repositories, a comma-separated list, given with ‘=’, e.g.&nbsp;<code>--without-repos=cran</code>. Without a value, do not use any of the configured repositories, only the ones in <code>--with-repos</code>. Can be repeated.
 <em>[aliases: no-index]</em>
 </dd>
 </dl>
@@ -741,8 +767,8 @@ Do not use these repositories, a comma-separated list. Without a value, do not u
 <section id="repositories-1" class="level3">
 <h3 class="anchored" data-anchor-id="repositories-1">Repositories</h3>
 <p>rig uses the repositories configured for the R version, i.e.&nbsp;the <a href="../reference/repos.html#rig-repos-list"><code>rig repos list</code></a> output for the default R version, or for the one selected with <code>--r-version</code>. If two repositories have the same version of a package, the one listed first wins.</p>
-<p><code>--with-repos</code> (or <code>--index</code>) and <code>--without-repos</code> (or <code>--no-index</code>) change the repositories for this command only, the setup of the R version stays the same. Both take a comma-separated list and can be repeated. <code>--with-repos</code> adds repositories, by name, like <a href="../reference/repos.html#rig-repos-enable"><code>rig repos enable</code></a>, by URL, or as <code>name=URL</code>, e.g.&nbsp;<code>--index=rlib=https://r-lib.r-universe.dev</code>. A repository given by URL is a CRAN-like repository and comes before the others. <code>--without-repos=&lt;names&gt;</code> leaves out repositories, and <code>--without-repos</code> without names leaves out all configured repositories, so only the ones in <code>--with-repos</code> are used, e.g. <code>--no-index --index=https://r-lib.r-universe.dev</code>. URLs cannot contain commas.</p>
-<p>For P3M and for Bioconductor’s software repository rig reads their full package history, from <a href="https://ppm.r-pkg.org" class="uri">https://ppm.r-pkg.org</a> and <a href="https://ppm-bioc.r-pkg.org" class="uri">https://ppm-bioc.r-pkg.org</a>, so older and archived versions are available, too. Any other repository, e.g. CRAN itself, an r-universe, or one added with <a href="../reference/repos.html#rig-repos-add"><code>rig repos add</code></a>, is read from its <code>PACKAGES</code> files, so only its current packages are available. Bioconductor packages are included if the Bioconductor repositories are enabled for the R version.</p>
+<p><code>--with-repos</code> (or <code>--index</code>) and <code>--without-repos</code> (or <code>--no-index</code>) change the repositories for this command only, the setup of the R version stays the same. Both take a comma-separated list and can be repeated. <code>--with-repos</code> adds repositories, by name, like <a href="../reference/repos.html#rig-repos-enable"><code>rig repos enable</code></a>, by URL, or as <code>name=URL</code>, e.g.&nbsp;<code>--index=rlib=https://r-lib.r-universe.dev</code>. A repository given by URL is a CRAN-like repository and comes before the others. <code>--without-repos=&lt;names&gt;</code> leaves out repositories, and <code>--without-repos</code> without names leaves out all configured repositories, so only the ones in <code>--with-repos</code> are used, e.g.&nbsp;<code>--no-index --index=https://r-lib.r-universe.dev</code>. URLs cannot contain commas.</p>
+<p>For P3M and for Bioconductor’s software repository rig reads their full package history, from <a href="https://ppm.r-pkg.org" class="uri">https://ppm.r-pkg.org</a> and <a href="https://ppm-bioc.r-pkg.org" class="uri">https://ppm-bioc.r-pkg.org</a>, so older and archived versions are available, too. Any other repository, e.g.&nbsp;CRAN itself, an r-universe, or one added with <a href="../reference/repos.html#rig-repos-add"><code>rig repos add</code></a>, is read from its <code>PACKAGES</code> files, so only its current packages are available. Bioconductor packages are included if the Bioconductor repositories are enabled for the R version.</p>
 </section>
 <section id="dependency-types" class="level3">
 <h3 class="anchored" data-anchor-id="dependency-types">Dependency types</h3>
@@ -771,6 +797,10 @@ package to show the dependencies of
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>--dev</code></dt>
 <dd>
@@ -811,7 +841,7 @@ Also use these repositories, a comma-separated list of repository names, URLs or
 </dd>
 <dt><code>--without-repos[=&lt;REPOS&gt;]</code></dt>
 <dd>
-Do not use these repositories, a comma-separated list. Without a value, do not use any of the configured repositories, only the ones in <code>--with-repos</code>. Can be repeated.
+Do not use these repositories, a comma-separated list, given with ‘=’, e.g.&nbsp;<code>--without-repos=cran</code>. Without a value, do not use any of the configured repositories, only the ones in <code>--with-repos</code>. Can be repeated.
 <em>[aliases: no-index]</em>
 </dd>
 </dl>
@@ -821,14 +851,14 @@ Do not use these repositories, a comma-separated list. Without a value, do not u
 <h2 class="anchored" data-anchor-id="rig-pkg-doctor"><code>rig pkg doctor</code></h2>
 <p>Check the packages installed in an R package library, and report the ones that may not work: missing dependencies, dependencies that are too old, and packages compiled against another version of a <code>LinkingTo</code> dependency than the one installed now. This command does not start R.</p>
 <p>Example output:</p>
-<pre><code>3 problems (2 errors, 1 warning) in 312 packages (R 4.4.1, main: /Users/johndoe/Library/R/arm64/4.4/library)</code></pre>
+<pre><code>3 problems (2 errors, 1 warning) in 312 packages (R 4.4.1, main: ~/R/4.4)</code></pre>
 <pre><code>Package   Version   Severity   Problem   Details
 ---------------------------------------------------------------------------
 foo       1.0.0     error      missing   Imports bar, not installed
-glue      1.8.0     error      version   Imports cli (&gt;= 3.6.0), 3.4.1 is installed
+glue      1.8.0     error      version   Imports R6 (&gt;= 2.5), 2.4 is installed
 qux       2.1.0     warning    built-r   built for R 4.3.3, R 4.4.1 is used</code></pre>
 <pre><code>To fix the errors, run:
-  rig pkg install bar cli</code></pre>
+  rig pkg install bar R6</code></pre>
 <pre><code>To fix the warnings, run:
   rig pkg install qux</code></pre>
 <p>Give package names to report on those packages only. They are still checked against the whole library.</p>
@@ -890,6 +920,10 @@ packages to report on (default: all)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>--dev</code></dt>
 <dd>
 Also check the Suggests and Enhances dependencies
@@ -932,8 +966,8 @@ Run in user mode (overrides RIG_MODE and config)
 <section id="repositories-2" class="level3">
 <h3 class="anchored" data-anchor-id="repositories-2">Repositories</h3>
 <p>rig uses the repositories configured for the R version, i.e.&nbsp;the <a href="../reference/repos.html#rig-repos-list"><code>rig repos list</code></a> output for the default R version, or for the one selected with <code>--r-version</code>. If two repositories have the same version of a package, the one listed first wins.</p>
-<p><code>--with-repos</code> (or <code>--index</code>) and <code>--without-repos</code> (or <code>--no-index</code>) change the repositories for this command only, the setup of the R version stays the same. Both take a comma-separated list and can be repeated. <code>--with-repos</code> adds repositories, by name, like <a href="../reference/repos.html#rig-repos-enable"><code>rig repos enable</code></a>, by URL, or as <code>name=URL</code>, e.g.&nbsp;<code>--index=rlib=https://r-lib.r-universe.dev</code>. A repository given by URL is a CRAN-like repository and comes before the others. <code>--without-repos=&lt;names&gt;</code> leaves out repositories, and <code>--without-repos</code> without names leaves out all configured repositories, so only the ones in <code>--with-repos</code> are used, e.g. <code>--no-index --index=https://r-lib.r-universe.dev</code>. URLs cannot contain commas.</p>
-<p>For P3M and for Bioconductor’s software repository rig reads their full package history, from <a href="https://ppm.r-pkg.org" class="uri">https://ppm.r-pkg.org</a> and <a href="https://ppm-bioc.r-pkg.org" class="uri">https://ppm-bioc.r-pkg.org</a>, so older and archived versions are available, too. Any other repository, e.g. CRAN itself, an r-universe, or one added with <a href="../reference/repos.html#rig-repos-add"><code>rig repos add</code></a>, is read from its <code>PACKAGES</code> files, so only its current packages are available.</p>
+<p><code>--with-repos</code> (or <code>--index</code>) and <code>--without-repos</code> (or <code>--no-index</code>) change the repositories for this command only, the setup of the R version stays the same. Both take a comma-separated list and can be repeated. <code>--with-repos</code> adds repositories, by name, like <a href="../reference/repos.html#rig-repos-enable"><code>rig repos enable</code></a>, by URL, or as <code>name=URL</code>, e.g.&nbsp;<code>--index=rlib=https://r-lib.r-universe.dev</code>. A repository given by URL is a CRAN-like repository and comes before the others. <code>--without-repos=&lt;names&gt;</code> leaves out repositories, and <code>--without-repos</code> without names leaves out all configured repositories, so only the ones in <code>--with-repos</code> are used, e.g.&nbsp;<code>--no-index --index=https://r-lib.r-universe.dev</code>. URLs cannot contain commas.</p>
+<p>For P3M and for Bioconductor’s software repository rig reads their full package history, from <a href="https://ppm.r-pkg.org" class="uri">https://ppm.r-pkg.org</a> and <a href="https://ppm-bioc.r-pkg.org" class="uri">https://ppm-bioc.r-pkg.org</a>, so older and archived versions are available, too. Any other repository, e.g.&nbsp;CRAN itself, an r-universe, or one added with <a href="../reference/repos.html#rig-repos-add"><code>rig repos add</code></a>, is read from its <code>PACKAGES</code> files, so only its current packages are available.</p>
 <p>rig shows the full <code>DESCRIPTION</code> file for a package version from P3M, and for the current version of a Bioconductor package, from the <code>VIEWS</code> file of its Bioconductor repository (software, annotation, experiment data, workflows or books). For a package version from any other repository, and for an older Bioconductor version, rig only knows the fields of the repository’s index: its version, its dependencies and where to download it.</p>
 </section>
 <section id="readme-of-a-package" class="level3">
@@ -966,6 +1000,10 @@ package to show
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -1006,7 +1044,7 @@ Also use these repositories, a comma-separated list of repository names, URLs or
 </dd>
 <dt><code>--without-repos[=&lt;REPOS&gt;]</code></dt>
 <dd>
-Do not use these repositories, a comma-separated list. Without a value, do not use any of the configured repositories, only the ones in <code>--with-repos</code>. Can be repeated.
+Do not use these repositories, a comma-separated list, given with ‘=’, e.g.&nbsp;<code>--without-repos=cran</code>. Without a value, do not use any of the configured repositories, only the ones in <code>--with-repos</code>. Can be repeated.
 <em>[aliases: no-index]</em>
 </dd>
 </dl>
@@ -1019,8 +1057,8 @@ Do not use these repositories, a comma-separated list. Without a value, do not u
 <section id="repositories-3" class="level3">
 <h3 class="anchored" data-anchor-id="repositories-3">Repositories</h3>
 <p>rig installs from the repositories configured for the R version, i.e.&nbsp;the <a href="../reference/repos.html#rig-repos-list"><code>rig repos list</code></a> output for the default R version, or for the one selected with <code>--r-version</code>. If two repositories have the same version of a package, the one listed first wins.</p>
-<p><code>--with-repos</code> (or <code>--index</code>) and <code>--without-repos</code> (or <code>--no-index</code>) change the repositories for this command only, the setup of the R version stays the same. Both take a comma-separated list and can be repeated. <code>--with-repos</code> adds repositories, by name, like <a href="../reference/repos.html#rig-repos-enable"><code>rig repos enable</code></a>, by URL, or as <code>name=URL</code>, e.g.&nbsp;<code>--index=rlib=https://r-lib.r-universe.dev</code>. A repository given by URL is a CRAN-like repository and comes before the others. <code>--without-repos=&lt;names&gt;</code> leaves out repositories, and <code>--without-repos</code> without names leaves out all configured repositories, so only the ones in <code>--with-repos</code> are used, e.g. <code>--no-index --index=https://r-lib.r-universe.dev</code>. URLs cannot contain commas.</p>
-<p>For P3M and for Bioconductor’s software repository rig reads their full package history, from <a href="https://ppm.r-pkg.org" class="uri">https://ppm.r-pkg.org</a> and <a href="https://ppm-bioc.r-pkg.org" class="uri">https://ppm-bioc.r-pkg.org</a>, so older and archived versions are available, too. Any other repository, e.g. CRAN itself, an r-universe, or one added with <a href="../reference/repos.html#rig-repos-add"><code>rig repos add</code></a>, is read from its <code>PACKAGES</code> files, so only its current packages are available.</p>
+<p><code>--with-repos</code> (or <code>--index</code>) and <code>--without-repos</code> (or <code>--no-index</code>) change the repositories for this command only, the setup of the R version stays the same. Both take a comma-separated list and can be repeated. <code>--with-repos</code> adds repositories, by name, like <a href="../reference/repos.html#rig-repos-enable"><code>rig repos enable</code></a>, by URL, or as <code>name=URL</code>, e.g.&nbsp;<code>--index=rlib=https://r-lib.r-universe.dev</code>. A repository given by URL is a CRAN-like repository and comes before the others. <code>--without-repos=&lt;names&gt;</code> leaves out repositories, and <code>--without-repos</code> without names leaves out all configured repositories, so only the ones in <code>--with-repos</code> are used, e.g.&nbsp;<code>--no-index --index=https://r-lib.r-universe.dev</code>. URLs cannot contain commas.</p>
+<p>For P3M and for Bioconductor’s software repository rig reads their full package history, from <a href="https://ppm.r-pkg.org" class="uri">https://ppm.r-pkg.org</a> and <a href="https://ppm-bioc.r-pkg.org" class="uri">https://ppm-bioc.r-pkg.org</a>, so older and archived versions are available, too. Any other repository, e.g.&nbsp;CRAN itself, an r-universe, or one added with <a href="../reference/repos.html#rig-repos-add"><code>rig repos add</code></a>, is read from its <code>PACKAGES</code> files, so only its current packages are available.</p>
 <p>A CRAN-like repository has binary packages for macOS and Windows, if it has <code>PACKAGES</code> files for them in the standard place, e.g. <code>bin/macosx/big-sur-arm64/contrib/4.5</code>. On Linux it has source packages only.</p>
 </section>
 <section id="bioconductor-packages" class="level3">
@@ -1060,8 +1098,9 @@ rig pkg install local::mypkg</code></pre>
 </section>
 <section id="installing-only-the-dependencies" class="level3">
 <h3 class="anchored" data-anchor-id="installing-only-the-dependencies">Installing only the dependencies</h3>
-<p><code>--no-install-project</code> installs the dependencies of the named packages, but not the named packages themselves, e.g.&nbsp;to set up a library for working on a package from its source directory:</p>
-<pre><code>rig pkg install --no-install-project --dev .</code></pre>
+<p><code>--no-install-self</code> installs the dependencies of the named packages, but not the named packages themselves, e.g.&nbsp;to set up a library for working on a package from its source directory:</p>
+<pre><code>rig pkg install --no-install-self --dev .</code></pre>
+<p><code>--no-install-project</code> is an alias of <code>--no-install-self</code>, for consistency with <code>rig proj sync</code>.</p>
 <p>A named package is still installed if another package that is being installed depends on it.</p>
 </section>
 <section id="dev-dependencies" class="level3">
@@ -1074,7 +1113,7 @@ rig pkg install local::mypkg</code></pre>
 <p>A binary package is a package that has already been built for your platform and R version. Installing one is unpacking it into the library, so rig does that itself and never starts R.</p>
 <p>A package with no binary build is installed from its source tarball, with <code>R CMD INSTALL</code>, which does start R, and needs whatever that package needs to compile. The output of the compilation goes into a log file per package, in a <code>_logs</code> directory inside the library, and rig points at the log when an installation fails.</p>
 <p><code>--platform</code> installs for a platform other than this machine’s, e.g. <code>--platform x86_64-unknown-linux-gnu-ubuntu-24.04</code> (see <a href="../reference/system.html#rig-system-detect-platform"><code>rig system detect-platform</code></a> for the platform strings rig takes), and <code>--platform source</code> installs source packages only.</p>
-<p><code>--prefer-binary</code> trades a newer version for an older one that has a binary build, which is useful when compiling is expensive; it takes the number of versions to look back through, e.g.&nbsp;<code>--prefer-binary=5</code>, and defaults to 3.</p>
+<p><code>--prefer-binary</code> trades a newer version for an older one that has a binary build, which is useful when compiling is expensive; it takes the number of versions to look back through, e.g.&nbsp;<code>--prefer-binary=5</code>, and defaults to 3. To turn it on by default, set the <code>prefer-binary</code> <a href="../reference/config.html">config</a> entry; <code>--prefer-binary=0</code> turns it off for one run.</p>
 </section>
 <section id="system-requirements-1" class="level3">
 <h3 class="anchored" data-anchor-id="system-requirements-1">System requirements</h3>
@@ -1085,7 +1124,7 @@ rig pkg install local::mypkg</code></pre>
 </section>
 <section id="excluding-newer-package-versions" class="level3">
 <h3 class="anchored" data-anchor-id="excluding-newer-package-versions">Excluding newer package versions</h3>
-<p><code>--exclude-newer</code> ignores CRAN and Bioconductor package versions published after a date, e.g. <code>--exclude-newer 2025-06-01</code>, or after a span back from today, e.g. <code>--exclude-newer "7 days"</code>. See <a href="../reference/proj.html#rig-proj-lock"><code>rig proj lock</code></a> for the accepted formats and details. The <code>PACKAGES</code> files of other repositories have no publication dates, so their versions are never excluded.</p>
+<p><code>--exclude-newer</code> ignores CRAN and Bioconductor package versions published after a date, e.g.&nbsp;<code>--exclude-newer 2025-06-01</code>, or after a span back from today, e.g.&nbsp;<code>--exclude-newer "7 days"</code>. See <a href="../reference/proj.html#rig-proj-lock"><code>rig proj lock</code></a> for the accepted formats and details. The <code>PACKAGES</code> files of other repositories have no publication dates, so their versions are never excluded. To use a cutoff by default, set the <code>exclude-newer</code> <a href="../reference/config.html">config</a> entry.</p>
 </section>
 <section id="caching-package-builds" class="level3">
 <h3 class="anchored" data-anchor-id="caching-package-builds">Caching package builds</h3>
@@ -1128,6 +1167,10 @@ packages to install
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>--dev</code></dt>
 <dd>
 Include dev (development) dependencies
@@ -1160,9 +1203,10 @@ Library name or path, instead of the default library
 <dd>
 Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
 </dd>
-<dt><code>--no-install-project</code></dt>
+<dt><code>--no-install-self</code></dt>
 <dd>
 Do not install the packages named on the command line, only their dependencies. A named package is still installed if another package that is installed depends on it.
+<em>[aliases: no-install-project]</em>
 </dd>
 <dt><code>--no-sysreqs</code> <span class="rig-platform">Linux only</span></dt>
 <dd>
@@ -1199,7 +1243,7 @@ Also use these repositories, a comma-separated list of repository names, URLs or
 </dd>
 <dt><code>--without-repos[=&lt;REPOS&gt;]</code></dt>
 <dd>
-Do not use these repositories, a comma-separated list. Without a value, do not use any of the configured repositories, only the ones in <code>--with-repos</code>. Can be repeated.
+Do not use these repositories, a comma-separated list, given with ‘=’, e.g.&nbsp;<code>--without-repos=cran</code>. Without a value, do not use any of the configured repositories, only the ones in <code>--with-repos</code>. Can be repeated.
 <em>[aliases: no-index]</em>
 </dd>
 </dl>
@@ -1211,12 +1255,12 @@ Do not use these repositories, a comma-separated list. Without a value, do not u
 <p>List the packages installed in an R package library. This command does not start R.</p>
 <p>Example output:</p>
 <pre><code>312 packages (R 4.4.1, main: /Users/gaborcsardi/Library/R/arm64/4.4/library)</code></pre>
-<pre><code>Package     Version      Built   Platform                 Source
------------------------------------------------------------------------------
-cli         3.6.3        4.4.0   aarch64-apple-darwin20   CRAN
-glue        1.8.0        4.4.1   aarch64-apple-darwin20   CRAN
-asciicast   2.3.1.9000   4.4.1   aarch64-apple-darwin20   github::r-lib/asciicast
-mypkg       0.0.1        4.4.1   -                        -</code></pre>
+<pre><code>Package   Version      Built   Platform                 Source
+-------------------------------------------------------------------------
+cli       3.6.3        4.4.0   aarch64-apple-darwin20   CRAN
+glue      1.8.0        4.4.1   aarch64-apple-darwin20   CRAN
+pak       0.8.0.9000   4.4.1   aarch64-apple-darwin20   github::r-lib/pak
+mypkg     0.0.1        4.4.1   -                        -</code></pre>
 <p><code>Platform</code> is <code>-</code> for a package without compiled code. Use <code>--json</code> for machine readable output, which reports the repository or remote type as <code>source</code> and the remote itself as <code>remote</code>, separately, instead of <code>Source</code>.</p>
 <p><code>--library</code> (<code>-l</code>) selects a non-default library. It takes either the name of a library of the R version, see <a href="../reference/library.html"><code>rig library list</code></a> , or the path of a library directory. A library name is tried first, so prefix a relative path with <code>./</code> (or use an absolute path) if it happens to share a name with a library.</p>
 <p><code>--r-version</code> (<code>-r</code>) lists the library of another R version, instead of the default one.</p>
@@ -1230,6 +1274,10 @@ mypkg       0.0.1        4.4.1   -                        -</code></pre>
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -1290,6 +1338,10 @@ packages to remove
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>--force</code></dt>
 <dd>
 Remove base packages as well, which R itself needs
@@ -1326,8 +1378,8 @@ Run in user mode (overrides RIG_MODE and config)
 <p>Search CRAN packages by name, title, description, author and maintainer. The search runs on the web service of the pkgsearch R package, <a href="https://search.r-pkg.org" class="uri">https://search.r-pkg.org</a>, so it gives the same results as <code>pkgsearch::pkg_search()</code>, and it needs network access. It always searches CRAN, not the repositories configured with <a href="../reference/repos.html"><code>rig repos</code></a>. This command does not start R.</p>
 <p>Packages that match all search terms, or the whole phrase, rank higher, and packages with more reverse dependencies rank higher, too.</p>
 <p>Example output:</p>
-<pre><code>- "permutation test" ------------------------- 3431 packages in 0.023 seconds -</code></pre>
-<pre><code>1 coin @ 1.4-5 (score 100)                        Torsten Hothorn, 3 months ago
+<pre><code>- "permutation test" ----------------------- 3431 packages in 0.023 seconds -</code></pre>
+<pre><code>1 coin @ 1.4-5 (score 100)                      Torsten Hothorn, 3 months ago
 --------------
   # Conditional Inference Procedures in a Permutation Test Framework
   Conditional inference procedures for the general independence problem
@@ -1335,7 +1387,7 @@ Run in user mode (overrides RIG_MODE and config)
   censored, ordered and multivariate problems described in
   &lt;doi:10.18637/jss.v028.i08&gt;.
   https://codeberg.org/thothorn/coin/</code></pre>
-<pre><code>2 exactRankTests @ 0.8-37 (score 33)              Torsten Hothorn, 5 months ago
+<pre><code>2 exactRankTests @ 0.8-37 (score 33)            Torsten Hothorn, 5 months ago
 -------------------------
   # Exact Distributions for Rank and Permutation Tests
   Computes exact conditional p-values and quantiles using an
@@ -1343,16 +1395,16 @@ Run in user mode (overrides RIG_MODE and config)
 <pre><code>...</code></pre>
 <pre><code>Next 8 results: rig pkg search "permutation test" --from 9</code></pre>
 <p>With <code>--short</code> (<code>-s</code>) every package takes a single line:</p>
-<pre><code>- "permutation test" ------------------------- 3431 packages in 0.017 seconds -
+<pre><code>- "permutation test" ----------------------- 3431 packages in 0.017 seconds -
  #     package           version by                      @ title
- 1 100 coin              1.4-5   Torsten Hothorn        3M Conditional Infer...
- 2  33 exactRankTests    0.8-37  Torsten Hothorn        5M Exact Distributio...
- 3  33 lmPerm            2.1.6   Marco Torchiano       10M Permutation Tests...
+ 1 100 coin              1.4-5   Torsten Hothorn        3M Conditional Inf...
+ 2  33 exactRankTests    0.8-37  Torsten Hothorn        5M Exact Distribut...
+ 3  33 lmPerm            2.1.6   Marco Torchiano       10M Permutation Tes...
 ...</code></pre>
 <pre><code>Next 20 results: rig pkg search "permutation test" --from 21 --short</code></pre>
 <p>The score of a package is a percentage of the score of the best match. The long format shows it after the version, the short format in the unnamed second column. The <code>@</code> column is the time since the package was last released.</p>
 <p>Multiple words are searched together, so <code>rig pkg search permutation test</code> is the same as <code>rig pkg search "permutation test"</code>.</p>
-<p><code>--size</code> (<code>-n</code>) sets the number of results to show, the default is 8, or 20 with <code>--short</code>. <code>--from</code> shows results starting from this rank, e.g. <code>--from 9</code> shows the second page of results in the long format. If there are more results, the last line of the output shows the command that prints the next page.</p>
+<p><code>--size</code> (<code>-n</code>) sets the number of results to show, the default is 8, or 20 with <code>--short</code>. <code>--from</code> shows results starting from this rank, e.g.&nbsp;<code>--from 9</code> shows the second page of results in the long format. If there are more results, the last line of the output shows the command that prints the next page.</p>
 <p><code>--json</code> prints the results in JSON, including more fields: the maintainer’s email address, the number of reverse dependencies, the number of downloads in the last month, the license, the URLs and the bug report URL.</p>
 <p>In a terminal, the output is shown through a pager: <code>$RIG_PAGER</code>, <code>$PAGER</code> or <code>less</code>, in this order. Set <code>RIG_PAGER</code> to <code>cat</code> to turn this off.</p>
 <section id="usage-7" class="level3">
@@ -1371,6 +1423,10 @@ search terms
 <section id="options-7" class="level3">
 <h3 class="anchored" data-anchor-id="options-7">Options</h3>
 <dl>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>--from &lt;from&gt;</code></dt>
 <dd>
 Rank of the first result to show
@@ -1399,6 +1455,108 @@ Number of results to show [default: 8, or 20 with <code>--short</code>]
 </dl>
 </section>
 </section>
+<section id="rig-pkg-sync" class="level2">
+<h2 class="anchored" data-anchor-id="rig-pkg-sync"><code>rig pkg sync</code></h2>
+<p>Install the packages of a lock file, written by <a href="../reference/proj.html#rig-proj-lock"><code>rig proj lock</code></a>, into a library. The lock file defaults to <code>rproj.lock</code> in the current directory, but it can have any name:</p>
+<pre><code>rig pkg sync deploy.lock --library ./lib</code></pre>
+<p>Unlike <a href="../reference/proj.html#rig-proj-sync"><code>rig proj sync</code></a>, it installs from the lock file as it is, never removes a package from the library, and does not touch the project environment. Use <a href="../reference/proj.html#rig-proj-sync"><code>rig proj sync</code></a> for projects, and <a href="#rig-pkg-install"><code>rig pkg install</code></a> to install packages.</p>
+<p>It uses the default R version, or the one given with <code>--r-version</code>, if the lock file has a target for it, and otherwise the highest R version in the lock file. <code>--library</code> works as for <a href="#rig-pkg-install"><code>rig pkg install</code></a>, the other options as for <a href="../reference/proj.html#rig-proj-sync"><code>rig proj sync</code></a>.</p>
+<section id="usage-8" class="level3">
+<h3 class="anchored" data-anchor-id="usage-8">Usage</h3>
+<pre class="text"><code>rig pkg sync [OPTIONS] [LOCKFILE]</code></pre>
+</section>
+<section id="arguments-6" class="level3">
+<h3 class="anchored" data-anchor-id="arguments-6">Arguments</h3>
+<dl>
+<dt><code>[LOCKFILE]</code></dt>
+<dd>
+lock file to install from [default: rproj.lock]
+</dd>
+</dl>
+</section>
+<section id="options-8" class="level3">
+<h3 class="anchored" data-anchor-id="options-8">Options</h3>
+<dl>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--all-extras</code></dt>
+<dd>
+Install every optional-dependency extra.
+</dd>
+<dt><code>--all-groups</code></dt>
+<dd>
+Install every dependency group.
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
+<dt><code>--dry-run</code></dt>
+<dd>
+Show what would be installed, install nothing
+</dd>
+<dt><code>--extra &lt;NAME&gt;</code></dt>
+<dd>
+Install this optional-dependency extra. Not installed by default. Repeat or comma-separate for several.
+</dd>
+<dt><code>--group &lt;NAME&gt;</code></dt>
+<dd>
+Also install this dependency group, in addition to the default set (main, plus dev unless <code>--no-dev</code>). Repeat or comma-separate for several.
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>-l, --library &lt;library&gt;</code></dt>
+<dd>
+Library name or path, instead of the default library of the R version the lock file names
+</dd>
+<dt><code>--max-concurrent &lt;max-concurrent&gt;</code></dt>
+<dd>
+Maximum number of concurrent installations (default: number of CPU cores, see ‘concurrent-installs’ in ‘rig config’)
+</dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
+</dd>
+<dt><code>--no-dev</code></dt>
+<dd>
+Do not install the dev dependency group (default: installed alongside main). An explicit <code>--group</code> dev or <code>--all-groups</code> installs it anyway.
+</dd>
+<dt><code>--no-install-project</code></dt>
+<dd>
+Do not install the project’s own package, if the lock file has one. Still installed if another package actually depends on it.
+<em>[aliases: no-install-self]</em>
+</dd>
+<dt><code>--no-install-r</code></dt>
+<dd>
+Fail if the R version the lock file needs is not installed, instead of installing it
+</dd>
+<dt><code>--no-sysreqs</code> <span class="rig-platform">Linux only</span></dt>
+<dd>
+Do not install the system packages the R packages need
+</dd>
+<dt><code>--platform &lt;platform&gt;</code></dt>
+<dd>
+Which of the lock file’s targets to install, when more than one matches this machine. Any spelling of the platform works, e.g.&nbsp;macos for aarch64-apple-darwin.
+</dd>
+<dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
+<dd>
+R version to install with, an installed R version or one of the lock file’s R versions (default: the default R version, if the lock file has a target for it, else the highest)
+</dd>
+<dt><code>--sysreqs</code> <span class="rig-platform">Linux only</span></dt>
+<dd>
+Install the system packages the R packages need, even if the sysreqs setting turns this off
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+</dl>
+</section>
+</section>
 <section id="rig-pkg-tree" class="level2">
 <h2 class="anchored" data-anchor-id="rig-pkg-tree"><code>rig pkg tree</code></h2>
 <p>Show everything a package needs, directly or indirectly, as a tree:</p>
@@ -1420,8 +1578,8 @@ Number of results to show [default: 8, or 20 with <code>--short</code>]
 <section id="repositories-4" class="level3">
 <h3 class="anchored" data-anchor-id="repositories-4">Repositories</h3>
 <p>rig uses the repositories configured for the R version, i.e.&nbsp;the <a href="../reference/repos.html#rig-repos-list"><code>rig repos list</code></a> output for the default R version, or for the one selected with <code>--r-version</code>. If two repositories have the same version of a package, the one listed first wins.</p>
-<p><code>--with-repos</code> (or <code>--index</code>) and <code>--without-repos</code> (or <code>--no-index</code>) change the repositories for this command only, the setup of the R version stays the same. Both take a comma-separated list and can be repeated. <code>--with-repos</code> adds repositories, by name, like <a href="../reference/repos.html#rig-repos-enable"><code>rig repos enable</code></a>, by URL, or as <code>name=URL</code>, e.g.&nbsp;<code>--index=rlib=https://r-lib.r-universe.dev</code>. A repository given by URL is a CRAN-like repository and comes before the others. <code>--without-repos=&lt;names&gt;</code> leaves out repositories, and <code>--without-repos</code> without names leaves out all configured repositories, so only the ones in <code>--with-repos</code> are used, e.g. <code>--no-index --index=https://r-lib.r-universe.dev</code>. URLs cannot contain commas.</p>
-<p>For P3M and for Bioconductor’s software repository rig reads their full package history, from <a href="https://ppm.r-pkg.org" class="uri">https://ppm.r-pkg.org</a> and <a href="https://ppm-bioc.r-pkg.org" class="uri">https://ppm-bioc.r-pkg.org</a>, so older and archived versions are available, too. Any other repository, e.g. CRAN itself, an r-universe, or one added with <a href="../reference/repos.html#rig-repos-add"><code>rig repos add</code></a>, is read from its <code>PACKAGES</code> files, so only its current packages are available. Bioconductor packages are included if the Bioconductor repositories are enabled for the R version.</p>
+<p><code>--with-repos</code> (or <code>--index</code>) and <code>--without-repos</code> (or <code>--no-index</code>) change the repositories for this command only, the setup of the R version stays the same. Both take a comma-separated list and can be repeated. <code>--with-repos</code> adds repositories, by name, like <a href="../reference/repos.html#rig-repos-enable"><code>rig repos enable</code></a>, by URL, or as <code>name=URL</code>, e.g.&nbsp;<code>--index=rlib=https://r-lib.r-universe.dev</code>. A repository given by URL is a CRAN-like repository and comes before the others. <code>--without-repos=&lt;names&gt;</code> leaves out repositories, and <code>--without-repos</code> without names leaves out all configured repositories, so only the ones in <code>--with-repos</code> are used, e.g.&nbsp;<code>--no-index --index=https://r-lib.r-universe.dev</code>. URLs cannot contain commas.</p>
+<p>For P3M and for Bioconductor’s software repository rig reads their full package history, from <a href="https://ppm.r-pkg.org" class="uri">https://ppm.r-pkg.org</a> and <a href="https://ppm-bioc.r-pkg.org" class="uri">https://ppm-bioc.r-pkg.org</a>, so older and archived versions are available, too. Any other repository, e.g.&nbsp;CRAN itself, an r-universe, or one added with <a href="../reference/repos.html#rig-repos-add"><code>rig repos add</code></a>, is read from its <code>PACKAGES</code> files, so only its current packages are available. Bioconductor packages are included if the Bioconductor repositories are enabled for the R version.</p>
 </section>
 <section id="reading-the-tree" class="level3">
 <h3 class="anchored" data-anchor-id="reading-the-tree">Reading the tree</h3>
@@ -1449,12 +1607,12 @@ Number of results to show [default: 8, or 20 with <code>--short</code>]
 <p>Each line says how <em>that</em> package needs the one above it. The <code>[D]</code>, <code>[L]</code>, <code>[S]</code> and <code>[E]</code> marks describe the same edge.</p>
 <p><code>--why</code> searches the tree only, not the repositories, so <code>--version</code>, <code>--dev</code> and <code>--no-base</code> apply, and a package that is not in the tree is an error.</p>
 </section>
-<section id="usage-8" class="level3">
-<h3 class="anchored" data-anchor-id="usage-8">Usage</h3>
+<section id="usage-9" class="level3">
+<h3 class="anchored" data-anchor-id="usage-9">Usage</h3>
 <pre class="text"><code>rig pkg tree [OPTIONS] &lt;package&gt;</code></pre>
 </section>
-<section id="arguments-6" class="level3">
-<h3 class="anchored" data-anchor-id="arguments-6">Arguments</h3>
+<section id="arguments-7" class="level3">
+<h3 class="anchored" data-anchor-id="arguments-7">Arguments</h3>
 <dl>
 <dt><code>&lt;package&gt;</code></dt>
 <dd>
@@ -1462,12 +1620,16 @@ package to show the dependency tree of
 </dd>
 </dl>
 </section>
-<section id="options-8" class="level3">
-<h3 class="anchored" data-anchor-id="options-8">Options</h3>
+<section id="options-9" class="level3">
+<h3 class="anchored" data-anchor-id="options-9">Options</h3>
 <dl>
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>--dev</code></dt>
 <dd>
@@ -1513,7 +1675,7 @@ Also use these repositories, a comma-separated list of repository names, URLs or
 </dd>
 <dt><code>--without-repos[=&lt;REPOS&gt;]</code></dt>
 <dd>
-Do not use these repositories, a comma-separated list. Without a value, do not use any of the configured repositories, only the ones in <code>--with-repos</code>. Can be repeated.
+Do not use these repositories, a comma-separated list, given with ‘=’, e.g.&nbsp;<code>--without-repos=cran</code>. Without a value, do not use any of the configured repositories, only the ones in <code>--with-repos</code>. Can be repeated.
 <em>[aliases: no-index]</em>
 </dd>
 </dl>

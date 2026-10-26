@@ -404,6 +404,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="./auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Authentication</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="./scripts.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Scripts</span></a>
   </div>
@@ -441,6 +447,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="./reference/add.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig add</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig auth</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -608,19 +620,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p><code>rig pkg</code> is experimental. Its commands and output may still change.</p>
 </div>
 </div>
-<div class="callout callout-style-default callout-note callout-titled">
-<div class="callout-header d-flex align-content-center">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<div class="callout-title-container flex-fill">
-<span class="screen-reader-only">Note</span>P3M only
-</div>
-</div>
-<div class="callout-body-container callout-body">
-<p><code>rig pkg</code> commands currently only use P3M (Posit Public Package Manager), for CRAN and Bioconductor packages, and ignore your configured repositories.</p>
-</div>
-</div>
 <p><code>rig pkg</code> operates on packages, inside a library. It is a companion to two other command families:</p>
 <ul>
 <li><a href="./reference/library.html"><code>rig library</code></a> manages the libraries themselves (creating, listing and removing library directories, and choosing the default one), not the packages inside them.</li>
@@ -647,7 +646,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <ul>
 <li><code>--reinstall</code> installs every package in the resolution, even ones already up to date. Without it, rig does nothing if the requested packages and their dependencies are already installed and up to date.</li>
 <li><code>--dev</code> also installs <code>Suggests</code> and <code>Enhances</code>. <code>--ignore-unavailable</code> skips dev dependencies that are not available in the repositories, instead of failing.</li>
-<li><code>--prefer-binary[=N]</code> trades a newer version for an older one that already has a binary build, useful when compiling from source is expensive.</li>
+<li><code>--prefer-binary[=N]</code> trades a newer version for an older one that already has a binary build, useful when compiling from source is expensive. Set the <code>prefer-binary</code> entry with <a href="./reference/config.html"><code>rig config</code></a> to turn it on by default.</li>
 <li>Packages can also be installed from git, GitHub or GitLab, not just the repositories. See <a href="./reference/pkg.html#rig-pkg-install"><code>rig pkg install</code></a> for the full syntax.</li>
 </ul>
 <p>A package on your own machine is installed by path:</p>
@@ -679,6 +678,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li>The <a href="./reference/library.html"><code>rig library</code> reference</a> for managing library directories.</li>
 <li>The <a href="./reference/proj.html"><code>rig proj</code> reference</a> for project-level, reproducible dependency management.</li>
 <li><a href="./admin-vs-user-mode.html">Admin mode vs user mode</a> for when installing or removing a package needs elevated privileges.</li>
+<li><a href="./auth.html">Authentication</a> for repositories that need a password or a token.</li>
 </ul>
 
 

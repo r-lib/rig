@@ -369,6 +369,12 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Authentication</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../scripts.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Scripts</span></a>
   </div>
@@ -406,6 +412,12 @@ ul.task-list li input[type="checkbox"] {
   <div class="sidebar-item-container"> 
   <a href="../reference/add.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig add</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig auth</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -597,6 +609,10 @@ Update rig to the latest release
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>--dry-run</code></dt>
 <dd>
 Show what would be removed, without removing anything
@@ -636,6 +652,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>--dry-run</code></dt>
 <dd>

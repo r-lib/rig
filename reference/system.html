@@ -404,6 +404,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Authentication</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../scripts.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Scripts</span></a>
   </div>
@@ -441,6 +447,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/add.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig add</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig auth</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -818,6 +830,10 @@ Run in admin mode (overrides RIG_MODE and config)
 <dd>
 Install pak for all R versions
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>--devel</code></dt>
 <dd>
 Install the development version of pak (deprecated)
@@ -872,6 +888,10 @@ Run in admin mode (overrides RIG_MODE and config)
 <dd>
 Update all R versions
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -917,6 +937,10 @@ Run in admin mode (overrides RIG_MODE and config)
 <dd>
 Update all R versions
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -948,6 +972,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -1014,6 +1042,10 @@ R versions to update (default: all)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -1053,6 +1085,10 @@ R versions to check (default: all)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -1083,6 +1119,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -1124,6 +1164,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -1147,6 +1191,7 @@ Run in user mode (overrides RIG_MODE and config)
 <h2 class="anchored" data-anchor-id="rig-system-dirs"><code>rig system dirs</code></h2>
 <p>Print the directories rig uses: where R and (on Windows) Rtools is installed, where the quick links are created, where (on Linux) rig keeps the fontconfig configuration and the fallback fonts of the portable R builds, where rig downloads the installers to, where rig keeps its own configuration, data, cache and log files, and the root <code>rig proj</code> centralizes project package libraries under, if configured.</p>
 <p>The directories themselves may not exist.</p>
+<p>The cache directory respects the <code>--cache-dir</code> flag.</p>
 <p>Use <code>--json</code> for machine-readable output.</p>
 <p>The output contains the directories in effect. They may be the defaults, or configured via the rig config file or environment variables.</p>
 <p>Some directories may depend on the mode and on the architecture, e.g.&nbsp;on aarch64 Windows the R installation directory is different for aarch64 and x86_64 R builds.</p>
@@ -1185,6 +1230,10 @@ Print the quick link directory only.
 <dt><code>--cache</code></dt>
 <dd>
 Print rig’s cache directory only.
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>--data</code></dt>
 <dd>
@@ -1250,6 +1299,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -1291,6 +1344,10 @@ R versions to update (default: all)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -1323,6 +1380,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -1360,6 +1421,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -1390,6 +1455,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -1432,6 +1501,10 @@ R versions to update (default: all)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -1473,6 +1546,10 @@ R versions to update (default: all)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -1507,6 +1584,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -1552,6 +1633,10 @@ R versions (default: all)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -1581,6 +1666,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -1612,6 +1701,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -1649,6 +1742,10 @@ Run in user mode (overrides RIG_MODE and config)
 <section id="options-20" class="level3">
 <h3 class="anchored" data-anchor-id="options-20">Options</h3>
 <dl>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)

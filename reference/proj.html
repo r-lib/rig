@@ -404,6 +404,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Authentication</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../scripts.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Scripts</span></a>
   </div>
@@ -441,6 +447,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/add.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig add</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig auth</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -613,6 +625,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#bioconductor-packages-1" id="toc-bioconductor-packages-1" class="nav-link" data-scroll-target="#bioconductor-packages-1">Bioconductor packages</a></li>
   <li><a href="#source-and-binary-packages" id="toc-source-and-binary-packages" class="nav-link" data-scroll-target="#source-and-binary-packages">Source and binary packages</a></li>
   <li><a href="#sticky-lock-files" id="toc-sticky-lock-files" class="nav-link" data-scroll-target="#sticky-lock-files">Sticky lock files</a></li>
+  <li><a href="#checking-the-lock-file" id="toc-checking-the-lock-file" class="nav-link" data-scroll-target="#checking-the-lock-file">Checking the lock file</a></li>
   <li><a href="#excluding-newer-package-versions" id="toc-excluding-newer-package-versions" class="nav-link" data-scroll-target="#excluding-newer-package-versions">Excluding newer package versions</a></li>
   <li><a href="#git-github-and-url-dependencies" id="toc-git-github-and-url-dependencies" class="nav-link" data-scroll-target="#git-github-and-url-dependencies">Git, GitHub and URL dependencies</a></li>
   <li><a href="#scripts-2" id="toc-scripts-2" class="nav-link" data-scroll-target="#scripts-2">Scripts</a></li>
@@ -762,7 +775,7 @@ rig proj add 'cli@&gt;= 3.6' 'rlang@&gt;= 1.0, &lt; 2.0'</code></pre>
 <p>Because <code>@</code> and the comparison operators are meaningful to most shells, quote a specification that contains a space or a <code>&gt;</code> character, as in the examples above.</p>
 <section id="bioconductor-packages" class="level3">
 <h3 class="anchored" data-anchor-id="bioconductor-packages">Bioconductor packages</h3>
-<p>Bioconductor packages are added the same way as CRAN packages, e.g. <code>rig proj add limma</code>, see “Bioconductor packages” in <a href="#rig-proj-lock"><code>rig proj lock</code></a>.</p>
+<p>Bioconductor packages are added the same way as CRAN packages, e.g.&nbsp;<code>rig proj add limma</code>, see “Bioconductor packages” in <a href="#rig-proj-lock"><code>rig proj lock</code></a>.</p>
 </section>
 <section id="packages-from-other-repositories" class="level3">
 <h3 class="anchored" data-anchor-id="packages-from-other-repositories">Packages from other repositories</h3>
@@ -801,7 +814,7 @@ rig proj add https://cran.rstudio.com/src/contrib/processx_3.9.0.tar.gz</code></
 rig proj add ~/works/mypkg
 rig proj add mypkg_1.0.0.tar.gz
 rig proj add local::mypkg</code></pre>
-<p>The path is recorded in <code>rproj.toml</code> relative to the project’s own directory (not the directory <code>rig proj add</code> was run from), so the manifest stays correct after the project is moved or checked out elsewhere, as long as the local package stays in the same place relative to it.</p>
+<p>The path is recorded in <code>rproj.toml</code> relative to the project’s own directory (not the directory <code>rig proj add</code> was run from), so the manifest stays correct after the project is moved or checked out elsewhere, as long as the local package stays in the same place relative to it. <code>rproj.lock</code> keeps a relative path relative too, to the directory of <code>rproj.lock</code>, which is the workspace root in a workspace. A path given as absolute stays absolute in both files.</p>
 </section>
 <section id="version-requirements" class="level3">
 <h3 class="anchored" data-anchor-id="version-requirements">Version requirements</h3>
@@ -851,6 +864,10 @@ Packages to add, as &lt;package&gt; or &lt;package&gt;@&lt;version&gt;, e.g.&nbs
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>--dev</code></dt>
 <dd>
@@ -912,6 +929,10 @@ Add the packages from this repository: a repository name, URL or name=URL pair. 
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>--dev</code></dt>
 <dd>
 Include dev (development) dependencies
@@ -943,7 +964,7 @@ Also use these repositories, a comma-separated list of repository names, URLs or
 </dd>
 <dt><code>--without-repos[=&lt;REPOS&gt;]</code></dt>
 <dd>
-Do not use these repositories, a comma-separated list, e.g. cran,bioc. Without a value, do not use any of the project’s repositories, only the ones in <code>--with-repos</code>. Can be repeated.
+Do not use these repositories, a comma-separated list, given with ‘=’, e.g.&nbsp;<code>--without-repos=cran</code>,bioc. Without a value, do not use any of the project’s repositories, only the ones in <code>--with-repos</code>. Can be repeated.
 <em>[aliases: no-index]</em>
 </dd>
 </dl>
@@ -1028,6 +1049,26 @@ Do not use these repositories, a comma-separated list, e.g. cran,bioc. Without a
 <td><code>[optional-dependencies.&lt;name&gt;]</code></td>
 <td><code>Config/Needs/Optional/&lt;name&gt;</code> + <code>Suggests</code></td>
 </tr>
+<tr class="odd">
+<td><code>[build].byte-compile</code></td>
+<td><code>ByteCompile:</code></td>
+</tr>
+<tr class="even">
+<td><code>[build].needs-compilation</code></td>
+<td><code>NeedsCompilation:</code></td>
+</tr>
+<tr class="odd">
+<td><code>[build].lazy-data</code></td>
+<td><code>LazyData:</code></td>
+</tr>
+<tr class="even">
+<td><code>[build].biarch</code></td>
+<td><code>Biarch:</code></td>
+</tr>
+<tr class="odd">
+<td><code>[build].keep-source</code></td>
+<td><code>KeepSource:</code></td>
+</tr>
 </tbody>
 </table>
 <p>DESCRIPTION’s dependency syntax only supports a single version comparison per package (<code>pkg (&gt;= 1.2.3)</code>), unlike <code>rproj.toml</code>, which can express a two-sided range (e.g.&nbsp;<code>^1.2.3</code> means <code>&gt;= 1.2.3, &lt; 2.0.0</code>). When a dependency has both a lower and an upper bound, only the lower bound is written; rig prints a warning listing which packages were affected.</p>
@@ -1043,6 +1084,10 @@ Do not use these repositories, a comma-separated list, e.g. cran,bioc. Without a
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-f, --force</code></dt>
 <dd>
@@ -1150,6 +1195,26 @@ Run in user mode (overrides RIG_MODE and config)
 <td><code>Config/Needs/Optional/&lt;name&gt;</code></td>
 <td><code>[optional-dependencies.&lt;name&gt;]</code></td>
 </tr>
+<tr class="odd">
+<td><code>ByteCompile:</code></td>
+<td><code>[build].byte-compile</code></td>
+</tr>
+<tr class="even">
+<td><code>NeedsCompilation:</code></td>
+<td><code>[build].needs-compilation</code></td>
+</tr>
+<tr class="odd">
+<td><code>LazyData:</code></td>
+<td><code>[build].lazy-data</code></td>
+</tr>
+<tr class="even">
+<td><code>Biarch:</code></td>
+<td><code>[build].biarch</code></td>
+</tr>
+<tr class="odd">
+<td><code>KeepSource:</code></td>
+<td><code>[build].keep-source</code></td>
+</tr>
 </tbody>
 </table>
 <p><code>Authors@R</code> is parsed into <code>[project].authors</code>, one entry per <code>person()</code> call, in order; this is a best-effort parser for common <code>person()</code> usage (name, <code>email</code>, <code>role</code>, and an <code>ORCID</code>/<code>ROR</code> <code>comment</code>), not a full R parser, so unusual calls are skipped with a warning. If <code>Authors@R</code> is absent, the simpler <code>Maintainer: Name &lt;email&gt;</code> field is used instead, as a single author with role <code>cre</code>.</p>
@@ -1171,6 +1236,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>--dependencies</code></dt>
 <dd>
@@ -1218,8 +1287,9 @@ Run in user mode (overrides RIG_MODE and config)
 <p><code>rig proj init</code> creates these, and nothing else. All of them are meant to be committed, so that a fresh clone of the project works right away:</p>
 <ul>
 <li><code>rproj.toml</code> - the manifest.</li>
-<li><code>.Renviron</code>, <code>.rvenvlib/rvenv</code> - boilerplate to set up R’s libraries for the project when started from the project directory, in a terminal, of from an editor (RStudio, Positron, VS Code).</li>
+<li><code>.Renviron</code>, <code>.rvenvlib/rvenv</code> - boilerplate to set up R’s libraries for the project when started from the project directory, in a terminal, or from an editor (RStudio, Positron, VS Code).</li>
 <li><code>.gitignore</code> - to ignore <code>.rvenv</code> which contains the project library and configuration files, created by <code>rig proj sync</code>.</li>
+<li><code>.rvenvlib/.gitignore</code> - to make sure that git keeps all of <code>.rvenvlib</code>, even if other ignore rules match some of its files, e.g.&nbsp;<code>*.rds</code>.</li>
 </ul>
 <p>The R virtual environment in <code>.rvenv</code>, including the project library <code>.rvenv/lib</code>, is machine-specific and is created by <a href="#rig-proj-sync"><code>rig proj sync</code></a> . It can be deleted and rebuilt at any time.</p>
 <p>Note that <code>R --vanilla</code> ignores <code>.Renviron</code>, and so does not use the project library.</p>
@@ -1237,7 +1307,7 @@ Run in user mode (overrides RIG_MODE and config)
 <h3 class="anchored" data-anchor-id="options-5">Options</h3>
 <p><code>--r-version</code> sets the R version the project is for. It does not have to be installed. Defaults to the current default R version, or the current R release if there is no default.</p>
 <p><code>--prefer-binary</code> writes <code>prefer-binary = true</code> into the manifest’s <code>[tool.rig]</code> table (or the script’s block), so <code>rig proj lock</code> prefers an older version with a binary package over a newer one without, see <a href="#rig-proj-lock"><code>rig proj lock</code></a>. <code>--prefer-binary=5</code> writes <code>prefer-binary = 5</code>, to consider the five newest versions instead of three.</p>
-<p>rig refuses to overwrite any of the files above; pass <code>--force</code> to replace them. <code>.Renviron</code> and <code>.gitignore</code> are the exceptions: rig never refuses on an existing <code>.Renviron</code> or <code>.gitignore</code>, it just merges its block into them (or adds one), leaving the rest of the file alone, and <code>--force</code> does not change that.</p>
+<p>rig refuses to overwrite any of the files above; pass <code>--force</code> to replace them. <code>.Renviron</code> and <code>.gitignore</code> are the exceptions: rig never refuses on an existing <code>.Renviron</code> or <code>.gitignore</code>, it just merges its block into them (or adds one), leaving the rest of the file alone, and <code>--force</code> does not change that. rig always writes <code>.rvenvlib/.gitignore</code> itself.</p>
 </section>
 <section id="usage-4" class="level3">
 <h3 class="anchored" data-anchor-id="usage-4">Usage</h3>
@@ -1249,6 +1319,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-f, --force</code></dt>
 <dd>
@@ -1298,7 +1372,7 @@ Run in user mode (overrides RIG_MODE and config)
 <p>To always solve for the same R versions, list them in <code>rproj.toml</code>. rig solves for each of them, for every platform, and <code>--r-version</code> replaces the list:</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[tool.rig]</span></span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="dt">r-versions</span> <span class="op">=</span> <span class="op">[</span><span class="st">"4.5"</span><span class="op">,</span> <span class="st">"4.6"</span><span class="op">]</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Each entry takes the same values as <code>--r-version</code>. A minor version, e.g. <code>4.5</code>, matches any patch release of it.</p>
+<p>Each entry takes the same values as <code>--r-version</code>. A minor version, e.g.&nbsp;<code>4.5</code>, matches any patch release of it.</p>
 </section>
 <section id="repositories" class="level3">
 <h3 class="anchored" data-anchor-id="repositories">Repositories</h3>
@@ -1344,7 +1418,7 @@ Run in user mode (overrides RIG_MODE and config)
 <p>To make it part of the project, set it in <code>rproj.toml</code>. <code>true</code> means the default of three versions, a number gives the number of versions:</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb21"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[tool.rig]</span></span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="dt">prefer-binary</span> <span class="op">=</span> <span class="cn">true</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p><code>--prefer-binary</code> overrides it, and <code>--prefer-binary=0</code> turns it off. <code>rproj.lock</code> records the setting in its <code>[tool.rig]</code> table, and a lock solved with a different one is solved again, keeping the pinned versions where they fit, see “Sticky lock files” below.</p>
+<p><code>--prefer-binary</code> overrides it, and <code>--prefer-binary=0</code> turns it off. If <code>rproj.toml</code> does not set it, rig uses the <code>prefer-binary</code> <a href="../reference/config.html">config</a> entry, if any. <code>rproj.lock</code> records the setting in its <code>[tool.rig]</code> table, and a lock solved with a different one is solved again, keeping the pinned versions where they fit, see “Sticky lock files” below.</p>
 <p>By default rig solves for this machine plus the three other common platforms (<code>aarch64-apple-darwin</code>, <code>x86_64-w64-mingw32</code> and <code>x86_64-unknown-linux-gnu</code>, which is any glibc Linux), and for source packages only (<code>source</code>), so the lock file also works on platforms without binary packages. <code>rig proj sync</code> only uses the source target if no other target matches the machine.</p>
 <p>To use a different set of platforms for a project, list them in <code>rproj.toml</code>. This replaces the default set, so include this machine’s platform if you want it:</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb22"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[tool.rig]</span></span>
@@ -1383,15 +1457,22 @@ Run in user mode (overrides RIG_MODE and config)
 <span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj lock <span class="at">-P</span> <span class="st">'cli@=3.6.2'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>The requirement only applies to this run, it is not written to <code>rproj.toml</code>. Later <code>rig proj lock</code> runs keep the version it picked, as long as it fits <code>rproj.toml</code>. A git/GitHub dependency named in <code>--upgrade-package</code> is checked against its remote again, like with <code>--upgrade</code>.</p>
 </section>
+<section id="checking-the-lock-file" class="level3">
+<h3 class="anchored" data-anchor-id="checking-the-lock-file">Checking the lock file</h3>
+<p><code>rig proj lock --check</code> checks that <code>rproj.lock</code> is up to date, i.e.&nbsp;that <code>rig proj lock</code> would keep it as it is, without writing anything. It exits with status 1 if there is no <code>rproj.lock</code>, or if it does not fit <code>rproj.toml</code> any more, e.g.&nbsp;because someone edited <code>rproj.toml</code> and forgot to lock again. It exits with status 0 if <code>rproj.lock</code> is up to date, and with status 2 on any other error, e.g.&nbsp;if there is no <code>rproj.toml</code>. This is useful in CI:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb27"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj lock <span class="at">--check</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>It does not check for newer package versions, a lock that pins older versions that still satisfy <code>rproj.toml</code> is up to date. Likewise, if <code>rproj.toml</code> does not set <code>prefer-binary</code> or <code>exclude-newer</code>, then the lock is up to date whatever these were when it was made, e.g.&nbsp;from the <code>--prefer-binary</code> flag, or the <a href="../reference/config.html">config</a> of whoever locked it. <code>--check</code> works with <code>--script</code>, to check <code>script.R.lock</code>, but not with the options that change the solve, e.g. <code>--r-version</code> or <code>--upgrade</code>.</p>
+<p><a href="#rig-proj-sync"><code>rig proj sync --locked</code></a> does the same check, before it installs anything.</p>
+</section>
 <section id="excluding-newer-package-versions" class="level3">
 <h3 class="anchored" data-anchor-id="excluding-newer-package-versions">Excluding newer package versions</h3>
 <p><code>--exclude-newer</code> makes the solver ignore CRAN and Bioconductor package versions published after a date, so you can lock the project as the repositories were on that day, or skip versions released in the last few days:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb27"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj lock <span class="at">--exclude-newer</span> 2025-06-01</span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj lock <span class="at">--exclude-newer</span> <span class="st">"7 days"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb28"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj lock <span class="at">--exclude-newer</span> 2025-06-01</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj lock <span class="at">--exclude-newer</span> <span class="st">"7 days"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>It takes a date (<code>2025-06-01</code>), an RFC 3339 timestamp (only its UTC date is used), or a span back from today, e.g.&nbsp;<code>7 days</code>, <code>2 weeks</code> or <code>P1M</code>. A version’s publication date is the day it first appeared in a Posit Package Manager snapshot, so the cutoff is a day, and it cannot be earlier than 2017-10-10, the first snapshot. It only applies to CRAN and Bioconductor packages, not to git, GitHub, URL or local dependencies, and binary builds of a version are used no matter when they were built. If the target’s R version has two Bioconductor releases, the cutoff also chooses between them: the newer one if it was released by the cutoff day, otherwise the older one.</p>
-<p>To make it part of the project, set it in <code>rproj.toml</code>; <code>--exclude-newer</code> overrides it:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb28"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[tool.rig]</span></span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="dt">exclude-newer</span> <span class="op">=</span> <span class="st">"2025-06-01"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>To make it part of the project, set it in <code>rproj.toml</code>; <code>--exclude-newer</code> overrides it. If <code>rproj.toml</code> does not set it, rig uses the <code>exclude-newer</code> <a href="../reference/config.html">config</a> entry, if any:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb29"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[tool.rig]</span></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="dt">exclude-newer</span> <span class="op">=</span> <span class="st">"2025-06-01"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p><code>rproj.lock</code> records the cutoff in its own <code>[tool.rig]</code> table, and a lock solved with a different one is solved again. This keeps the pinned versions that are not newer than the new cutoff, see “Sticky lock files” above. For a span, the lock records the span as well, and the lock is reused as long as the span stays the same, so the cutoff does not move every day. Use <code>--upgrade</code> to solve again with a fresh cutoff.</p>
 </section>
 <section id="git-github-and-url-dependencies" class="level3">
@@ -1410,14 +1491,14 @@ Run in user mode (overrides RIG_MODE and config)
 <p><code>rig proj lock</code> in a workspace (from the root or from any member directory) reads every member and resolves them all in one solve, so that every member ends up with the same version of every shared dependency, and writes one <code>rproj.lock</code> at the workspace root. A member that depends on a sibling member is resolved against that sibling’s own dependencies. The members themselves are directories rather than packages to download, so they are not recorded in the lock file.</p>
 <p>The R version rig solves for has to satisfy every member’s <code>R</code> requirement, not just the root’s.</p>
 <p><code>[workspace.dependencies]</code> declares shared version requirements. A member inherits one by name, instead of spelling out its own requirement:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb29"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="co"># rproj.toml, the workspace root</span></span>
-<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="kw">[workspace]</span></span>
-<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a><span class="dt">members</span> <span class="op">=</span> <span class="op">[</span><span class="st">"packages/*"</span><span class="op">]</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb30"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[workspace.dependencies]</span></span>
-<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="dt">cli</span> <span class="op">=</span> <span class="st">"&gt;= 3.6.0"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb31"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="co"># packages/mypkg/rproj.toml, a member</span></span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="kw">[dependencies]</span></span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="dt">cli</span> <span class="op">=</span> <span class="op">{ </span><span class="dt">workspace</span><span class="op"> =</span> <span class="cn">true</span><span class="op"> }</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb30"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="co"># rproj.toml, the workspace root</span></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="kw">[workspace]</span></span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="dt">members</span> <span class="op">=</span> <span class="op">[</span><span class="st">"packages/*"</span><span class="op">]</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb31"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[workspace.dependencies]</span></span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="dt">cli</span> <span class="op">=</span> <span class="st">"&gt;= 3.6.0"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb32"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="co"># packages/mypkg/rproj.toml, a member</span></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="kw">[dependencies]</span></span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a><span class="dt">cli</span> <span class="op">=</span> <span class="op">{ </span><span class="dt">workspace</span><span class="op"> =</span> <span class="cn">true</span><span class="op"> }</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>An entry no member inherits has no effect on the solve; it is a declaration, not a request. Whether a member attaches a package (<code>attach</code>) is still the member’s own business, and is kept when the rest of the entry is inherited.</p>
 </section>
 <section id="usage-5" class="level3">
@@ -1434,6 +1515,14 @@ Add platform(s) to the set rig would otherwise solve for (rproj.toml’s platfor
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
+<dt><code>--check</code></dt>
+<dd>
+Check that rproj.lock is up to date with rproj.toml, without writing it. Fails if it is missing or out of date.
 </dd>
 <dt><code>--exclude-newer &lt;DATE&gt;</code></dt>
 <dd>
@@ -1486,7 +1575,7 @@ Also use these repositories, a comma-separated list of repository names, URLs or
 </dd>
 <dt><code>--without-repos[=&lt;REPOS&gt;]</code></dt>
 <dd>
-Do not use these repositories, a comma-separated list, e.g. cran,bioc. Without a value, do not use any of the project’s repositories, only the ones in <code>--with-repos</code>. Can be repeated.
+Do not use these repositories, a comma-separated list, given with ‘=’, e.g.&nbsp;<code>--without-repos=cran</code>,bioc. Without a value, do not use any of the project’s repositories, only the ones in <code>--with-repos</code>. Can be repeated.
 <em>[aliases: no-index]</em>
 </dd>
 </dl>
@@ -1530,6 +1619,10 @@ Packages to remove
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -1590,6 +1683,10 @@ Create rproj.toml from an renv.lock file
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -1614,8 +1711,8 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="examples" class="level4">
 <h4 class="anchored" data-anchor-id="examples">Examples</h4>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb35"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj renv export</span>
-<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj renv export <span class="at">--r-version</span> 4.5 <span class="at">--platform</span> ubuntu-24.04</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb36"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj renv export</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj renv export <span class="at">--r-version</span> 4.5 <span class="at">--platform</span> ubuntu-24.04</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
 <section id="rig-proj-renv-import" class="level3">
@@ -1643,6 +1740,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>--dependencies</code></dt>
 <dd>
@@ -1679,11 +1780,11 @@ Run in user mode (overrides RIG_MODE and config)
 <section id="rig-proj-status" class="level2">
 <h2 class="anchored" data-anchor-id="rig-proj-status"><code>rig proj status</code></h2>
 <p>Show what rig knows about the project in the current directory, or the workspace it belongs to: the manifest, the lock file, and whether the local <a href="../admin-vs-user-mode.html">project environment</a> is in sync with it.</p>
-<p>This is read-only. It never solves dependencies, downloads anything, or changes the project – see <a href="#rig-proj-lock"><code>rig proj lock</code></a> and <a href="#rig-proj-sync"><code>rig proj sync</code></a> for that.</p>
+<p>This is read-only. It never solves dependencies, installs packages, or changes the project – see <a href="#rig-proj-lock"><code>rig proj lock</code></a> and <a href="#rig-proj-sync"><code>rig proj sync</code></a> for that. To compare the lock file to <code>rproj.toml</code> it may need to fetch the metadata of a git dependency that is not cached yet.</p>
 <p>The report has three parts, each shown only if it applies:</p>
 <ul>
 <li><strong>Manifest</strong> – the project’s name and version from <code>rproj.toml</code>, its workspace members if it is a workspace, and its dependency counts by group (<code>main</code> plus any <code>[dependency-groups.*]</code>).</li>
-<li><strong>Lock file</strong> – <code>rproj.lock</code>’s version, and one row per locked target: the R version, the platform, and how many packages it locks.</li>
+<li><strong>Lock file</strong> – <code>rproj.lock</code>’s version, and one row per locked target: the R version, the platform, and how many packages it locks. Also whether the lock file is still up to date with <code>rproj.toml</code>, e.g.&nbsp;after you edited <code>rproj.toml</code> by hand. This is the same check as <a href="#rig-proj-lock"><code>rig proj lock --check</code></a>.</li>
 <li><strong>Environment</strong> – the R version and platform the local <code>.rvenv</code> was last synced against, and whether it is still up to date with the lock file, or why not.</li>
 </ul>
 <p>Use <code>--json</code> for machine readable output.</p>
@@ -1697,6 +1798,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -1720,7 +1825,8 @@ Run in user mode (overrides RIG_MODE and config)
 <section id="rig-proj-sync" class="level2">
 <h2 class="anchored" data-anchor-id="rig-proj-sync"><code>rig proj sync</code></h2>
 <p>Bring an R project’s environment in line with its <code>rproj.lock</code>: install the resolved dependencies, and write the rest of the <code>.rvenv</code> layout.</p>
-<p>rig looks for the project in the current directory and its parents, reads its <code>rproj.lock</code> and installs the packages into the project library. If the project has no <code>rproj.lock</code> yet, rig runs <a href="#rig-proj-lock"><code>rig proj lock</code></a> with its default options first. Pass <code>--frozen</code> to fail instead, without touching <code>rproj.toml</code> at all: every package <code>rproj.lock</code> lists already carries its own download URL, so nothing but the lock file is needed to install from it. The one exception is <code>.rvenv/etc/repositories</code> (see below), which still comes from <code>rproj.toml</code> when one is present, and is skipped otherwise.</p>
+<p>rig looks for the project in the current directory and its parents, reads its <code>rproj.lock</code> and installs the packages into the project library. If the project has no <code>rproj.lock</code> yet, rig runs <a href="#rig-proj-lock"><code>rig proj lock</code></a> with its default options first. Pass <code>--frozen</code> to fail instead, without touching <code>rproj.toml</code> at all: every package <code>rproj.lock</code> lists already carries its own download URL, and the lock file also records the repositories it was solved with, so nothing but the lock file is needed to install from it. The one exception is the project’s own package, see below.</p>
+<p>If <code>rproj.lock</code> exists, <code>rig proj sync</code> installs from it, even if <code>rproj.toml</code> changed since. Pass <code>--locked</code> to fail instead if <code>rproj.lock</code> is missing or out of date, see “Checking the lock file” in <a href="#rig-proj-lock"><code>rig proj lock</code></a>. This is useful in CI. <code>--locked</code> reads <code>rproj.toml</code>, so it does not work with <code>--frozen</code>.</p>
 <p><code>--with-repos</code> (<code>--index</code>) and <code>--without-repos</code> (<code>--no-index</code>) lock again first, with the project’s repositories changed, see “Repositories” in <a href="#rig-proj-lock"><code>rig proj lock</code></a>. They do not work with <code>--frozen</code>.</p>
 <p>By default sync installs <code>[dependencies]</code> (<code>main</code>) plus the <code>dev</code> <a href="#rig-proj-lock">dependency group</a>, and nothing else: no other <code>[dependency-groups.*]</code> table, and no <code>[optional-dependencies.*]</code> extra. <code>--no-dev</code> leaves the <code>dev</code> group out too, installing only <code>main</code>. Pass <code>--group &lt;name&gt;</code> (repeatable, or comma-separated) to also install a specific named group, or <code>--all-groups</code> for every group the project declares.</p>
 <p><code>--extra &lt;name&gt;</code> / <code>--all-extras</code> do the same for optional-dependency extras, none of which are installed unless asked for.</p>
@@ -1728,6 +1834,9 @@ Run in user mode (overrides RIG_MODE and config)
 <p><code>--max-concurrent</code> limits the number of simultaneous installations. It defaults to the <code>concurrent-installs</code> <a href="../reference/config.html">config</a> entry (<code>RIG_CONCURRENT_INSTALLS</code>), which itself defaults to the number of CPU cores.</p>
 <p>By default, sync also removes any package that is in the project library but not selected for install by the flags above, e.g.&nbsp;one dropped from <code>rproj.toml</code>, or a group/extra left out. This only ever removes packages that are still in <code>rproj.lock</code> but not currently wanted – nothing is removed just because a group/extra selection changed since the last sync. Pass <code>--inexact</code> to leave those packages alone instead.</p>
 <p>Pass <code>--dry-run</code> to print what sync would install, remove or write, without touching the R installation, the project library or <code>.rvenv</code>.</p>
+<p>Pass <code>--check</code> to check that the project environment is in sync with <code>rproj.lock</code>, without changing anything. It prints the same report as <code>--dry-run</code>, and then exits with status 1 if sync would install, update or remove a package, refresh <code>.rvenv</code>, or create <code>rproj.lock</code>. It exits with status 0 if the environment is in sync, and with status 2 on any other error, e.g.&nbsp;if there is no project in the current directory. Unlike <a href="#rig-proj-status"><code>rig proj status</code></a>, it looks at the packages that are actually in the project library, so it also notices packages that were installed or removed by hand. This is useful in CI, or to check that a project’s installation is still intact:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb39"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj sync <span class="at">--frozen</span> <span class="at">--check</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><code>--check</code> does not work with <code>--exclude-newer</code>, <code>--with-repos</code> or <code>--without-repos</code>, which would lock again first.</p>
 <p><code>--exclude-newer</code> runs <a href="#rig-proj-lock"><code>rig proj lock</code></a> with the same option first, even if there is an <code>rproj.lock</code> already, to ignore CRAN package versions published after a date. The existing lock is kept if it was solved with the same cutoff. It cannot be combined with <code>--frozen</code>.</p>
 <section id="system-requirements" class="level3">
 <h3 class="anchored" data-anchor-id="system-requirements">System requirements</h3>
@@ -1739,11 +1848,11 @@ Run in user mode (overrides RIG_MODE and config)
 <section id="the-projects-own-package" class="level3">
 <h3 class="anchored" data-anchor-id="the-projects-own-package">The project’s own package</h3>
 <p>If the project’s <code>type</code> is <code>"package"</code>, <a href="#rig-proj-lock"><code>rig proj lock</code></a> records the project itself in <code>rproj.lock</code>, and sync installs it into the project library from the project directory, the same way it installs a <code>path</code> dependency. Sync updates an automatically generated <code>DESCRIPTION</code> at the project root from <code>rproj.toml</code> first, same as <a href="#rig-proj-export"><code>rig proj export</code></a> would.</p>
-<p>Pass <code>--no-install-project</code> to leave it out. It still gets installed if another package in the wanted set actually depends on it by name.</p>
+<p>Pass <code>--no-install-project</code> (or its alias, <code>--no-install-self</code>) to leave it out. It still gets installed if another package in the wanted set actually depends on it by name.</p>
 </section>
 <section id="centralizing-the-project-library" class="level3">
 <h3 class="anchored" data-anchor-id="centralizing-the-project-library">Centralizing the project library</h3>
-<p>The project library defaults to <code>.rvenv/lib</code>, inside the project. Set the <code>RIG_PROJ_LIBRARY_ROOT</code> environment variable, or the <code>proj-library-root</code> <a href="../reference/config.html">configuration entry</a>, to a directory to centralize every project’s library under it instead, one subdirectory per project. <code>rig system dirs --library-root</code> reports the effective root, or that none is set. <code>--library</code> still wins outright when passed, for either a one-off location or a shared library across several projects.</p>
+<p>The project library defaults to <code>.rvenv/lib</code>, inside the project. Set the <code>RIG_PROJ_LIBRARY_ROOT</code> environment variable, or the <code>proj-library-root</code> <a href="../reference/config.html">configuration entry</a>, to a directory to centralize every project’s library under it instead, one subdirectory per project. <code>rig system dirs --library-root</code> reports the effective root, or that none is set.</p>
 <p>When the library is centralized, sync still leaves a symlink at <code>.rvenv/lib</code> pointing at the real location, so anything that expects a library there keeps working.</p>
 </section>
 <section id="the-r-version-1" class="level3">
@@ -1764,7 +1873,7 @@ Run in user mode (overrides RIG_MODE and config)
 <li><code>.rvenv/bin/R</code> and <code>.rvenv/bin/Rscript</code>, wrapper scripts that set the project’s environment and then hand over to the real R. Run them directly, or put <code>.rvenv/bin</code> on your <code>PATH</code>.</li>
 <li><code>.rvenv/bin/activate</code> and its <code>activate.csh</code> / <code>activate.fish</code> / <code>activate.bat</code> / <code>Activate.ps1</code> siblings, for the shells that prefer to be activated. Source the one for your shell, and call <code>deactivate</code> when you are done. Activation is a convenience, not a requirement: the wrappers work without it, and an R session started by an IDE picks the project up through the project’s <code>.Renviron</code>.</li>
 <li><code>.rvenv/rvenv.cfg</code>, which records the R version, the platform and the architecture the environment was built for. rig warns when it syncs an environment that was built for a different R.</li>
-<li><code>.rvenv/etc/repositories</code>, which the wrappers point <code>R_REPOSITORIES</code> at. The repositories of the project: Posit Package Manager’s CRAN for the lock file’s target, unless <code>rproj.toml</code> turns <code>cran</code> off, then the <code>[[repository]]</code> entries, and the Bioconductor release of the target.</li>
+<li><code>.rvenv/etc/repositories</code>, which the wrappers point <code>R_REPOSITORIES</code> at. The repositories <code>rproj.lock</code> was solved with, in the same order: Posit Package Manager’s CRAN for the lock file’s target first, unless <code>cran</code> was off, then the <code>[[repository]]</code> entries, and the Bioconductor release of the target.</li>
 </ul>
 <p>After a successful sync rig records the lock file it installed from in <code>.synced</code>, inside the project library (<code>.rvenv/lib</code> by default, or the centralized location). The <code>rvenv</code> package in <code>.rvenvlib</code> compares the two, and warns in every R session while the project library does not match <code>rproj.lock</code>.</p>
 </section>
@@ -1790,6 +1899,14 @@ Install every optional-dependency extra.
 <dt><code>--all-groups</code></dt>
 <dd>
 Install every dependency group.
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
+<dt><code>--check</code></dt>
+<dd>
+Check that the project environment is in sync with rproj.lock, without changing anything. Fails if sync would install, remove or update anything.
 </dd>
 <dt><code>--dry-run</code></dt>
 <dd>
@@ -1819,6 +1936,10 @@ Print help (see a summary with ‘-h’)
 <dd>
 Do not remove packages from the library that are not in rproj.lock (default: remove them)
 </dd>
+<dt><code>--locked</code></dt>
+<dd>
+Fail if rproj.lock is missing or out of date with rproj.toml, instead of installing from it.
+</dd>
 <dt><code>--max-concurrent &lt;max-concurrent&gt;</code></dt>
 <dd>
 Maximum number of concurrent installations (default: number of CPU cores, see ‘concurrent-installs’ in ‘rig config’)
@@ -1834,6 +1955,7 @@ Do not install the dev dependency group (default: installed alongside main). An 
 <dt><code>--no-install-project</code></dt>
 <dd>
 Do not install the project’s own package (default: installed when ‘type = “package”’). Still installed if another package actually depends on it.
+<em>[aliases: no-install-self]</em>
 </dd>
 <dt><code>--no-install-r</code></dt>
 <dd>
@@ -1866,7 +1988,7 @@ Also use these repositories, a comma-separated list of repository names, URLs or
 </dd>
 <dt><code>--without-repos[=&lt;REPOS&gt;]</code></dt>
 <dd>
-Do not use these repositories, a comma-separated list, e.g. cran,bioc. Without a value, do not use any of the project’s repositories, only the ones in <code>--with-repos</code>. Can be repeated.
+Do not use these repositories, a comma-separated list, given with ‘=’, e.g.&nbsp;<code>--without-repos=cran</code>,bioc. Without a value, do not use any of the project’s repositories, only the ones in <code>--with-repos</code>. Can be repeated.
 <em>[aliases: no-index]</em>
 </dd>
 </dl>
@@ -1904,6 +2026,10 @@ Do not use these repositories, a comma-separated list, e.g. cran,bioc. Without a
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>--dev</code></dt>
 <dd>
 Include dev (development) dependencies
@@ -1940,7 +2066,7 @@ Also use these repositories, a comma-separated list of repository names, URLs or
 </dd>
 <dt><code>--without-repos[=&lt;REPOS&gt;]</code></dt>
 <dd>
-Do not use these repositories, a comma-separated list, e.g. cran,bioc. Without a value, do not use any of the project’s repositories, only the ones in <code>--with-repos</code>. Can be repeated.
+Do not use these repositories, a comma-separated list, given with ‘=’, e.g.&nbsp;<code>--without-repos=cran</code>,bioc. Without a value, do not use any of the project’s repositories, only the ones in <code>--with-repos</code>. Can be repeated.
 <em>[aliases: no-index]</em>
 </dd>
 </dl>

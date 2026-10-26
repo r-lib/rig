@@ -369,6 +369,12 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="./auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Authentication</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="./scripts.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Scripts</span></a>
   </div>
@@ -406,6 +412,12 @@ ul.task-list li input[type="checkbox"] {
   <div class="sidebar-item-container"> 
   <a href="./reference/add.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig add</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig auth</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -528,7 +540,8 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-0.11.0" id="toc-rig-0.11.0" class="nav-link active" data-scroll-target="#rig-0.11.0">rig 0.11.0</a>
+  <li><a href="#rig-0.11.1" id="toc-rig-0.11.1" class="nav-link active" data-scroll-target="#rig-0.11.1">rig 0.11.1</a></li>
+  <li><a href="#rig-0.11.0" id="toc-rig-0.11.0" class="nav-link" data-scroll-target="#rig-0.11.0">rig 0.11.0</a>
   <ul class="collapse">
   <li><a href="#custom-repositories" id="toc-custom-repositories" class="nav-link" data-scroll-target="#custom-repositories">Custom repositories</a></li>
   <li><a href="#bioconductor" id="toc-bioconductor" class="nav-link" data-scroll-target="#bioconductor">Bioconductor</a></li>
@@ -613,6 +626,35 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
+<section id="rig-0.11.1" class="level1">
+<h1>rig 0.11.1</h1>
+<ul>
+<li><p>New <code>rig proj sync --check</code> option to check that the project environment is in sync with <code>rproj.lock</code>. It exits with status 1 if sync would install, update or remove any package, e.g.&nbsp;after packages were installed or removed by hand, and with status 2 on other errors (#495).</p></li>
+<li><p><code>rig proj lock --check</code> now exits with status 2 on errors, e.g.&nbsp;if there is no <code>rproj.toml</code>, and keeps status 1 for a missing or out of date <code>rproj.lock</code>.</p></li>
+<li><p><code>rig proj sync --dry-run</code> no longer fills in a missing <code>.Renviron</code> or <code>.rvenvlib</code>, it only says that sync would. It now fails if there is neither an <code>rproj.toml</code> nor an <code>rproj.lock</code>, like <code>rig proj sync</code> does.</p></li>
+<li><p>New <code>rig add --no-default</code> option to install an R version without making it the default when no default R version is set yet, and <code>rig add --without-path</code> to skip putting rig’s quick-link directory on the PATH (the shell startup files on macOS and Linux, the user PATH on Windows). Tools that run rig to install R, like RStudio, can use them to leave the user’s default R, quick links, PATH and IDE settings alone.</p></li>
+<li><p><code>rig list</code>, <code>rig add</code> and other commands no longer fail on macOS in user mode when <code>~/.local/bin</code> does not exist yet (#491).</p></li>
+<li><p><code>rig system clean-registry</code> on Windows now removes all stale R and Rtools registry entries and “Add/Remove Programs” entries.</p></li>
+<li><p><code>rig list</code>, <code>rig add</code> and other commands no longer fail with on macOS in user mode when <code>~/.local/bin</code> does not exist yet (#491).</p></li>
+<li><p>rig on Linux now uses an updated embedded root certificate bundle (webpki-root-certs 1.0.10), which drops the compromised “emSign ECC Root CA - G3” root (see <a href="https://github.com/astral-sh/uv/security/advisories/GHSA-hq85-5cpj-mr62">GHSA-hq85-5cpj-mr62</a>).</p></li>
+<li><p><code>rig pkg install</code> and <code>rig proj sync</code> now install git, GitHub and <code>url::</code> package sources on Windows again. rig passed <code>\\?\</code> paths to <code>R CMD INSTALL</code>, which R rejected (#485).</p></li>
+<li><p><code>rig proj import</code> and <code>rig proj lock</code> now handle <code>Remotes</code> and <code>Config/Needs/*</code> entries for packages with a dot in their name, e.g. <code>Rdatatable/data.table</code> (#476).</p></li>
+<li><p><code>rig proj lock</code> now keeps relative ‘path’ dependencies relative in the lock file. The root project is saved with path <code>"."</code>, if it is a package.</p></li>
+<li><p><code>rig proj import</code> and <code>rig proj export</code> now convert all <code>[build]</code> entries to and from the <code>ByteCompile</code>, <code>NeedsCompilation</code>, <code>LazyData</code>, <code>Biarch</code> and <code>KeepSource</code> <code>DESCRIPTION</code> fields.</p></li>
+<li><p><code>rig proj status</code> now reports whether <code>rproj.lock</code> is up to date with <code>rproj.toml</code>, e.g.&nbsp;after a manual edit of <code>rproj.toml</code>. It runs the same check as <code>rig proj lock --check</code> (#466).</p></li>
+<li><p>New <code>prefer-binary</code> and <code>exclude-newer</code> configuration entries (and <code>RIG_PREFER_BINARY</code> and <code>RIG_EXCLUDE_NEWER</code> environment variables) set the defaults of <code>--prefer-binary</code> and <code>--exclude-newer</code> for <code>rig pkg install</code> and the <code>rig proj</code> commands (#441).</p></li>
+<li><p>The project <code>.Renviron</code> now quotes the saved <code>R_LIBS_USER</code> value, so it works with Windows paths. Delete <code>.Renviron</code> and call <code>rig proj lock</code> to recreate it with the fixed version in existing projects.</p></li>
+<li><p>rig now sends a <code>User-Agent</code> header with its HTTP requests, e.g. <code>rig/0.11.1 (+https://github.com/r-lib/rig)</code>.</p></li>
+<li><p>rig now supports authenticated repositories and Posit Package Manager instances. See the new “Authentication” guide.</p></li>
+<li><p>New <code>rig pkg sync [LOCKFILE]</code> command installs the packages of a lock file into a library, without touching the project environment.</p></li>
+<li><p>A new <code>--cache-dir</code> flag, <code>RIG_CACHE_DIR</code> environment variable, and <code>cache-dir</code> configuration entry allow overriding the location of rig’s cache. <code>--no-cache</code> still takes precedence.</p></li>
+<li><p>Packages are now installed with file modes more closely aligned with those left by <code>R CMD INSTALL</code>. Existing packages in the cache are left unchanged.</p></li>
+<li><p>An R session that runs a different R minor version than the one the project was synced for now really leaves the project library alone. Before, rig printed a warning, but still activated the library (#450). Call <code>rig proj sync</code> in existing projects to update the activation code.</p></li>
+<li><p>The dependency solver now treats a dash in a package version the same as a dot, like R does, so e.g.&nbsp;version <code>0.3-3</code> satisfies <code>&gt;= 0.3.3</code> (#453).</p></li>
+<li><p>New <code>rig proj lock --check</code> and <code>rig proj sync --locked</code> options, to fail if <code>rproj.lock</code> is missing or out of date with <code>rproj.toml</code>, e.g.&nbsp;in CI (#411).</p></li>
+<li><p><code>rig pkg install</code> now calls its <code>--no-install-project</code> option <code>--no-install-self</code>. The old name still works, as an alias (#442). <code>rig proj sync</code> accepts <code>--no-install-self</code> as an alias of <code>--no-install-project</code>.</p></li>
+</ul>
+</section>
 <section id="rig-0.11.0" class="level1">
 <h1>rig 0.11.0</h1>
 <section id="custom-repositories" class="level2">

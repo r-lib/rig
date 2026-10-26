@@ -404,6 +404,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Authentication</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../scripts.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Scripts</span></a>
   </div>
@@ -441,6 +447,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/add.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig add</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig auth</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -667,6 +679,10 @@ Run in admin mode (overrides RIG_MODE and config)
 Architecture to install Rtools for (default: native arch).
 <em>[possible values: x86_64, aarch64, arm64]</em>
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -708,6 +724,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -759,6 +779,10 @@ Run in admin mode (overrides RIG_MODE and config)
 <dd>
 Architecture of Rtools to remove (default: native arch).
 <em>[possible values: x86_64, aarch64, arm64]</em>
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>

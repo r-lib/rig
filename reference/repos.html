@@ -404,6 +404,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Authentication</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../scripts.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Scripts</span></a>
   </div>
@@ -441,6 +447,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/add.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig add</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig auth</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -691,6 +703,7 @@ Check the configured R package repositories
 <p>rig stores the repository in its configuration file, so you only need to add it once. It is not used by any R version until you enable it, either with <code>--enable</code> here or later with <a href="#rig-repos-enable"><code>rig repos enable</code></a>. After that it is just like the repositories built into rig: it shows up in <a href="#rig-repos-available"><code>rig repos available</code></a>, and you can enable it with <code>--with-repos</code> when you install a new R version with <a href="../reference/add.html"><code>rig add</code></a> or call <a href="#rig-repos-setup"><code>rig repos setup</code></a>.</p>
 <p>The name of the repository must start with a letter or a number, and can contain letters, numbers and <code>.</code>, <code>_</code>, <code>/</code>, <code>-</code>. It cannot be the name of a repository that is built into rig. Use <code>--force</code> to replace a custom repository of the same name.</p>
 <p>The URL must start with <code>https://</code>, <code>http://</code> or <code>file://</code>. It is the URL that you would put into the <code>repos</code> option in R, i.e.&nbsp;the directory that has the <code>src/contrib</code> directory in it, and the <code>bin</code> directory, if the repository has binary packages.</p>
+<p>If the repository needs a username and a password, put the username into the URL, e.g.&nbsp;<code>https://alice@cran.acme.com/cran</code>, but not the password: rig refuses URLs with a password. See <a href="../reference/auth.html"><code>rig auth</code></a> and the <a href="../auth.html">authentication guide</a> for the ways to give rig the password.</p>
 <p>With <code>--enable</code> rig enables the repository for the default R version, or the R versions you list with <code>--r-version</code>, or all of them with <code>--all-versions</code>. <code>--enable --all-versions</code> also enables the repository for the R versions you install later, the same way as CRAN. To undo this, add the repository again with <code>--force</code>, without <code>--all-versions</code>. You can still turn it off for some R versions with <a href="#rig-repos-disable"><code>rig repos disable</code></a>, or for a new R version with <code>--without-repos</code> when installing it.</p>
 <p>rig updates the files of the R installation. If you cannot write them, which is typical in <a href="../admin-vs-user-mode.html">admin mode</a> on Linux and Windows, rig asks for administrator rights, e.g.&nbsp;your password for <code>sudo</code>.</p>
 <section id="usage" class="level3">
@@ -720,6 +733,10 @@ Run in admin mode (overrides RIG_MODE and config)
 <dt><code>--all-versions</code></dt>
 <dd>
 With <code>--enable</code>, enable the repository for all R versions, also the ones installed later
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>--description &lt;description&gt;</code></dt>
 <dd>
@@ -792,6 +809,10 @@ Repository to show in detail, e.g.&nbsp;‘P3M’ (case insensitive)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -820,7 +841,7 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="rig-repos-disable" class="level2">
 <h2 class="anchored" data-anchor-id="rig-repos-disable"><code>rig repos disable</code></h2>
-<p>Disable one or more package repositories for R versions, so R does not use them to install packages. This works both for the repositories built into rig, e.g. <code>P3M</code> or <code>CRAN</code>, for the ones you added with <a href="#rig-repos-add"><code>rig repos add</code></a>, and for the repositories that come with R itself, e.g.&nbsp;<code>CRANextra</code> or <code>R-Forge</code>. Repository names are matched case insensitively. Disabling a custom repository keeps it in rig, use <a href="#rig-repos-rm"><code>rig repos rm</code></a> to remove it completely.</p>
+<p>Disable one or more package repositories for R versions, so R does not use them to install packages. This works both for the repositories built into rig, e.g.&nbsp;<code>P3M</code> or <code>CRAN</code>, for the ones you added with <a href="#rig-repos-add"><code>rig repos add</code></a>, and for the repositories that come with R itself, e.g.&nbsp;<code>CRANextra</code> or <code>R-Forge</code>. Repository names are matched case insensitively. Disabling a custom repository keeps it in rig, use <a href="#rig-repos-rm"><code>rig repos rm</code></a> to remove it completely.</p>
 <p>By default rig disables the repositories for the default R version. Use <code>--r-version</code> (possibly more than once) to pick other R versions, or <code>--all-versions</code> for all of them.</p>
 <p>rig remembers which repositories you enabled and disabled for each R version, and keeps them when it sets up the repositories again, e.g.&nbsp;with <a href="#rig-repos-setup"><code>rig repos setup</code></a>.</p>
 <p>rig updates the files of the R installation. If you cannot write them, which is typical in <a href="../admin-vs-user-mode.html">admin mode</a> on Linux and Windows, rig asks for administrator rights, e.g.&nbsp;your password for <code>sudo</code>.</p>
@@ -847,6 +868,10 @@ Run in admin mode (overrides RIG_MODE and config)
 <dt><code>--all-versions</code></dt>
 <dd>
 Disable the repositories for all installed R versions
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -876,7 +901,7 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="rig-repos-enable" class="level2">
 <h2 class="anchored" data-anchor-id="rig-repos-enable"><code>rig repos enable</code></h2>
-<p>Enable one or more package repositories for R versions. This works both for the repositories built into rig, e.g.&nbsp;<code>Bioconductor</code> or <code>RHUB</code>, and for the ones you added with <a href="#rig-repos-add"><code>rig repos add</code></a>. See <a href="#rig-repos-available"><code>rig repos available</code></a> for the list. It also works for the repositories that come with R itself, e.g.&nbsp;<code>CRANextra</code> or <code>R-Forge</code>, see <a href="#rig-repos-list"><code>rig repos list --all</code></a>. Repository names are matched case insensitively.</p>
+<p>Enable one or more package repositories for R versions. This works both for the repositories built into rig, e.g.&nbsp;<code>Bioconductor</code> or <code>RHUB</code>, and for the ones you added with <a href="#rig-repos-add"><code>rig repos add</code></a>. See <a href="#rig-repos-available"><code>rig repos available</code></a> for the list. It also works for the repositories that come with R itself, e.g. <code>CRANextra</code> or <code>R-Forge</code>, see <a href="#rig-repos-list"><code>rig repos list --all</code></a>. Repository names are matched case insensitively.</p>
 <p>By default rig enables the repositories for the default R version. Use <code>--r-version</code> (possibly more than once) to pick other R versions, or <code>--all-versions</code> for all of them. Each R version has its own set of repositories, so enabling a repository for one R version does not change the others.</p>
 <p>rig remembers which repositories you enabled and disabled for each R version, and keeps them when it sets up the repositories again, e.g.&nbsp;with <a href="#rig-repos-setup"><code>rig repos setup</code></a>.</p>
 <p>Some built-in repositories only have URLs for certain platforms, architectures or R versions, and rig fails if a repository cannot be used with an R version.</p>
@@ -904,6 +929,10 @@ Run in admin mode (overrides RIG_MODE and config)
 <dt><code>--all-versions</code></dt>
 <dd>
 Enable the repositories for all installed R versions
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -955,6 +984,10 @@ Run in admin mode (overrides RIG_MODE and config)
 <dt><code>--all</code></dt>
 <dd>
 Show all repositories, not just the enabled ones
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -1008,6 +1041,10 @@ Name(s) of the repositories to remove (case insensitive)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -1044,6 +1081,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -1066,7 +1107,7 @@ Repositories to enable, in addition to the ones enabled by default. If <code>--w
 </dd>
 <dt><code>--without-repos[=&lt;without-repos&gt;]</code></dt>
 <dd>
-Do not set up package repositories. Alternatively, specify which ones to skip, a comma-separated list. If <code>--with-repos</code> is also specified, then only the repositories in that argument will be enabled.
+Do not set up package repositories. Alternatively, specify which ones to skip, a comma-separated list, given with ‘=’, e.g.&nbsp;<code>--without-repos=cran</code>. If <code>--with-repos</code> is also specified, then only the repositories in that argument will be enabled.
 </dd>
 </dl>
 </section>
@@ -1102,6 +1143,10 @@ Run in admin mode (overrides RIG_MODE and config)
 <dt><code>--all</code></dt>
 <dd>
 Check all repositories, not just the enabled ones
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>

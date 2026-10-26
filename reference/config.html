@@ -369,6 +369,12 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Authentication</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../scripts.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Scripts</span></a>
   </div>
@@ -406,6 +412,12 @@ ul.task-list li input[type="checkbox"] {
   <div class="sidebar-item-container"> 
   <a href="../reference/add.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig add</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/auth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig auth</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -590,9 +602,12 @@ ul.task-list li input[type="checkbox"] {
 <li><p><code>r-install-dir</code> (<code>RIG_R_INSTALL_DIR</code>): the root directory of the R installations, i.e.&nbsp;the directory that holds the directories of the individual R versions. Defaults to the platform’s system-wide location in admin mode (<code>/opt/R</code> on Linux, <code>/Library/Frameworks/R.framework</code> on macOS, <code>C:\Program Files\R</code> on Windows), and to <code>~/.local/share/rig/r</code> (<code>%APPDATA%\rig\data\r</code> on Windows) in user mode. On Windows this entry only applies in user mode; the admin-mode root is fixed, because it also depends on the architecture.</p></li>
 <li><p><code>rtools-install-dir</code> (<code>RIG_RTOOLS_INSTALL_DIR</code>): Windows only, the directory that holds the Rtools installations. Defaults to <code>C:\</code> in admin mode (so Rtools 4.5 goes into <code>C:\rtools45</code>) and to <code>%APPDATA%\rig\data\rtools</code> in user mode.</p></li>
 <li><p><code>download-dir</code> (<code>RIG_DOWNLOAD_DIR</code>): the directory rig downloads the R (and on Windows the Rtools) installers into, before installing them. Defaults to <code>rig-&lt;uid&gt;</code> in the system temporary directory, e.g.&nbsp;<code>/tmp/rig-1000</code>, and to <code>rig</code> under <code>%TEMP%</code> on Windows. The user id is part of the default name on purpose: in <a href="../admin-vs-user-mode.html">admin mode</a> rig downloads as <code>root</code>, in user mode as you, and a directory shared between them would only be writable by whoever created it first. For the same reason rig refuses to use the default directory if it is a symbolic link, or if it is owned by another user, or if other users can write into it. A directory you configure here is created but not checked.</p></li>
-<li><p><code>no-cache</code> (<code>RIG_NO_CACHE</code>): set it to <code>true</code> to stop rig from using its cache, the same as passing <code>--no-cache</code>. rig then neither reads nor writes the cache directory: it downloads the repository metadata, the binary package indices and the package files again, compiles a source package instead of unpacking a build it made earlier, and downloads an R or Rtools installer again instead of reusing the one in the download directory. What it downloads and builds goes into a temporary directory that is removed when rig exits, so the cache is left exactly as it was. Defaults to <code>false</code>. This is meant for debugging and for the occasional run that must not trust anything cached; it makes rig considerably slower, so it is a poor thing to turn on permanently.</p></li>
+<li><p><code>no-cache</code> (<code>RIG_NO_CACHE</code>): set it to <code>true</code> to stop rig from using its cache, the same as passing <code>--no-cache</code>. rig then neither reads nor writes cached files: it downloads the repository metadata, the binary package indices and the package files again, compiles a source package instead of unpacking a build it made earlier, and downloads an R or Rtools installer again instead of reusing the one in the download directory. What it downloads and builds goes into a temporary directory that is removed when rig exits, so the cached files are left exactly as they were. Log files are the exception, see <code>cache-dir</code>. Defaults to <code>false</code>. This is meant for debugging and for the occasional run that must not trust anything cached; it makes rig considerably slower, so it is a poor thing to turn on permanently.</p></li>
+<li><p><code>cache-dir</code> (<code>RIG_CACHE_DIR</code>, <code>--cache-dir</code>): the directory rig keeps its cache in: the downloaded repository metadata and package files, packages rig built from source, git mirrors and the environments of scripts. Defaults to the platform’s per-user cache location, e.g.&nbsp;<code>~/.cache/rig</code> on Linux (or <code>$XDG_CACHE_HOME/rig</code>), <code>~/Library/Caches/com.gaborcsardi.rig</code> on macOS and <code>%LOCALAPPDATA%\gaborcsardi\rig\cache</code> on Windows. On Linux and Windows the rig log files are also written into a <code>logs</code> directory inside it, even if <code>no-cache</code> / <code>--no-cache</code> is in effect.</p></li>
 <li><p><code>concurrent-downloads</code> (<code>RIG_CONCURRENT_DOWNLOADS</code>): the maximum number of downloads rig performs at the same time, e.g.&nbsp;when downloading package files for a project. Defaults to <code>50</code>.</p></li>
 <li><p><code>concurrent-installs</code> (<code>RIG_CONCURRENT_INSTALLS</code>): the maximum number of packages <a href="../reference/proj.html#rig-proj-sync"><code>rig proj sync</code></a> installs at the same time, unless overridden with its own <code>--max-concurrent</code> flag. Defaults to the number of CPU cores.</p></li>
+<li><p><code>prefer-binary</code> (<code>RIG_PREFER_BINARY</code>): the default for <code>--prefer-binary</code> in <a href="../reference/pkg.html#rig-pkg-install"><code>rig pkg install</code></a> and the <a href="../reference/proj.html"><code>rig proj</code></a> commands: <code>true</code> looks back through the three newest versions of a package for one with a binary build, a number gives how many versions to look back through, and <code>false</code> or <code>0</code> turns it off. The command line flag and <code>prefer-binary</code> in a project’s <code>rproj.toml</code> take precedence. Defaults to <code>false</code>.</p></li>
+<li><p><code>exclude-newer</code> (<code>RIG_EXCLUDE_NEWER</code>): the default for <code>--exclude-newer</code> in <a href="../reference/pkg.html#rig-pkg-install"><code>rig pkg install</code></a> and the <a href="../reference/proj.html"><code>rig proj</code></a> commands: a date, e.g.&nbsp;<code>2025-06-01</code>, or a span back from today, e.g.&nbsp;<code>7 days</code>. Package versions published after it are ignored. The command line flag and <code>exclude-newer</code> in a project’s <code>rproj.toml</code> take precedence. Not set by default.</p></li>
 <li><p><code>sysreqs</code> (<code>RIG_SYSREQS</code>): Linux only. What <a href="../reference/pkg.html#rig-pkg-install"><code>rig pkg install</code></a> and <a href="../reference/proj.html#rig-proj-sync"><code>rig proj sync</code></a> do with the OS packages that the R packages need, see their help:</p>
 <ul>
 <li><code>auto</code>, the default: install them on the Linux distributions that the system requirements rules know, and quietly skip them on others.</li>
@@ -645,6 +660,10 @@ Set a config entry
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -684,6 +703,10 @@ config key to get
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
@@ -717,6 +740,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -760,6 +787,10 @@ key=value pair to set
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--cache-dir &lt;CACHE_DIR&gt;</code></dt>
+<dd>
+Path to the cache directory (overrides RIG_CACHE_DIR and config)
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
