@@ -130,6 +130,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     let mode = get_mode()?;
     let alias = get_alias(args);
     let reinstall = args.get_flag("reinstall");
+    crate::utils::set_skip_path_setup(args.get_flag("without-path"));
     // `devel`/`next` are rebuilt daily under the same version number, so
     // they are reinstalled, unless the installer's ETag says that the
     // installed build is the current one. Everything else only matches an
@@ -249,7 +250,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
 
     // This should not happen currently on macOS, a .pkg installer
     // sets the default, but prepare for the future
-    set_default_if_none(dirname.to_string())?;
+    if !args.get_flag("no-default") {
+        set_default_if_none(dirname.to_string())?;
+    }
 
     sc_system_forget()?;
     system_no_openmp(Some(vec![dirname.to_string()]))?;
@@ -892,10 +895,20 @@ pub fn re_alias() -> Regex {
 }
 
 pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
-    debug!("Finding existing aliases");
-
     let binary_dir = get_binary_dir()?;
-    let paths = std::fs::read_dir(&binary_dir)?;
+    find_aliases_in(Path::new(&binary_dir))
+}
+
+fn find_aliases_in(binary_dir: &Path) -> Result<Vec<Alias>, Box<dyn Error>> {
+    debug!("Finding existing aliases in {}", binary_dir.display());
+
+    // In user mode the binary directory (`~/.local/bin`) does not exist until
+    // the first `rig add` or `rig default` creates it, and then there are no
+    // aliases to find. Linux and Windows already handle this.
+    if !binary_dir.exists() {
+        return Ok(vec![]);
+    }
+    let paths = std::fs::read_dir(binary_dir)?;
     let re = re_alias();
     let mut result: Vec<Alias> = vec![];
 
@@ -3270,5 +3283,33 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let missing = dir.path().join("does-not-exist");
         assert!(list_admin_versions(&missing).unwrap().is_empty());
+    }
+
+    #[test]
+    fn find_aliases_in_returns_empty_for_missing_binary_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("does-not-exist");
+        assert!(find_aliases_in(&missing).unwrap().is_empty());
+    }
+
+    #[test]
+    fn find_aliases_in_reads_alias_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let rbin = root.join("r").join("4.6.1").join("bin");
+        fs::create_dir_all(&rbin).unwrap();
+        fs::write(rbin.join("R"), "#!/bin/sh\n").unwrap();
+
+        // One alias link, and one plain quick link that is not an alias.
+        let bin = root.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        std::os::unix::fs::symlink(rbin.join("R"), bin.join("R-release")).unwrap();
+        std::os::unix::fs::symlink(rbin.join("R"), bin.join("R-4.6.1")).unwrap();
+
+        let aliases = find_aliases_in(&bin).unwrap();
+        assert_eq!(aliases.len(), 1);
+        assert_eq!(aliases[0].alias, "release");
+        assert_eq!(aliases[0].version, "4.6.1");
     }
 }

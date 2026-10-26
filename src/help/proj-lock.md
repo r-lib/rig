@@ -296,10 +296,11 @@ against its remote again, like with `--upgrade`.
 ## Checking the lock file
 
 `rig proj lock --check` checks that `rproj.lock` is up to date, i.e. that `rig
-proj lock` would keep it as it is, without writing anything. It fails if
-there is no `rproj.lock`, or if it does not fit `rproj.toml` any more, e.g.
-because someone edited `rproj.toml` and forgot to lock again. This is useful
-in CI:
+proj lock` would keep it as it is, without writing anything. It exits with
+status 1 if there is no `rproj.lock`, or if it does not fit `rproj.toml` any
+more, e.g. because someone edited `rproj.toml` and forgot to lock again. It
+exits with status 0 if `rproj.lock` is up to date, and with status 2 on any
+other error, e.g. if there is no `rproj.toml`. This is useful in CI:
 
 ```sh
 rig proj lock --check

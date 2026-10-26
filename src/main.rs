@@ -290,12 +290,19 @@ fn main_() -> i32 {
         }
         Err(err) => {
             let msg = format!("{}", err);
-            if err.downcast_ref::<output::ReportedError>().is_none() && !OUTPUT.error_shown(&msg) {
+            let (reported, status) = match err.downcast_ref::<output::ExitStatusError>() {
+                Some(e) => (
+                    e.error.downcast_ref::<output::ReportedError>().is_some(),
+                    e.status,
+                ),
+                None => (err.downcast_ref::<output::ReportedError>().is_some(), 1),
+            };
+            if !reported && !OUTPUT.error_shown(&msg) {
                 OUTPUT.error(&msg);
             }
             error!("{}", err);
             info!("RIG END [pid:{}] {}", pid, cmdline);
-            1
+            status
         }
     };
 

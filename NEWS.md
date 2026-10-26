@@ -5,6 +5,40 @@
   `.libPaths()`. The default is `--without-site-library`, which does not
   create it.
 
+* New `rig proj sync --check` option to check that the project
+  environment is in sync with `rproj.lock`. It exits with status 1 if sync
+  would install, update or remove any package, e.g. after packages were
+  installed or removed by hand, and with status 2 on other errors (#495).
+
+* `rig proj lock --check` now exits with status 2 on errors, e.g. if there
+  is no `rproj.toml`, and keeps status 1 for a missing or out of date
+  `rproj.lock`.
+
+* `rig proj sync --dry-run` no longer fills in a missing `.Renviron` or
+  `.rvenvlib`, it only says that sync would. It now fails if there is
+  neither an `rproj.toml` nor an `rproj.lock`, like `rig proj sync` does.
+
+* New `rig add --no-default` option to install an R version without
+  making it the default when no default R version is set yet, and
+  `rig add --without-path` to skip putting rig's quick-link directory on
+  the PATH (the shell startup files on macOS and Linux, the user PATH on
+  Windows). Tools that run rig to install R, like RStudio, can use them to
+  leave the user's default R, quick links, PATH and IDE settings alone.
+
+* `rig list`, `rig add` and other commands no longer fail on macOS in user
+  mode when `~/.local/bin` does not exist yet (#491).
+
+* `rig system clean-registry` on Windows now removes all stale R and
+  Rtools registry entries and "Add/Remove Programs" entries.
+
+* `rig list`, `rig add` and other commands no longer fail with
+  on macOS in user mode when `~/.local/bin` does not exist yet (#491).
+
+* rig on Linux now uses an updated embedded root certificate bundle
+  (webpki-root-certs 1.0.10), which drops the compromised
+  "emSign ECC Root CA - G3" root (see [GHSA-hq85-5cpj-mr62](
+    https://github.com/astral-sh/uv/security/advisories/GHSA-hq85-5cpj-mr62)).
+
 * `rig pkg install` and `rig proj sync` now install git, GitHub and
   `url::` package sources on Windows again. rig passed `\\?\` paths
   to `R CMD INSTALL`, which R rejected (#485).

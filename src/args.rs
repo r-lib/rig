@@ -536,6 +536,27 @@ pub fn rig_app() -> Command {
                 .required(false),
         )
         .arg(
+            Arg::new("no-default")
+                .help(
+                    "Do not make this R version the default, even if no default\n\
+                    R version is set yet.",
+                )
+                .long("no-default")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
+            Arg::new("without-path")
+                .help(
+                    "Do not put rig's quick-link directory on the PATH (user mode):\n\
+                    rig otherwise edits the shell startup files on macOS and Linux,\n\
+                    and the user PATH on Windows, when it is missing.",
+                )
+                .long("without-path")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
             Arg::new("json")
                 .help("JSON output")
                 .long("json")
@@ -2251,6 +2272,18 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false),
                 )
+                .arg(
+                    Arg::new("check")
+                        .help(
+                            "Check that the project environment is in sync with\n\
+                            rproj.lock, without changing anything. Fails if sync\n\
+                            would install, remove or update anything.",
+                        )
+                        .long("check")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with_all(["exclude-newer", "with-repos", "without-repos"]),
+                )
                 .args(sysreqs_args()),
         );
     let cmd_renv = Command::new("renv")
@@ -3830,6 +3863,28 @@ mod tests {
     }
 
     #[test]
+    fn add_no_default_and_without_path_are_off_unless_given() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "add", "4.6.1"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        assert!(!sub.get_flag("no-default"));
+
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "add", "--no-default", "4.6.1"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        assert!(sub.get_flag("no-default"));
+        assert!(!sub.get_flag("without-path"));
+
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "add", "--without-path", "4.6.1"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        assert!(sub.get_flag("without-path"));
+    }
+
+    #[test]
     fn proj_lock_r_version_and_platform_take_comma_separated_lists() {
         let matches = rig_app()
             .try_get_matches_from([
@@ -4034,6 +4089,30 @@ mod tests {
         let (_name, sub) = matches.subcommand().unwrap();
         let (_name, sub) = sub.subcommand().unwrap();
         assert!(sub.get_flag("frozen"));
+    }
+
+    #[test]
+    fn proj_sync_check_flag() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--frozen", "--check"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert!(sub.get_flag("check"));
+        assert!(sub.get_flag("frozen"));
+        assert!(rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "sync",
+                "--check",
+                "--exclude-newer",
+                "7 days"
+            ])
+            .is_err());
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--check", "--with-repos", "bioc"])
+            .is_err());
     }
 
     #[test]
