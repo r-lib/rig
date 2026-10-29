@@ -1,5 +1,8 @@
 # rig 0.11.2-dev (development version)
 
+* `rig pkg doctor` now reports packages built for another architecture
+  on Windows too, e.g. x86_64 packages in the library of an aarch64 R.
+
 # rig 0.11.1
 
 * New `rig proj sync --check` option to check that the project

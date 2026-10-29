@@ -50,14 +50,14 @@ Errors:
   of a `LinkingTo` dependency than the one installed now. rig can only tell
   this for packages it installed itself, because [`rig pkg install`](#rig-pkg-install) records
   what a package was compiled against.
+* `platform`: the package has compiled code built for another architecture,
+  e.g. `x86_64` instead of `aarch64`. R cannot load it.
 
 Warnings:
 
 * `stale`: only with `--stale`, see below.
 * `built-r`: the package was built for another R minor version, e.g. for R
   4.3.x in an R 4.4.x library.
-* `platform`: the package was built for another architecture, e.g. `x86_64`
-  instead of `aarch64`.
 * `name`: the `Package` field of the `DESCRIPTION` file does not match the
   directory the package is installed in.
 * `lock`: a `00LOCK*` directory, left behind by an interrupted installation.
