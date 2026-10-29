@@ -3,6 +3,12 @@
 * `rig pkg doctor` now reports packages built for another architecture
   on Windows too, e.g. x86_64 packages in the library of an aarch64 R.
 
+* `rig pkg install` and `rig proj lock` now choose binary packages for
+  the architecture of the R version, not rig's own. Before, an x86_64
+  build of rig on aarch64 Windows installed x86_64 binaries into the
+  library of an aarch64 R. `rig pkg install` and `rig proj sync` now also
+  reinstall packages that were built for another architecture.
+
 # rig 0.11.1
 
 * New `rig proj sync --check` option to check that the project

@@ -36,7 +36,7 @@ use crate::windows::get_r_binary;
 #[cfg(target_os = "linux")]
 use crate::linux::get_r_binary;
 
-use crate::built::BuiltCache;
+use crate::built::{r_platform, BuiltCache};
 use crate::cache::get_cache_dir;
 use crate::dcf::{
     DepVersionSpec, OsType, Package, PackageDependencies, RDepType, VersionConstraintType,
@@ -184,7 +184,16 @@ pub fn sc_pkg_install(
         debug!("Library {} does not exist yet", lib.path.display());
         vec![]
     };
-    let plan = plan_installs(&lockfile.packages, &installed, reinstall);
+    // Not an error yet if R is missing: a `--dry-run` does not need it.
+    let r_platform = get_r_binary(&rver)
+        .ok()
+        .and_then(|bin| r_platform(&bin.to_string_lossy()));
+    let plan = plan_installs(
+        &lockfile.packages,
+        &installed,
+        reinstall,
+        r_platform.as_deref(),
+    );
 
     if json {
         print_plan_json(&plan)?;
@@ -550,10 +559,15 @@ pub(crate) struct Planned<'a> {
 /// invalidates whatever was compiled against *those*. The coupling is
 /// `LinkingTo` only: an `Imports` dependency being replaced changes nothing
 /// about how its dependents were compiled.
+///
+/// `r_platform` is the `R_PLATFORM` of the R the library is for, if known
+/// (see [`crate::built::r_platform`]): a compiled package built for another
+/// arch cannot be loaded, whatever its provenance says.
 pub(crate) fn plan_installs<'a>(
     solved: &'a [RprojLockPackage],
     installed: &[InstalledPackage],
     reinstall: bool,
+    r_platform: Option<&str>,
 ) -> Vec<Planned<'a>> {
     let by_name: HashMap<&str, &InstalledPackage> =
         installed.iter().map(|p| (p.package.as_str(), p)).collect();
@@ -579,6 +593,7 @@ pub(crate) fn plan_installs<'a>(
                     package,
                     by_name.get(package.package.as_str()).copied(),
                     &solved_hash,
+                    r_platform,
                 ) {
                     Some(reason) => (true, reason),
                     None => (false, "up to date".to_string()),
@@ -647,6 +662,7 @@ fn needs_install(
     solved: &RprojLockPackage,
     installed: Option<&InstalledPackage>,
     solved_hash: &HashMap<&str, Option<&str>>,
+    r_platform: Option<&str>,
 ) -> Option<String> {
     let installed = match installed {
         Some(x) => x,
@@ -655,6 +671,15 @@ fn needs_install(
 
     if installed.version != solved.version {
         return Some(format!("{} is installed", installed.version));
+    }
+
+    // Only compiled packages have a platform. E.g. an x64 package in the
+    // library of an aarch64 R on Windows: same tarball, but unusable.
+    let arch = |p: &str| p.split('-').next().unwrap_or(p).to_string();
+    if let (Some(want), Some(have)) = (r_platform, installed.platform.as_deref()) {
+        if arch(want) != arch(have) {
+            return Some(format!("built for {}", arch(have)));
+        }
     }
 
     // A git/GitHub package has no `RemoteHash` (that is CRAN-tarball-specific)
@@ -849,10 +874,36 @@ mod tests {
         installed: &[InstalledPackage],
         reinstall: bool,
     ) -> HashMap<String, (bool, String)> {
-        plan_installs(solved, installed, reinstall)
+        plan_installs(solved, installed, reinstall, None)
             .into_iter()
             .map(|p| (p.package.package.clone(), (p.install, p.reason)))
             .collect()
+    }
+
+    #[test]
+    fn a_package_built_for_another_arch_is_reinstalled() {
+        let solved = [
+            solved("cli", "3.6.6", Some("aa")),
+            solved("glue", "1.8.1", Some("bb")),
+            solved("rlang", "1.3.0", Some("cc")),
+        ];
+        let mut cli = inst("cli", "3.6.6", Some("aa"), &[]);
+        cli.platform = Some("x86_64-w64-mingw32".to_string());
+        let mut glue = inst("glue", "1.8.1", Some("bb"), &[]);
+        glue.platform = Some("aarch64-w64-mingw32".to_string());
+        // No platform: no compiled code.
+        let rlang = inst("rlang", "1.3.0", Some("cc"), &[]);
+        let installed = [cli, glue, rlang];
+        let out: HashMap<String, (bool, String)> =
+            plan_installs(&solved, &installed, false, Some("aarch64-w64-mingw32"))
+                .into_iter()
+                .map(|p| (p.package.package.clone(), (p.install, p.reason)))
+                .collect();
+        assert_eq!(out["cli"], (true, "built for x86_64".to_string()));
+        assert!(!out["glue"].0);
+        assert!(!out["rlang"].0);
+        // An unknown R platform checks nothing.
+        assert!(!plan(&solved, &installed, false)["cli"].0);
     }
 
     #[test]

@@ -82,13 +82,22 @@ impl BuiltCache {
                 return None;
             }
         };
-        let platform = match detect_platform() {
+        let mut platform = match detect_platform() {
             Ok(platform) => platform,
             Err(err) => {
                 debug!("Not caching built packages, unknown platform: {}", err);
                 return None;
             }
         };
+        // An x86_64 R on an arm64 machine builds x86_64 packages, and on
+        // Windows and macOS their file names do not say so.
+        let r_platform = r_platform(r_binary);
+        if let Some(arch) = r_platform
+            .as_deref()
+            .and_then(|p| crate::platform::normalize_arch(p.split('-').next()?))
+        {
+            platform.arch = arch.to_string();
+        }
         let minor = match minor_r_version(r_version) {
             Ok(minor) => minor,
             Err(err) => {
@@ -101,7 +110,7 @@ impl BuiltCache {
                 .join("built")
                 .join(platform_id(&platform))
                 .join(sanitize(&minor)),
-            r_platform: r_platform(r_binary),
+            r_platform,
             makevars: makevars_fingerprint(),
             kind: built_kind(),
         })
@@ -265,6 +274,7 @@ fn built_file_name(kind: BuiltKind, name: &str, version: &str, r_platform: Optio
 ///
 /// `$R_HOME/etc/Renviron` sets it, as `R_PLATFORM=${R_PLATFORM-'<triple>'}`, and
 /// `$R_HOME` is where the `R` binary is: `<R_HOME>/bin/R`.
+#[cfg(not(target_os = "windows"))]
 pub(crate) fn r_platform(r_binary: &str) -> Option<String> {
     let bin = Path::new(r_binary).parent()?;
     let renviron = bin.parent()?.join("etc").join("Renviron");
@@ -272,6 +282,42 @@ pub(crate) fn r_platform(r_binary: &str) -> Option<String> {
     parse_r_platform(&text)
 }
 
+/// `R_PLATFORM` for an R installation, without starting R.
+///
+/// Windows R has no `etc/Renviron`, so this reads the CPU type of `R.dll`
+/// instead: `<R_HOME>/bin/R.dll`, or `<R_HOME>/bin/x64/R.dll` for the older
+/// builds that had a 32-bit and a 64-bit R in one installation. `r_binary`
+/// is `<R_HOME>/bin/R.exe`.
+#[cfg(target_os = "windows")]
+pub(crate) fn r_platform(r_binary: &str) -> Option<String> {
+    let bin = Path::new(r_binary).parent()?;
+    let arch = [bin.join("R.dll"), bin.join("x64").join("R.dll")]
+        .iter()
+        .find_map(|dll| std::fs::read(dll).ok().and_then(|b| pe_arch(&b)))?;
+    Some(format!("{}-w64-mingw32", arch))
+}
+
+/// The CPU arch of a Windows executable or DLL, from its PE header.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn pe_arch(bytes: &[u8]) -> Option<&'static str> {
+    let u32_at = |i: usize| Some(u32::from_le_bytes(bytes.get(i..i + 4)?.try_into().ok()?));
+    if bytes.get(0..2)? != b"MZ" {
+        return None;
+    }
+    let pe = u32_at(0x3c)? as usize;
+    if bytes.get(pe..pe + 4)? != b"PE\0\0" {
+        return None;
+    }
+    let machine = u16::from_le_bytes(bytes.get(pe + 4..pe + 6)?.try_into().ok()?);
+    match machine {
+        0x8664 => Some("x86_64"),
+        0xaa64 => Some("aarch64"),
+        0x014c => Some("i386"),
+        _ => None,
+    }
+}
+
+#[cfg_attr(target_os = "windows", allow(dead_code))]
 fn parse_r_platform(renviron: &str) -> Option<String> {
     for line in renviron.lines() {
         let rest = match line.trim().strip_prefix("R_PLATFORM=") {
@@ -522,6 +568,26 @@ mod tests {
             Some("x86_64-pc-linux-gnu".to_string())
         );
         assert_eq!(parse_r_platform("R_LIBS=\n"), None);
+    }
+
+    #[test]
+    fn the_arch_of_a_dll_is_read_out_of_its_pe_header() {
+        let dll = |machine: u16| {
+            let mut b = vec![0u8; 0x48];
+            b[0..2].copy_from_slice(b"MZ");
+            b[0x3c..0x40].copy_from_slice(&0x40u32.to_le_bytes());
+            b[0x40..0x44].copy_from_slice(b"PE\0\0");
+            b[0x44..0x46].copy_from_slice(&machine.to_le_bytes());
+            b
+        };
+        assert_eq!(pe_arch(&dll(0xaa64)), Some("aarch64"));
+        assert_eq!(pe_arch(&dll(0x8664)), Some("x86_64"));
+        assert_eq!(pe_arch(&dll(0x1234)), None);
+        assert_eq!(pe_arch(b"MZ"), None);
+        assert_eq!(
+            pe_arch(b"not a dll at all, not a dll at all, not a dll at all, not a dll"),
+            None
+        );
     }
 
     #[test]

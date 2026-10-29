@@ -1752,12 +1752,11 @@ fn resolve_binary_target_r_version(r_version: &str) -> Result<String, Box<dyn Er
 }
 
 /// The arch of the installed R `r_version` names, from its `R_PLATFORM`, or
-/// `None` for a plain numeric version or an R that is not installed. An
-/// x86_64 R on an arm64 Mac needs x86_64 binaries, not the host's.
+/// `None` for an R that is not installed. An x86_64 R on an arm64 machine
+/// needs x86_64 binaries, not the host's, and an aarch64 R needs aarch64
+/// binaries even from an x86_64 build of rig. A plain numeric version can
+/// name an installed R too: that is how Windows names them, e.g. `4.6.1`.
 fn installed_r_arch(r_version: &str) -> Option<&'static str> {
-    if is_numeric_r_version(r_version) {
-        return None;
-    }
     let name = find_installed(r_version).ok()??;
     let binary = sc_get_list_details()
         .ok()?
@@ -6271,7 +6270,8 @@ pub(crate) fn proj_sync(
     } else {
         vec![]
     };
-    let plan = plan_installs(wanted, &already_installed, false);
+    let r_platform = r_platform(&r_binary.to_string_lossy());
+    let plan = plan_installs(wanted, &already_installed, false, r_platform.as_deref());
     print_plan(&library_tag, &plan);
     let todo: Vec<&RprojLockPackage> = plan
         .iter()
