@@ -1,3 +1,5 @@
+# rig 0.11.2-dev (development version)
+
 # rig 0.11.1
 
 * New `rig proj sync --check` option to check that the project
