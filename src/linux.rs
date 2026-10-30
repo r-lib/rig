@@ -417,6 +417,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     }
 
     library_update_rprofile(&dirname.to_string())?;
+    if args.get_flag("with-site-library") {
+        create_site_library(&dirname)?;
+    }
     // The `SED = /usr/bin/sed` fixup only matters for distro-compiled R.
     if mode == Mode::Admin && !portable {
         check_usr_bin_sed(&dirname.to_string())?;

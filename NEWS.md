@@ -11,6 +11,11 @@
 
 # rig 0.11.1
 
+* New `rig add --with-site-library` option to create the site library
+  (`R_HOME/site-library`) of the new R version, so R puts it on
+  `.libPaths()`. The default is `--without-site-library`, which does not
+  create it.
+
 * New `rig proj sync --check` option to check that the project
   environment is in sync with `rproj.lock`. It exits with status 1 if sync
   would install, update or remove any package, e.g. after packages were
