@@ -705,6 +705,87 @@ async fn cache_build(pkg: &PackageInfo, library_path: &Path) {
     }
 }
 
+/// The packages that cannot be installed because `failed` failed: everything
+/// that depends on it, directly or through other packages. Packages in `done`
+/// (installed, failed, skipped or being installed) are left out. Sorted.
+fn blocked_dependents(
+    failed: &str,
+    packages: &HashMap<String, PackageInfo>,
+    done: &HashSet<String>,
+) -> Vec<String> {
+    let mut blocked: HashSet<&str> = HashSet::from([failed]);
+    loop {
+        let before = blocked.len();
+        for (name, pkg) in packages {
+            if !done.contains(name)
+                && !blocked.contains(name.as_str())
+                && pkg
+                    .dependencies
+                    .iter()
+                    .any(|dep| blocked.contains(dep.as_str()))
+            {
+                blocked.insert(name);
+            }
+        }
+        if blocked.len() == before {
+            break;
+        }
+    }
+    blocked.remove(failed);
+    let mut blocked: Vec<String> = blocked.into_iter().map(String::from).collect();
+    blocked.sort();
+    blocked
+}
+
+/// `names` as a comma separated list, cut after the first ten.
+fn name_list(names: &[String]) -> String {
+    const MAX: usize = 10;
+    if names.len() <= MAX {
+        names.join(", ")
+    } else {
+        format!(
+            "{}, and {} more",
+            names[..MAX].join(", "),
+            names.len() - MAX
+        )
+    }
+}
+
+fn packages_word(n: usize) -> &'static str {
+    if n == 1 {
+        "package"
+    } else {
+        "packages"
+    }
+}
+
+/// The final error message of an install where some packages failed, and some
+/// others were skipped because they depend on a failed one.
+fn failure_summary(failed: &[String], skipped: &[String], installed: usize) -> String {
+    let mut msg = format!(
+        "Failed to install {} {} ({})",
+        failed.len(),
+        packages_word(failed.len()),
+        name_list(failed)
+    );
+    if !skipped.is_empty() {
+        msg.push_str(&format!(
+            ", skipped {} {} that {} on {} ({})",
+            skipped.len(),
+            packages_word(skipped.len()),
+            if skipped.len() == 1 {
+                "depends"
+            } else {
+                "depend"
+            },
+            if failed.len() == 1 { "it" } else { "them" },
+            name_list(skipped)
+        ));
+    }
+    msg.push_str(&format!(", installed {}", installed));
+    msg
+}
+
 /// Install multiple packages respecting dependency order
 ///
 /// Packages are installed concurrently when possible, but dependencies
@@ -751,6 +832,8 @@ where
 
     let installed = Arc::new(Mutex::new(HashSet::new()));
     let failed: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+    // Packages not tried because a dependency failed, with the failed package.
+    let skipped: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let installing = Arc::new(Mutex::new(HashSet::new()));
 
     let mut running_tasks = FuturesUnordered::new();
@@ -763,17 +846,19 @@ where
         package_map: Arc<HashMap<String, PackageInfo>>,
         installed: Arc<Mutex<HashSet<String>>>,
         failed: Arc<Mutex<HashSet<String>>>,
+        skipped: Arc<Mutex<HashMap<String, String>>>,
         installing: Arc<Mutex<HashSet<String>>>,
         library_path: PathBuf,
         r_binary: String,
         max_to_start: usize,
         print_fn: Option<Arc<P>>,
-    ) -> Vec<tokio::task::JoinHandle<Result<String, String>>>
+    ) -> Vec<tokio::task::JoinHandle<Result<String, (String, String)>>>
     where
         P: Fn(&str) + Send + Sync + 'static,
     {
         let installed_set = installed.lock().await.clone();
         let failed_set = failed.lock().await.clone();
+        let skipped_set = skipped.lock().await.clone();
         let mut installing_set = installing.lock().await;
 
         let mut new_tasks = Vec::new();
@@ -786,25 +871,20 @@ where
 
             if installed_set.contains(name)
                 || failed_set.contains(name)
+                || skipped_set.contains_key(name)
                 || installing_set.contains(name)
             {
                 continue;
             }
 
+            // A package with a failed dependency is already in `skipped`, the
+            // main loop puts it there when the dependency fails.
             let all_deps_installed = pkg
                 .dependencies
                 .iter()
                 .all(|dep| installed_set.contains(dep));
 
-            let any_dep_failed = pkg.dependencies.iter().any(|dep| failed_set.contains(dep));
-
-            if any_dep_failed {
-                drop(installing_set);
-                failed.lock().await.insert(name.clone());
-                installing_set = installing.lock().await;
-                // TODO: can this happen? We quit on the first failure, no?
-                error!("Skipping package {} because a dependency failed", name);
-            } else if all_deps_installed {
+            if all_deps_installed {
                 installing_set.insert(name.clone());
                 started += 1;
                 let name_clone = name.clone();
@@ -848,7 +928,7 @@ where
 
                     match outcome {
                         Ok(()) => Ok(name_clone),
-                        Err(err_msg) => Err(err_msg),
+                        Err(err_msg) => Err((name_clone, err_msg)),
                     }
                 });
 
@@ -863,6 +943,7 @@ where
         Arc::clone(&package_map),
         Arc::clone(&installed),
         Arc::clone(&failed),
+        Arc::clone(&skipped),
         Arc::clone(&installing),
         library_path.clone(),
         r_binary.clone(),
@@ -882,10 +963,35 @@ where
                     callback(&pkg_name, true);
                 }
             }
-            Err(_err_msg) => {
-                // Error already logged in the task
-                // We can't get the package name easily here since it's in the error context
-                // The error will be caught at the end anyway
+            Err((pkg_name, _err_msg)) => {
+                // The error itself is already shown by `install_package`. Here
+                // we skip every package that needs the failed one, and say so.
+                let mut skipped_map = skipped.lock().await;
+                let mut done: HashSet<String> = installed.lock().await.clone();
+                done.extend(failed.lock().await.iter().cloned());
+                done.extend(installing.lock().await.iter().cloned());
+                done.extend(skipped_map.keys().cloned());
+                let blocked = blocked_dependents(&pkg_name, &package_map, &done);
+                if !blocked.is_empty() {
+                    OUTPUT.warn(&format!(
+                        "Not installing {}: {} {}",
+                        name_list(&blocked),
+                        if blocked.len() == 1 {
+                            "it needs"
+                        } else {
+                            "they need"
+                        },
+                        pkg_name
+                    ));
+                    info!(
+                        "Skipping {} because {} failed",
+                        blocked.join(", "),
+                        pkg_name
+                    );
+                    for name in blocked {
+                        skipped_map.insert(name, pkg_name.clone());
+                    }
+                }
             }
         }
 
@@ -897,6 +1003,7 @@ where
                 Arc::clone(&package_map),
                 Arc::clone(&installed),
                 Arc::clone(&failed),
+                Arc::clone(&skipped),
                 Arc::clone(&installing),
                 library_path.clone(),
                 r_binary.clone(),
@@ -913,13 +1020,19 @@ where
 
     let final_installed = installed.lock().await.len();
     let final_failed = failed.lock().await.len();
+    let final_skipped = skipped.lock().await.len();
 
-    if final_installed + final_failed < package_count {
+    if final_installed + final_failed + final_skipped < package_count {
         let installed_set = installed.lock().await.clone();
         let failed_set = failed.lock().await.clone();
+        let skipped_set = skipped.lock().await.clone();
         let remaining: Vec<String> = package_map
             .keys()
-            .filter(|k| !installed_set.contains(*k) && !failed_set.contains(*k))
+            .filter(|k| {
+                !installed_set.contains(*k)
+                    && !failed_set.contains(*k)
+                    && !skipped_set.contains_key(*k)
+            })
             .cloned()
             .collect();
 
@@ -934,14 +1047,15 @@ where
     }
 
     if final_failed > 0 {
-        let err_msg = format!(
-            "Installation completed with {} failures ({} succeeded)",
-            final_failed, final_installed
-        );
+        let mut failed_names: Vec<String> = failed.lock().await.iter().cloned().collect();
+        failed_names.sort();
+        let mut skipped_names: Vec<String> = skipped.lock().await.keys().cloned().collect();
+        skipped_names.sort();
+        let err_msg = failure_summary(&failed_names, &skipped_names, final_installed);
 
         error!(
-            "Installation completed: {} succeeded, {} failed",
-            final_installed, final_failed
+            "Installation completed: {} succeeded, {} failed, {} skipped",
+            final_installed, final_failed, final_skipped
         );
 
         return Err(err_msg.into());
@@ -1620,5 +1734,62 @@ mod tests {
         assert_eq!(mode_of(&lib.join("foo/libs/foo.so")), 0o755);
         assert_eq!(mode_of(&lib.join("foo/R/foo.rdb")), 0o644);
         assert_eq!(mode_of(&lib.join("foo/DESCRIPTION")), 0o644);
+    }
+
+    fn with_deps(name: &str, deps: &[&str]) -> (String, PackageInfo) {
+        let mut pkg = info(name, Path::new("x"), None, &[]);
+        pkg.dependencies = deps.iter().map(|d| d.to_string()).collect();
+        (name.to_string(), pkg)
+    }
+
+    #[test]
+    fn blocked_dependents_follows_the_dependency_chain() {
+        // c -> b -> a, d -> c and e, e and f are independent of a.
+        let packages: HashMap<String, PackageInfo> = [
+            with_deps("a", &[]),
+            with_deps("b", &["a"]),
+            with_deps("c", &["b"]),
+            with_deps("d", &["c", "e"]),
+            with_deps("e", &[]),
+            with_deps("f", &["e"]),
+        ]
+        .into_iter()
+        .collect();
+
+        let done: HashSet<String> = ["a".to_string()].into();
+        assert_eq!(
+            blocked_dependents("a", &packages, &done),
+            vec!["b", "c", "d"]
+        );
+
+        // Packages already done are left out, but their dependents are not.
+        let done: HashSet<String> = ["a".to_string(), "b".to_string()].into();
+        assert_eq!(
+            blocked_dependents("a", &packages, &done),
+            Vec::<String>::new()
+        );
+        assert_eq!(blocked_dependents("e", &packages, &done), vec!["d", "f"]);
+    }
+
+    #[test]
+    fn failure_summary_lists_failed_and_skipped_packages() {
+        let names = |xs: &[&str]| xs.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            failure_summary(&names(&["foo"]), &[], 79),
+            "Failed to install 1 package (foo), installed 79"
+        );
+        assert_eq!(
+            failure_summary(&names(&["foo"]), &names(&["bar"]), 79),
+            "Failed to install 1 package (foo), skipped 1 package that depends on it (bar), installed 79"
+        );
+        assert_eq!(
+            failure_summary(&names(&["foo", "qux"]), &names(&["bar", "baz"]), 3),
+            "Failed to install 2 packages (foo, qux), skipped 2 packages that depend on them (bar, baz), installed 3"
+        );
+        let many: Vec<String> = (1..=12).map(|i| format!("p{}", i)).collect();
+        assert_eq!(
+            name_list(&many),
+            "p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, and 2 more"
+        );
     }
 }
