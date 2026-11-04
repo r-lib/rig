@@ -40,8 +40,9 @@ struct RData {
 }
 
 // Fail if `setup` names a repository that is neither in `config` nor in
-// `r_names`, the (lowercase) names of R's own repositories, see
-// [`r_own_repo_names`].
+// `r_names`, the names of R's own repositories, see [`r_own_repo_names`].
+// Names are matched case insensitively, and the error message shows them as
+// they were given, and as they are spelled in the catalog.
 fn validate_repos_in_setup(
     config: &[Repository],
     r_names: &[String],
@@ -49,33 +50,28 @@ fn validate_repos_in_setup(
 ) -> Result<(), Box<dyn Error>> {
     let mut valid_repo_names: Vec<String> = config
         .iter()
-        .map(|r| r.name.to_lowercase())
+        .map(|r| r.name.clone())
         .chain(r_names.iter().cloned())
         .collect::<Vec<_>>();
-    valid_repo_names.sort();
-    valid_repo_names.dedup();
+    valid_repo_names.sort_by_key(|n| n.to_lowercase());
+    valid_repo_names.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
 
-    let mut invalid_repos: Vec<String> = Vec::new();
-
-    match setup {
+    let names: Vec<&String> = match setup {
         ReposSetupArgs::Default {
             whitelist,
             blacklist,
-        } => {
-            for repo in whitelist.iter().chain(blacklist.iter()) {
-                if !valid_repo_names.contains(repo) {
-                    invalid_repos.push(repo.clone());
-                }
-            }
-        }
-        ReposSetupArgs::Empty { whitelist } => {
-            for repo in whitelist.iter() {
-                if !valid_repo_names.contains(repo) {
-                    invalid_repos.push(repo.clone());
-                }
-            }
-        }
-    }
+        } => whitelist.iter().chain(blacklist.iter()).collect(),
+        ReposSetupArgs::Empty { whitelist } => whitelist.iter().collect(),
+    };
+    let mut invalid_repos: Vec<String> = names
+        .into_iter()
+        .filter(|repo| {
+            !valid_repo_names
+                .iter()
+                .any(|v| v.eq_ignore_ascii_case(repo))
+        })
+        .cloned()
+        .collect();
 
     if !invalid_repos.is_empty() {
         invalid_repos.sort();
@@ -94,7 +90,7 @@ fn validate_repos_in_setup(
     Ok(())
 }
 
-/// Fail if any of `names` (lowercase) is not a known repository: a rig
+/// Fail if any of `names` is not a known repository: a rig
 /// repository, or one of R's own repositories of an installation in `vers`.
 pub fn validate_repo_names(names: &[String], vers: &[String]) -> Result<(), Box<dyn Error>> {
     let config = get_repos_config()?;
@@ -122,7 +118,7 @@ fn is_r_own_repo(entry: &RepoFileEntry, rig_names: &[String]) -> bool {
     !rig_names.contains(&entry.name.to_lowercase())
 }
 
-/// The lowercase names of R's own repositories of installation `ver`, the
+/// The names of R's own repositories of installation `ver`, the
 /// entries of its original `repositories` file that rig does not set up
 /// itself. These can be enabled and disabled the same way as rig's
 /// repositories. Empty if the installation has no `repositories` file.
@@ -141,7 +137,7 @@ pub fn r_own_repo_names(config: &[Repository], ver: &str) -> Result<Vec<String>,
         .data
         .iter()
         .filter(|e| is_r_own_repo(e, &rig_names))
-        .map(|e| e.name.to_lowercase())
+        .map(|e| e.name.clone())
         .collect())
 }
 
@@ -154,8 +150,8 @@ fn r_own_repo_names_of(
     for ver in vers {
         names.extend(r_own_repo_names(config, &check_installed(ver)?)?);
     }
-    names.sort();
-    names.dedup();
+    names.sort_by_key(|n| n.to_lowercase());
+    names.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
     Ok(names)
 }
 
@@ -187,6 +183,7 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
 
     // Validate that all repositories in whitelist and blacklist exist
     validate_repos_in_setup(&config, &r_own_repo_names_of(&config, &vers)?, &setup)?;
+    let setup = setup.to_lowercase();
     let rig_names = rig_entry_names(&config);
 
     for ver in vers {
@@ -330,6 +327,7 @@ pub(crate) fn repos_with_setup(
     let ver = check_installed(&ver.to_string())?;
     let config = get_repos_config()?;
     validate_repos_in_setup(&config, &r_own_repo_names(&config, &ver)?, setup)?;
+    let setup = &setup.to_lowercase();
 
     let repositories = repositories_file(&ver)?;
     if !PathBuf::from(&repositories).exists() {
@@ -476,7 +474,7 @@ fn infer_setup_state(
     Ok(state)
 }
 
-/// The repositories in `names` (lowercase) that have no URL for the R
+/// The repositories in `names` that have no URL for the R
 /// installation `ver`, i.e. that cannot be enabled for it.
 pub fn repos_not_applicable(ver: &str, names: &[String]) -> Result<Vec<String>, Box<dyn Error>> {
     let config = get_repos_config()?;
@@ -484,8 +482,8 @@ pub fn repos_not_applicable(ver: &str, names: &[String]) -> Result<Vec<String>, 
     let r_names = r_own_repo_names(&config, ver)?;
     let mut result = vec![];
     for name in names {
-        let Some(repo) = config.iter().find(|r| &r.name.to_lowercase() == name) else {
-            if !r_names.contains(name) {
+        let Some(repo) = config.iter().find(|r| r.name.eq_ignore_ascii_case(name)) else {
+            if !r_names.iter().any(|r| r.eq_ignore_ascii_case(name)) {
                 result.push(name.clone());
             }
             continue;
@@ -1463,5 +1461,21 @@ mod tests {
         };
         assert!(validate_repos_in_setup(&config, &[], &setup).is_err());
         assert!(validate_repos_in_setup(&config, &["cranextra".to_string()], &setup).is_ok());
+    }
+
+    #[test]
+    fn validate_keeps_case_of_names() {
+        // Names match case insensitively, and the error shows the invalid
+        // names as given and the valid ones as spelled in the catalog.
+        let config = vec![make_repo("CRAN"), make_repo("P3M")];
+        let setup = ReposSetupArgs::Default {
+            whitelist: vec!["Cran".to_string(), "FooBar".to_string()],
+            blacklist: vec!["p3m".to_string()],
+        };
+        let err = validate_repos_in_setup(&config, &["CRANextra".to_string()], &setup)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("Invalid repository name(s): FooBar."));
+        assert!(err.contains("Valid repositories are: CRAN, CRANextra, P3M"));
     }
 }

@@ -307,10 +307,7 @@ pub struct REnvLockfile {
 }
 
 impl REnvLockfile {
-    pub fn from_solution(
-        registry: &RPackageRegistry,
-        solution: &HashMap<String, RegistryPackageVersion, rustc_hash::FxBuildHasher>,
-    ) -> REnvLockfile {
+    pub fn from_solution(registry: &RPackageRegistry, solution: &RegistrySolution) -> REnvLockfile {
         let mut pkgs = REnvLockfilePackages::new();
         for (k, v) in solution.iter() {
             if k == "R" || registry.is_local(k) || BASE_PKGS.contains(&k.as_str()) {
@@ -332,7 +329,7 @@ impl REnvLockfile {
         }
         REnvLockfile {
             R: REnvLockfileR {
-                Version: solution.get("R").unwrap().version.to_string(),
+                Version: solution.get(&"R".to_string()).unwrap().version.to_string(),
                 Repositories: vec![REnvLockfileRepository {
                     Name: "CRAN".to_string(),
                     URL: "https://cloud.r-project.org".to_string(),

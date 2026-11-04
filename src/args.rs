@@ -99,9 +99,10 @@ fn pkg_repos_args() -> [Arg; 2] {
             .required(false),
         Arg::new("without-repos")
             .help(
-                "Do not use these repositories, a comma-separated list.\n\
-                Without a value, do not use any of the configured repositories,\n\
-                only the ones in --with-repos. Can be repeated.",
+                "Do not use these repositories, a comma-separated list, given\n\
+                with '=', e.g. --without-repos=cran. Without a value, do not use\n\
+                any of the configured repositories, only the ones in --with-repos.\n\
+                Can be repeated.",
             )
             .long("without-repos")
             .visible_alias("no-index")
@@ -132,9 +133,10 @@ pub(crate) fn proj_repos_args() -> [Arg; 2] {
             .required(false),
         Arg::new("without-repos")
             .help(
-                "Do not use these repositories, a comma-separated list, e.g.\n\
-                cran,bioc. Without a value, do not use any of the project's\n\
-                repositories, only the ones in --with-repos. Can be repeated.",
+                "Do not use these repositories, a comma-separated list, given\n\
+                with '=', e.g. --without-repos=cran,bioc. Without a value, do not\n\
+                use any of the project's repositories, only the ones in\n\
+                --with-repos. Can be repeated.",
             )
             .long("without-repos")
             .visible_alias("no-index")
@@ -214,10 +216,17 @@ fn add_name_headers(cmd: &mut Command, path: &str) {
 
     for sub in cmd.get_subcommands_mut() {
         let full = format!("{} {}", path, sub.get_name());
-        if let Some(about) = sub.get_about().map(|s| s.ansi().to_string()) {
+        if let Some(about) = sub.get_about() {
+            // clap does not wrap the template, so put the summary on its own
+            // line if `name - summary` does not fit on an 80 column screen.
+            let width = full.chars().count() + about.to_string().chars().count() + 5;
+            let sep = if width > 80 { " -\n    " } else { " - " };
             let template = format!(
-                "\u{1b}[1m\u{1b}[34mName:\u{1b}[39m\u{1b}[22m\n  {} - {}\n\n{}",
-                full, about, BODY
+                "\u{1b}[1m\u{1b}[34mName:\u{1b}[39m\u{1b}[22m\n  {}{}{}\n\n{}",
+                full,
+                sep,
+                about.ansi(),
+                BODY
             );
             let long = sub.get_long_about().map(|s| s.ansi().to_string());
             let mut updated = std::mem::take(sub).help_template(template);
@@ -453,7 +462,8 @@ pub fn rig_app() -> Command {
             Arg::new("without-repos")
                 .help(
                     "Do not set up package repositories.\n\
-                    Alternatively, specify which ones to skip, a comma-separated list.\n\
+                    Alternatively, specify which ones to skip, a comma-separated list,\n\
+                    given with '=', e.g. --without-repos=cran.\n\
                     If --with-repos is also specified, then only the repositories in that\n\
                     argument will be enabled.",
                 )
@@ -507,6 +517,27 @@ pub fn rig_app() -> Command {
             Arg::new("reinstall")
                 .help("Reinstall, even if this R version is already installed.")
                 .long("reinstall")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
+            Arg::new("no-default")
+                .help(
+                    "Do not make this R version the default, even if no default\n\
+                    R version is set yet.",
+                )
+                .long("no-default")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
+            Arg::new("without-path")
+                .help(
+                    "Do not put rig's quick-link directory on the PATH (user mode):\n\
+                    rig otherwise edits the shell startup files on macOS and Linux,\n\
+                    and the user PATH on Windows, when it is missing.",
+                )
+                .long("without-path")
                 .num_args(0)
                 .required(false),
         )
@@ -2031,7 +2062,28 @@ pub fn rig_app() -> Command {
                         .required(false)
                         .conflicts_with("upgrade"),
                 )
-                .args(proj_repos_args()),
+                .args(proj_repos_args())
+                .arg(
+                    Arg::new("check")
+                        .help(
+                            "Check that rproj.lock is up to date with rproj.toml, without\n\
+                            writing it. Fails if it is missing or out of date.",
+                        )
+                        .long("check")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with_all([
+                            "r-version",
+                            "platform",
+                            "add-platform",
+                            "prefer-binary",
+                            "exclude-newer",
+                            "upgrade",
+                            "upgrade-package",
+                            "with-repos",
+                            "without-repos",
+                        ]),
+                ),
         )
         .subcommand(
             Command::new("status")
@@ -2069,6 +2121,7 @@ pub fn rig_app() -> Command {
                             another package actually depends on it.",
                         )
                         .long("no-install-project")
+                        .visible_alias("no-install-self")
                         .num_args(0)
                         .required(false),
                 )
@@ -2181,8 +2234,19 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false),
                 )
-                .arg(exclude_newer_arg().conflicts_with("frozen"))
-                .args(proj_repos_args().map(|a| a.conflicts_with("frozen")))
+                .arg(
+                    Arg::new("locked")
+                        .help(
+                            "Fail if rproj.lock is missing or out of date with\n\
+                            rproj.toml, instead of installing from it.",
+                        )
+                        .long("locked")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with("frozen"),
+                )
+                .arg(exclude_newer_arg().conflicts_with_all(["frozen", "locked"]))
+                .args(proj_repos_args().map(|a| a.conflicts_with_all(["frozen", "locked"])))
                 .arg(
                     Arg::new("dry-run")
                         .help(
@@ -2192,6 +2256,18 @@ pub fn rig_app() -> Command {
                         .long("dry-run")
                         .num_args(0)
                         .required(false),
+                )
+                .arg(
+                    Arg::new("check")
+                        .help(
+                            "Check that the project environment is in sync with\n\
+                            rproj.lock, without changing anything. Fails if sync\n\
+                            would install, remove or update anything.",
+                        )
+                        .long("check")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with_all(["exclude-newer", "with-repos", "without-repos"]),
                 )
                 .args(sysreqs_args()),
         );
@@ -2502,7 +2578,8 @@ pub fn rig_app() -> Command {
                             their dependencies. A named package is still installed if\n\
                             another package that is installed depends on it.",
                         )
-                        .long("no-install-project")
+                        .long("no-install-self")
+                        .visible_alias("no-install-project")
                         .num_args(0)
                         .required(false),
                 )
@@ -2748,6 +2825,146 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("sync")
+                .about(ABOUT_PKG_SYNC)
+                .long_about(HELP_PKG_SYNC)
+                .display_order(0)
+                .arg(
+                    Arg::new("lockfile")
+                        .help("lock file to install from [default: rproj.lock]")
+                        .value_name("LOCKFILE")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("library")
+                        .help(
+                            "Library name or path, instead of the default library of\n\
+                            the R version the lock file names",
+                        )
+                        .long("library")
+                        .short('l')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help(
+                            "R version to install with, an installed R version or one of\n\
+                            the lock file's R versions (default: the default R version,\n\
+                            if the lock file has a target for it, else the highest)",
+                        )
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("platform")
+                        .help(
+                            "Which of the lock file's targets to install, when more\n\
+                            than one matches this machine. Any spelling of the\n\
+                            platform works, e.g. macos for aarch64-apple-darwin.",
+                        )
+                        .long("platform")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-install-r")
+                        .help(
+                            "Fail if the R version the lock file needs is not installed,\n\
+                            instead of installing it",
+                        )
+                        .long("no-install-r")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-install-project")
+                        .help(
+                            "Do not install the project's own package, if the lock file\n\
+                            has one. Still installed if another package actually\n\
+                            depends on it.",
+                        )
+                        .long("no-install-project")
+                        .visible_alias("no-install-self")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-dev")
+                        .help(
+                            "Do not install the dev dependency group (default:\n\
+                            installed alongside main). An explicit --group dev or\n\
+                            --all-groups installs it anyway.",
+                        )
+                        .long("no-dev")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("group")
+                        .help(
+                            "Also install this dependency group, in addition to the\n\
+                            default set (main, plus dev unless --no-dev). Repeat or\n\
+                            comma-separate for several.",
+                        )
+                        .long("group")
+                        .value_name("NAME")
+                        .num_args(1)
+                        .value_delimiter(',')
+                        .action(clap::ArgAction::Append)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all-groups")
+                        .help("Install every dependency group.")
+                        .long("all-groups")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("extra")
+                        .help(
+                            "Install this optional-dependency extra. Not installed by\n\
+                            default. Repeat or comma-separate for several.",
+                        )
+                        .long("extra")
+                        .value_name("NAME")
+                        .num_args(1)
+                        .value_delimiter(',')
+                        .action(clap::ArgAction::Append)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all-extras")
+                        .help("Install every optional-dependency extra.")
+                        .long("all-extras")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("max-concurrent")
+                        .help(
+                            "Maximum number of concurrent installations\n\
+                            (default: number of CPU cores, see 'concurrent-installs'\n\
+                            in 'rig config')",
+                        )
+                        .long("max-concurrent")
+                        .num_args(1)
+                        .value_parser(clap::value_parser!(usize))
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("dry-run")
+                        .help("Show what would be installed, install nothing")
+                        .long("dry-run")
+                        .num_args(0)
+                        .required(false),
+                )
+                .args(sysreqs_args()),
+        )
+        .subcommand(
             Command::new("tree")
                 .about(ABOUT_PKG_TREE)
                 .long_about(HELP_PKG_TREE)
@@ -2950,6 +3167,93 @@ pub fn rig_app() -> Command {
 
     rig = rig.subcommand(cmd_ppm);
 
+    let auth_url = || {
+        Arg::new("url")
+            .help("URL or name of a repository, or URL of a Package Manager instance (default: PACKAGEMANAGER_ADDRESS)")
+            .required(false)
+    };
+    let auth_username = || {
+        Arg::new("username")
+            .help("username, for the system credential store")
+            .long("username")
+            .short('u')
+            .num_args(1)
+            .required(false)
+    };
+    let cmd_auth = Command::new("auth")
+        .about(ABOUT_AUTH)
+        .long_about(HELP_AUTH)
+        .display_order(0)
+        .arg_required_else_help(true)
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .num_args(0)
+                .required(false),
+        )
+        .subcommand(
+            Command::new("login")
+                .about(ABOUT_AUTH_LOGIN)
+                .long_about(HELP_AUTH_LOGIN)
+                .display_order(0)
+                .arg(auth_url())
+                .arg(auth_username())
+                .arg(
+                    Arg::new("password")
+                        .help("password, `-` reads it from the standard input (default: ask)")
+                        .long("password")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-browser")
+                        .help("do not open the browser for SSO, only print the URL")
+                        .long("no-browser")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("logout")
+                .about(ABOUT_AUTH_LOGOUT)
+                .long_about(HELP_AUTH_LOGOUT)
+                .display_order(0)
+                .arg(auth_url())
+                .arg(auth_username()),
+        )
+        .subcommand(
+            Command::new("status")
+                .about(ABOUT_AUTH_STATUS)
+                .long_about(HELP_AUTH_STATUS)
+                .display_order(0)
+                .arg(Arg::new("url").help("only show this URL").required(false))
+                .arg(
+                    Arg::new("connect")
+                        .help("check PPM SSO tokens with the server")
+                        .long("connect")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("token")
+                .about(ABOUT_AUTH_TOKEN)
+                .long_about(HELP_AUTH_TOKEN)
+                .display_order(0)
+                .arg(auth_url())
+                .arg(auth_username()),
+        );
+
+    rig = rig.subcommand(cmd_auth);
+
     let cmd_repos_setup = Command::new("setup")
         .about(ABOUT_REPOS_SETUP)
         .long_about(HELP_REPOS_SETUP)
@@ -2979,7 +3283,8 @@ pub fn rig_app() -> Command {
             Arg::new("without-repos")
                 .help(
                     "Do not set up package repositories.\n\
-                    Alternatively, specify which ones to skip, a comma-separated list.\n\
+                    Alternatively, specify which ones to skip, a comma-separated list,\n\
+                    given with '=', e.g. --without-repos=cran.\n\
                     If --with-repos is also specified, then only the repositories in that\n\
                     argument will be enabled.",
                 )
@@ -3333,6 +3638,15 @@ pub fn rig_app() -> Command {
                 .long("no-cache")
                 .global(true)
                 .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("cache-dir")
+                .help("Path to the cache directory (overrides RIG_CACHE_DIR and config)")
+                .long("cache-dir")
+                .value_name("CACHE_DIR")
+                .global(true)
+                .num_args(1)
+                .value_parser(clap::builder::NonEmptyStringValueParser::new()),
         );
 
     rig = rig
@@ -3412,6 +3726,10 @@ pub fn is_r_script_file(arg: &str) -> bool {
         .is_ok_and(|_| &start == b"#!")
 }
 
+// Global options that take a value, in a separate argument unless they are
+// written as `--opt=value`.
+const GLOBAL_VALUE_OPTS: [&str; 1] = ["--cache-dir"];
+
 // `rig run` options that take a value, in a separate argument unless they
 // are written as `--opt=value` or `-oVALUE`.
 const RUN_VALUE_OPTS: [&str; 8] = [
@@ -3457,18 +3775,23 @@ where
     }
     let mut out = Vec::new();
     let mut iter = argv.into_iter();
-    // argv[0], then global flags (none of them takes a value) up to the
-    // subcommand.
+    // argv[0], then global flags up to the subcommand.
     let mut is_run = false;
     if let Some(arg0) = iter.next() {
         out.push(arg0);
     }
-    for arg in iter.by_ref() {
+    while let Some(arg) = iter.next() {
         let flag = arg.to_string_lossy().starts_with('-');
         is_run = arg.as_os_str() == OsStr::new("run");
+        let takes_value = GLOBAL_VALUE_OPTS.contains(&arg.to_string_lossy().as_ref());
         out.push(arg);
         if !flag {
             break;
+        }
+        if takes_value {
+            if let Some(value) = iter.next() {
+                out.push(value);
+            }
         }
     }
     // Only scripts given before the first non-script positional argument
@@ -3496,7 +3819,7 @@ where
             }
         } else if s.starts_with("--script=") || (s.starts_with("-f") && s.len() > 2) {
             true
-        } else if RUN_VALUE_OPTS.contains(&s.as_str()) {
+        } else if RUN_VALUE_OPTS.contains(&s.as_str()) || GLOBAL_VALUE_OPTS.contains(&s.as_str()) {
             if let Some(value) = iter.next() {
                 out.push(value);
             }
@@ -3591,6 +3914,28 @@ mod tests {
             rcmd(&["rig", "run", "--cmd", "check", "pkg.tar.gz"]),
             ["rig", "run", "--cmd", "--", "check", "pkg.tar.gz"]
         );
+    }
+
+    #[test]
+    fn add_no_default_and_without_path_are_off_unless_given() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "add", "4.6.1"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        assert!(!sub.get_flag("no-default"));
+
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "add", "--no-default", "4.6.1"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        assert!(sub.get_flag("no-default"));
+        assert!(!sub.get_flag("without-path"));
+
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "add", "--without-path", "4.6.1"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        assert!(sub.get_flag("without-path"));
     }
 
     #[test]
@@ -3750,6 +4095,47 @@ mod tests {
     }
 
     #[test]
+    fn proj_lock_check_flag() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "proj", "lock", "--check"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert!(sub.get_flag("check"));
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "lock", "--check", "--script", "a.R"])
+            .is_ok());
+        for extra in [&["--upgrade"][..], &["-r", "4.5"], &["--index", "cran"]] {
+            let mut argv = vec!["rig", "proj", "lock", "--check"];
+            argv.extend_from_slice(extra);
+            assert!(rig_app().try_get_matches_from(argv).is_err());
+        }
+    }
+
+    #[test]
+    fn proj_sync_locked_flag() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--locked"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert!(sub.get_flag("locked"));
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--locked", "--frozen"])
+            .is_err());
+        assert!(rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "sync",
+                "--locked",
+                "--exclude-newer",
+                "7 days"
+            ])
+            .is_err());
+    }
+
+    #[test]
     fn proj_sync_frozen_flag() {
         let matches = rig_app()
             .try_get_matches_from(["rig", "proj", "sync", "--frozen"])
@@ -3757,6 +4143,67 @@ mod tests {
         let (_name, sub) = matches.subcommand().unwrap();
         let (_name, sub) = sub.subcommand().unwrap();
         assert!(sub.get_flag("frozen"));
+    }
+
+    #[test]
+    fn proj_sync_check_flag() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--frozen", "--check"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert!(sub.get_flag("check"));
+        assert!(sub.get_flag("frozen"));
+        assert!(rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "sync",
+                "--check",
+                "--exclude-newer",
+                "7 days"
+            ])
+            .is_err());
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--check", "--with-repos", "bioc"])
+            .is_err());
+    }
+
+    #[test]
+    fn pkg_sync_args() {
+        let sync = |extra: &[&str]| {
+            let mut argv = vec!["rig", "pkg", "sync"];
+            argv.extend_from_slice(extra);
+            rig_app().try_get_matches_from(argv)
+        };
+
+        let matches = sync(&["a.lock", "--library", "lib"]).unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert_eq!(sub.get_one::<String>("lockfile").unwrap(), "a.lock");
+        assert_eq!(sub.get_one::<String>("library").unwrap(), "lib");
+
+        // The lock file and the library are both optional.
+        let matches = sync(&[]).unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert!(sub.get_one::<String>("lockfile").is_none());
+        assert!(sub.get_one::<String>("library").is_none());
+        assert!(sync(&["-l", "lib", "--no-dev", "--group", "test", "--dry-run"]).is_ok());
+
+        // The lock file is used as it is, and nothing is ever removed.
+        for flag in ["--frozen", "--locked", "--inexact", "--exclude-newer"] {
+            assert!(sync(&["a.lock", flag]).is_err(), "{}", flag);
+        }
+    }
+
+    #[test]
+    fn proj_sync_has_no_library_or_lockfile() {
+        for flag in ["--library", "--lockfile"] {
+            assert!(rig_app()
+                .try_get_matches_from(["rig", "proj", "sync", flag, "x"])
+                .is_err());
+        }
     }
 
     #[test]
@@ -3964,6 +4411,31 @@ mod tests {
         let (out, r_args) = split(&["rig", "run", &r, "a", "--foo", "-x"]);
         assert_eq!(out, ["rig", "run", &r, "--", "a", "--foo", "-x"]);
         assert!(r_args.is_empty());
+    }
+
+    #[test]
+    fn test_split_run_args_cache_dir_before_run() {
+        let (_dir, r, _) = script_dir();
+        let (out, _) = split(&["rig", "--cache-dir", "/tmp/c", "run", &r, "--help"]);
+        assert_eq!(
+            out,
+            ["rig", "--cache-dir", "/tmp/c", "run", &r, "--", "--help"]
+        );
+        let (out, _) = split(&["rig", "--cache-dir=/tmp/c", "run", &r, "--help"]);
+        assert_eq!(
+            out,
+            ["rig", "--cache-dir=/tmp/c", "run", &r, "--", "--help"]
+        );
+    }
+
+    #[test]
+    fn test_split_run_args_cache_dir_after_run() {
+        let (_dir, r, _) = script_dir();
+        let (out, _) = split(&["rig", "run", "--cache-dir", &r, &r, "--help"]);
+        assert_eq!(out, ["rig", "run", "--cache-dir", &r, &r, "--", "--help"]);
+        let (out, r_args) = split(&["rig", "run", "--cache-dir", "/tmp/c", "--", "--vanilla"]);
+        assert_eq!(out, ["rig", "run", "--cache-dir", "/tmp/c"]);
+        assert_eq!(r_args, ["--vanilla"]);
     }
 
     #[test]

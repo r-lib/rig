@@ -87,11 +87,39 @@ pub static DEP_TYPES_SOFT: &[RDepType] = &[RDepType::Suggests, RDepType::Enhance
 // ------------------------------------------------------------------------
 // An R package version. We need to keep the original string, because
 // it may contain dashes, that are also in the download URL.
+// Comparison and hashing only use the components, like R does, so
+// `0.3-3` and `0.3.3` are the same version.
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RPackageVersion {
     pub components: Vec<u32>,
     pub original: String,
+}
+
+impl PartialEq for RPackageVersion {
+    fn eq(&self, other: &Self) -> bool {
+        self.components == other.components
+    }
+}
+
+impl Eq for RPackageVersion {}
+
+impl PartialOrd for RPackageVersion {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for RPackageVersion {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.components.cmp(&other.components)
+    }
+}
+
+impl std::hash::Hash for RPackageVersion {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.components.hash(state);
+    }
 }
 
 impl RPackageVersion {
@@ -614,6 +642,22 @@ mod tests {
                 .collect()
         };
         assert_eq!(fields(&para), fields(&lf_para));
+    }
+
+    /// A dash and a dot separate version components the same way, as in R,
+    /// so `0.3-3` satisfies `>= 0.3.3`.
+    #[test]
+    fn dash_and_dot_versions_are_equal() {
+        let dash = RPackageVersion::from_str("0.3-3").unwrap();
+        let dot = RPackageVersion::from_str("0.3.3").unwrap();
+        assert_eq!(dash, dot);
+        assert_eq!(dash.cmp(&dot), std::cmp::Ordering::Equal);
+        assert_eq!(dash.to_string(), "0.3-3");
+        assert!(RPackageVersion::from_str("0.3-2").unwrap() < dot);
+
+        let spec = DepVersionSpec::parse("grImport2 (>= 0.3.3)", "Imports").unwrap();
+        assert!(spec.satisfies("0.3-3").unwrap());
+        assert!(!spec.satisfies("0.3-2").unwrap());
     }
 
     #[test]

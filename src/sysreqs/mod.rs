@@ -55,19 +55,6 @@ pub struct Settings {
     pub update: bool,
 }
 
-/// A setting from its environment variable, else from the rig config file.
-fn setting(env: &str, key: &str) -> Result<Option<String>, Box<dyn Error>> {
-    if let Ok(val) = std::env::var(env) {
-        if !val.trim().is_empty() {
-            return Ok(Some(val.trim().to_string()));
-        }
-    }
-    if let Some(val) = crate::config::get_global_config_value(key)? {
-        return Ok(Some(val));
-    }
-    Ok(crate::config::get_global_config_bool(key)?.map(|b| b.to_string()))
-}
-
 fn parse_bool(name: &str, value: &str) -> Result<bool, Box<dyn Error>> {
     match value.to_lowercase().as_str() {
         "true" | "yes" | "1" => Ok(true),
@@ -120,7 +107,7 @@ pub fn settings(cli: Option<bool>) -> Result<Settings, Box<dyn Error>> {
     let mode = match cli {
         Some(true) => Mode::On,
         Some(false) => Mode::Off,
-        None => match setting("RIG_SYSREQS", "sysreqs")? {
+        None => match crate::config::get_setting("RIG_SYSREQS", "sysreqs")? {
             Some(val) => parse_sysreqs_mode("sysreqs setting", &val)?,
             None => match std::env::var("PKG_SYSREQS") {
                 Ok(val) if parse_bool("PKG_SYSREQS", &val).ok() == Some(false) => Mode::Off,
@@ -128,7 +115,7 @@ pub fn settings(cli: Option<bool>) -> Result<Settings, Box<dyn Error>> {
             },
         },
     };
-    let sudo = match setting("RIG_SYSREQS_SUDO", "sysreqs-sudo")? {
+    let sudo = match crate::config::get_setting("RIG_SYSREQS_SUDO", "sysreqs-sudo")? {
         Some(val) => match parse_mode("sysreqs-sudo setting", &val)? {
             Mode::Auto => SudoSetting::Auto,
             Mode::On => SudoSetting::Always,
@@ -136,7 +123,7 @@ pub fn settings(cli: Option<bool>) -> Result<Settings, Box<dyn Error>> {
         },
         None => SudoSetting::Auto,
     };
-    let update = match setting("RIG_SYSREQS_UPDATE", "sysreqs-update")? {
+    let update = match crate::config::get_setting("RIG_SYSREQS_UPDATE", "sysreqs-update")? {
         Some(val) => parse_bool("sysreqs-update setting", &val)?,
         None => true,
     };

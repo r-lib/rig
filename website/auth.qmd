@@ -1,0 +1,179 @@
+---
+title: "Authentication"
+---
+
+Some package repositories need a username and a password, or a token: a
+private Posit Package Manager (PPM) instance, or your company's
+Artifactory or Nexus server. rig sends HTTP basic authentication to these
+whenever it downloads from them, including downloading package metadata and
+packages in [`rig pkg`](reference/pkg.qmd) and
+[`rig proj`](reference/proj.qmd).
+
+rig works the same way as [pak](https://pak.r-lib.org/reference/repo-auth.html),
+and uses the same netrc file, credential store keys and PPM token file. So if
+your credentials work with pak, they work with rig as well, and the other way
+around.
+
+::: {.callout-note}
+These credentials are only used by rig itself. If you call
+`install.packages()` from R, R downloads the packages, and it does not use
+them. Use pak from R, or give R the credentials some other way.
+:::
+
+## Usernames in repository URLs
+
+To tell rig which username to use for a repository, put it into the URL of
+the repository:
+
+```sh
+rig repos add acme https://alice@cran.acme.com/cran --enable
+```
+
+The username is part of the URL everywhere rig stores it: in the rig
+configuration file, in `rproj.toml`, in `rproj.lock`, and in the
+`repositories` file of the R installation. A password never is. rig refuses
+to add a repository URL with a password in it, with `rig repos add` or in
+`rproj.toml`.
+
+You do not always need a username. A PPM SSO token, a netrc file and the
+environment variables below also work for URLs without one.
+
+## Where rig looks for credentials
+
+For every URL, rig looks for credentials in this order, and uses the first
+it finds:
+
+1. **A password in the URL.** You can only do this for URLs on the command
+   line, with `--with-repos`, e.g.
+   `rig pkg install --with-repos acme=https://alice:secret@cran.acme.com/cran pkg`.
+   rig removes the password from the URL and keeps it in memory only, it
+   does not write it to any file.
+2. **Environment variables.** `RIG_REPO_<NAME>_USERNAME` and
+   `RIG_REPO_<NAME>_PASSWORD`, for the repository named `<NAME>`. The name
+   is in upper case, and every character that is not a letter or a digit is
+   replaced by `_`. E.g. for a repository called `acme-cran`:
+
+   ```sh
+   export RIG_REPO_ACME_CRAN_USERNAME=alice
+   export RIG_REPO_ACME_CRAN_PASSWORD=secret
+   ```
+
+   The name of a repository is the name you gave to `rig repos add`, the
+   name in `--with-repos <name>=<url>`, or the `name` of the
+   `[[repository]]` entry in `rproj.toml`. A URL in `--with-repos` without
+   a name is named after its host, e.g. `cran.acme.com`, so its variables
+   are `RIG_REPO_CRAN_ACME_COM_USERNAME` and
+   `RIG_REPO_CRAN_ACME_COM_PASSWORD`. The `name` column of
+   [`rig auth status`](reference/auth.qmd#rig-auth-status) shows the name
+   of each repository. These variables do not apply to the repositories
+   built into rig with their own metadata: CRAN, Bioconductor and P3M.
+
+   If `_USERNAME` is not set, rig uses the username in the URL. This works
+   well on CI systems, where secrets are usually environment variables.
+3. **A PPM SSO token**, see [below](#posit-package-manager-sso).
+4. **A netrc file.** rig reads the file in `PKG_NETRC_PATH` or `NETRC`, or
+   `~/.netrc` (on Windows also `~/_netrc`). A netrc file has one entry for
+   each host:
+
+   ```
+   machine cran.acme.com login alice password secret
+   ```
+
+   If the URL has a username, rig only uses an entry with the same `login`.
+   rig only uses the `default` entry for URLs that have a username. Make
+   sure that only you can read the file: `chmod 600 ~/.netrc`.
+5. **The system credential store**: the macOS Keychain, the Windows
+   Credential Manager, or a Secret Service on Linux (e.g. GNOME Keyring or
+   KWallet). rig only looks here for URLs that include a username. The
+   easiest way to save a password here is
+   [`rig auth login`](reference/auth.qmd#rig-auth-login):
+
+   ```sh
+   rig auth login https://cran.acme.com/cran --username alice
+   ```
+
+   rig asks for the password. On a CI system, use `--password -` to read it
+   from the standard input instead. You can also give the name of a
+   repository instead of its URL. For a repository added as
+   `rig repos add acme https://alice@cran.acme.com/cran`, this is enough:
+
+   ```sh
+   rig auth login acme
+   ```
+
+   You can save the password before you add the repository. If no
+   configured repository uses it yet, rig tells you.
+
+   The entries are keyed the same way as in pak and the keyring R package,
+   so you can also use `keyring::key_set()` in R. rig tries these keys, for
+   the user in the URL, and uses the first one that exists:
+
+   ```
+   https://alice@cran.acme.com/cran
+   https://cran.acme.com/cran
+   https://alice@cran.acme.com
+   https://cran.acme.com
+   cran.acme.com
+   ```
+
+   The repository URL in these keys does not have the `/src/contrib` or
+   `/bin/...` part, or a `/__linux__/<distro>` part, so all files of a
+   repository use the same key.
+
+   Linux servers often have no Secret Service running. rig then skips this
+   step, so use a netrc file or environment variables there.
+
+## Posit Package Manager SSO
+
+If your PPM instance uses single sign-on (SSO), log in with your browser:
+
+```sh
+export PACKAGEMANAGER_ADDRESS=https://ppm.acme.com
+rig auth login
+```
+
+rig prints a URL and a code, and opens the URL in your browser. Once you log
+in there, rig saves the PPM token in `~/.ppm/tokens.toml`. This is the same
+file pak uses, so after you log in with rig, pak can use the token as well,
+and the other way around.
+
+If the host name matches `PACKAGEMANAGER_ADDRESS` then you do not need a
+username in the PPM repository URL. If you still want one, like for pak,
+use `__token__`: `https://__token__@ppm.acme.com/cran/latest`.
+
+rig does not open a browser by itself during other commands. When the token
+expires, log in again with `rig auth login`.
+
+On a CI system that has an OIDC identity token, put the identity token into
+a file, and set `PACKAGEMANAGER_IDENTITY_TOKEN_FILE` to its path. rig then
+exchanges it for a PPM token itself, without a browser.
+
+## Checking your setup
+
+[`rig auth status`](reference/auth.qmd#rig-auth-status) shows which
+repositories of the default R installation (and which repositories added
+with `rig repos add`) have credentials, and where they come from. It also
+lists the saved PPM SSO tokens and when they expire. It never prints the
+passwords or tokens.
+
+```sh
+rig auth status
+rig auth status https://alice@cran.acme.com/cran
+```
+
+If a download fails with HTTP status 401 or 403, rig's error message
+suggests running `rig auth status`.
+
+To use the same credentials outside of rig, e.g. with `curl`,
+[`rig auth token`](reference/auth.qmd#rig-auth-token) prints the password or
+token rig would send to a URL.
+
+To remove saved credentials, use
+[`rig auth logout`](reference/auth.qmd#rig-auth-logout).
+
+## See also
+
+- The [`rig auth` reference](reference/auth.qmd) for all flags and options.
+- The [`rig repos` reference](reference/repos.qmd) for adding repositories.
+- pak's documentation of
+  [authenticated repositories](https://pak.r-lib.org/reference/repo-auth.html).

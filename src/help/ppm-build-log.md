@@ -8,8 +8,8 @@ Fetch Posit Package Manager's build log for one CRAN package.
 target name such as `macos`, `windows`, or a Linux codename like `jammy` (run
 [`rig ppm platforms`](ppm.qmd#rig-ppm-platforms) or [`rig ppm builds`](ppm.qmd#rig-ppm-builds) to see the names PPM uses).
 `--platform` also takes a rig platform string, e.g.
-`x86_64-unknown-linux-gnu-ubuntu-22.04`, which names the arch, too (see
-[`rig system detect-platform`](system.qmd#rig-system-detect-platform)).
+`x86_64-unknown-linux-gnu-ubuntu-22.04`, which names the arch, too (see [`rig
+system detect-platform`](system.qmd#rig-system-detect-platform)).
 
 `--r-version` defaults to rig's default R version (`rig default`), trimmed to a
 minor version (`4.6.1` becomes `4.6`) since that is all PPM accepts; pass it

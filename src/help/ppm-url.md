@@ -2,9 +2,9 @@ Print the Posit Package Manager URL
 
 ## Description
 
-Print the base URL of the Posit Package Manager instance the other [`rig ppm`](ppm.qmd)
-commands report on, and nothing else, so it can be used directly in a
-script:
+Print the base URL of the Posit Package Manager instance the other [`rig
+ppm`](ppm.qmd) commands report on, and nothing else, so it can be used
+directly in a script:
 
 ```sh
 curl "$(rig ppm url)/__api__/repos"

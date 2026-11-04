@@ -7,9 +7,8 @@ Show the dependencies of an R project, in a table.
 rig reads the project manifest, `rproj.toml`, in the current directory.
 
 Add `--dev` to include every dependency group and optional-dependency extra
-together -- unlike [`rig proj sync`](#rig-proj-sync), which selects each one
-separately with `--group`/`--extra`, this is an all-or-nothing view of the
-manifest.
+together -- unlike [`rig proj sync`](#rig-proj-sync), which selects each one separately with
+`--group`/`--extra`, this is an all-or-nothing view of the manifest.
 
 Use `--json` for machine readable output.
 
@@ -29,6 +28,6 @@ repositories for this command, see "Repositories" in [`rig proj lock`](#rig-proj
 
 See [`rig proj tree`](#rig-proj-tree) to show the dependency tree of the project.
 
-rig follows the dependencies of the *latest* version of every package in
-the closure, so a version requirement that would force an older version,
-with different dependencies, is not taken into account.
+rig follows the dependencies of the *latest* version of every package in the
+closure, so a version requirement that would force an older version, with
+different dependencies, is not taken into account.

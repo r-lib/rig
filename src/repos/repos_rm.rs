@@ -23,17 +23,18 @@ pub fn sc_repos_rm(
         .collect();
     let mut custom = get_custom_repos()?;
     for name in names.iter() {
-        if builtin.contains(name) {
+        if builtin.contains(&name.to_lowercase()) {
             bail!(
                 "Repository '{}' is built into rig and cannot be removed, \
                  use `rig repos disable` instead",
                 name
             );
         }
-        if !custom.iter().any(|r| &r.name.to_lowercase() == name) {
+        if !custom.iter().any(|r| r.name.eq_ignore_ascii_case(name)) {
             bail!("Unknown repository: '{}'", name);
         }
     }
+    let lnames: Vec<String> = names.iter().map(|x| x.to_lowercase()).collect();
 
     // The installations that use (or used) these repositories, their
     // repositories files need updating.
@@ -41,7 +42,7 @@ pub fn sc_repos_rm(
     let mut affected: Vec<String> = vec![];
     for (ver, state) in states.iter_mut() {
         let mut changed = false;
-        for name in names.iter() {
+        for name in lnames.iter() {
             changed |= state.forget(name);
         }
         if changed && find_installed(ver)?.is_some() {
@@ -51,7 +52,7 @@ pub fn sc_repos_rm(
 
     escalate_if_needed(&affected, "removing package repositories")?;
 
-    custom.retain(|r| !names.contains(&r.name.to_lowercase()));
+    custom.retain(|r| !lnames.contains(&r.name.to_lowercase()));
     save_custom_repos(&custom)?;
     save_setup_states(&states)?;
 

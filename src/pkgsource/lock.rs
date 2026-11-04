@@ -7,6 +7,9 @@
 //!   - `git+<url>#commit=<sha>[&subdir=<path>]` for a git or GitHub source
 //!   - `<http(s)-url>#sha256=<hex>[&subdir=<path>]` for a `url` archive
 //!   - a `file://` URL for a package directory or file on this machine
+//!   - a relative path, `.` or starting with `./` or `../`, for a package
+//!     directory relative to the project root, e.g. `.` for the project's
+//!     own package
 //!   - a plain URL, with no `#`, for a CRAN-like repository download
 //!
 //! Everything after the last `#` belongs to rig, as `key=value` pairs joined
@@ -32,7 +35,8 @@ pub enum LockSource {
         sha256: String,
         subdir: Option<String>,
     },
-    /// A package directory or file on this machine.
+    /// A package directory or file on this machine. A relative `path` is
+    /// relative to the project root.
     Local { path: String },
     /// A file downloaded as is, from a CRAN-like repository.
     Http { url: String },
@@ -40,6 +44,11 @@ pub enum LockSource {
 
 impl LockSource {
     pub fn parse(source: &str) -> Result<LockSource, Box<dyn Error>> {
+        if is_relative_path(source) {
+            return Ok(LockSource::Local {
+                path: source.to_string(),
+            });
+        }
         if source.starts_with("file://") {
             let path = reqwest::Url::parse(source)
                 .ok()
@@ -182,6 +191,7 @@ impl fmt::Display for LockSource {
                 percent_encode(sha256),
                 subdir_part(subdir)
             ),
+            LockSource::Local { path } if is_relative_path(path) => write!(f, "{}", path),
             LockSource::Local { path } => match reqwest::Url::from_file_path(path) {
                 Ok(url) => write!(f, "{}", url),
                 Err(_) => write!(f, "file://{}", path),
@@ -189,6 +199,12 @@ impl fmt::Display for LockSource {
             LockSource::Http { url } => write!(f, "{}", url),
         }
     }
+}
+
+/// Whether `source` is a path relative to the project root, see
+/// [`LockSource::Local`].
+fn is_relative_path(source: &str) -> bool {
+    source == "." || source.starts_with("./") || source.starts_with("../")
 }
 
 fn percent_encode(value: &str) -> String {
@@ -326,6 +342,15 @@ mod tests {
             .unwrap(),
             LockSource::Local { .. }
         ));
+        // The project's own entry is relative to the project root.
+        let project = LockSource::Local {
+            path: ".".to_string(),
+        };
+        round_trip(&project);
+        assert_eq!(project.to_string(), ".");
+        round_trip(&LockSource::Local {
+            path: "../sibling".to_string(),
+        });
         assert_eq!(
             LockSource::parse("https://cran.r-project.org/src/contrib/cli_3.6.3.tar.gz").unwrap(),
             LockSource::Http {

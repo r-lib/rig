@@ -101,12 +101,33 @@ aliasline() {
   esac
 }
 
+# Join wrapped lines in the "Commands:" block of `--help` output (stdin) onto
+# the entry they continue. clap indents each entry by two spaces and wraps a
+# long description onto a more deeply indented line, which would otherwise be
+# taken for a separate command.
+join_commands() {
+  awk '
+    function flush(){ if (pend != "") print pend; pend = "" }
+    /^Commands:/ { flush(); incmd = 1; print; next }
+    incmd && /^[[:space:]]*$/ { flush(); incmd = 0; print; next }
+    incmd {
+      match($0, /^ */)
+      if (RLENGTH > 2 && pend != ""){
+        s = $0; sub(/^ +/, "", s); pend = pend " " s
+      } else { flush(); pend = $0 }
+      next
+    }
+    { print }
+    END { flush() }
+  '
+}
+
 # List the (non-help) subcommand names from a command's --help output, with
 # their `{platform:<os>}` and `{aliases:<a>,<b>}` sentinels (empty when the
 # subcommand has none). The names live in the "Commands:" block, indented,
 # first whitespace-delimited token per line, terminated by a blank line.
 subcommands() {
-  "$RIG" "$@" --help 2>&1 |
+  "$RIG" "$@" --help 2>&1 | join_commands |
     awk '
       /^Commands:/ { incmd = 1; next }
       incmd && /^[[:space:]]*$/ { incmd = 0 }
@@ -194,6 +215,20 @@ render_synopsis() {
     # Wrap `--flag` tokens in code spans, both so they read as code and so
     # Pandoc smart typography does not turn the `--` into an en dash.
     function wrapflags(s){ gsub(/--[A-Za-z0-9][A-Za-z0-9=-]*/, "`&`", s); return s }
+    # Backslash-escape `<` and `>` outside code spans. Otherwise placeholders
+    # in the help text, like `<SCRIPT>.lock` or `<package>@<version>`, are
+    # passed through as raw HTML tags, and an unclosed `<script>` hides the
+    # rest of the page in the browser.
+    function escangle(s,   i, c, r, incode){
+      r = ""; incode = 0
+      for (i = 1; i <= length(s); i++){
+        c = substr(s, i, 1)
+        if (c == "`") incode = !incode
+        else if (!incode && (c == "<" || c == ">")) c = "\\" c
+        r = r c
+      }
+      return r
+    }
     # Map an os tag from a `{platform:<os>}` sentinel to a badge label.
     function badgelabel(os){
       if (os == "windows") return "Windows only"
@@ -290,12 +325,12 @@ render_synopsis() {
       d = stripbadge(d)
       if (lastbadge != "" && curbadge == "") curbadge = lastbadge
       d = stripaliases(d)
-      x = wrapflags(d)
+      x = escangle(wrapflags(d))
       if (x == "") return
       if (needcolon){ out(":   " x); needcolon = 0 } else out("    " x)
     }
     function meta(m,  x){
-      x = wrapflags(m)
+      x = escangle(wrapflags(m))
       if (needcolon){ out(":   *" x "*"); needcolon = 0 }
       else { if (!hadmeta) out(""); out("    *" x "*  ") }
       hadmeta = 1
@@ -410,7 +445,7 @@ emit() {
     # `Commands:` block) show only their subcommand list; per-command Usage
     # and Options would just duplicate what each subcommand documents.
     local synopsis cmdsonly=""
-    synopsis="$("$RIG" "$@" --help 2>&1 |
+    synopsis="$("$RIG" "$@" --help 2>&1 | join_commands |
       awk 'f && /^Examples:/ { exit } /^Usage:/ { f = 1 } f { print }')"
     case $synopsis in
       *"
@@ -476,7 +511,7 @@ rm -f "$refdir/_overview.md" "$refdir/_toc.md"
 : >"$refdir/_toc.md"
 printf '%s\n\n' "$MARKER" >>"$refdir/_toc.md"
 
-"$RIG" --help 2>&1 |
+"$RIG" --help 2>&1 | join_commands |
   awk '
     /^Commands:/ { incmd = 1; next }
     incmd && /^[[:space:]]*$/ { incmd = 0 }

@@ -1121,6 +1121,9 @@ impl std::fmt::Display for ProviderError {
 
 impl std::error::Error for ProviderError {}
 
+/// A solution found by pubgrub for an [`RPackageRegistry`].
+pub type RegistrySolution = SelectedDependencies<RPackageName, RegistryPackageVersion>;
+
 impl DependencyProvider for RPackageRegistry {
     type P = RPackageName;
     type V = RegistryPackageVersion;
@@ -1222,7 +1225,9 @@ impl DependencyProvider for RPackageRegistry {
         self.ensure_loaded(package);
         let key = (package.clone(), version.clone());
         match self.deps.borrow().get(&key) {
-            Some(deps) => Ok(Dependencies::Available(deps.clone())),
+            Some(deps) => Ok(Dependencies::Available(
+                deps.iter().map(|(p, vs)| (p.clone(), vs.clone())).collect(),
+            )),
             None => Err(ProviderError::UnknownPackage),
         }
     }
@@ -1573,7 +1578,9 @@ mod tests {
             "_project".to_string(),
             RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
         )
-        .unwrap();
+        .unwrap()
+        .into_iter()
+        .collect();
         (reg, solution)
     }
 
@@ -1608,6 +1615,19 @@ mod tests {
             "{}",
             msg
         );
+    }
+
+    /// https://github.com/r-lib/rig/issues/453: `0.3-3` satisfies `>= 0.3.3`.
+    #[test]
+    fn a_dash_version_satisfies_a_dot_constraint() {
+        let source = StubSource {
+            packages: vec![
+                ("rphylopic", "1.7.0", "grImport2 (>= 0.3.3)"),
+                ("grImport2", "0.3-3", ""),
+            ],
+        };
+        let (_reg, solution) = solve(source, None, "rphylopic");
+        assert_eq!(solution["grImport2"].version.to_string(), "0.3-3");
     }
 
     #[test]
@@ -2197,8 +2217,9 @@ mod tests {
         let (root_pkg, root_version) = register_roots(&reg, &roots, None).unwrap();
         // The failure is the rendered report, which is what a caller shows,
         // rather than `NoSolution`'s own fixed "There is no solution".
-        let solution =
-            resolve(&reg, root_pkg, root_version).map_err(|e| format_solver_error(e, &reg));
+        let solution = resolve(&reg, root_pkg, root_version)
+            .map(|s| s.into_iter().collect())
+            .map_err(|e| format_solver_error(e, &reg));
         (reg, solution)
     }
 
@@ -2269,7 +2290,10 @@ mod tests {
         let self_alias = member(("rlang", "1.0.1", ""));
         let (root_pkg, root_version) = register_roots(&reg, &roots, Some(&self_alias)).unwrap();
         let solution = resolve(&reg, root_pkg, root_version).unwrap();
-        assert_eq!(solution["rlang"], source("rlang", "1.0.1"));
+        assert_eq!(
+            solution.get(&"rlang".to_string()),
+            Some(&source("rlang", "1.0.1"))
+        );
     }
 
     #[test]
@@ -2360,6 +2384,7 @@ mod tests {
             RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
         )
         .ok()
+        .map(|s| s.into_iter().collect())
     }
 
     fn three_versions() -> StubSource {

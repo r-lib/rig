@@ -42,6 +42,7 @@ use linux::*;
 use resolve::*;
 
 mod alias;
+mod auth;
 mod built;
 mod cache;
 mod cache_cmd;
@@ -120,6 +121,15 @@ fn main() {
 fn main_() -> i32 {
     let args = parse_args();
 
+    // The logs live in the cache directory, so this must come before the
+    // logger is set up.
+    if let Some(dir) = args.get_one::<String>("cache-dir") {
+        if let Err(e) = cache::set_cache_dir(dir) {
+            OUTPUT.error(&format!("{}", e));
+            return 1;
+        }
+    }
+
     // -- set up logger output --------------------------------------------
 
     let verbose_count = args.get_count("verbose");
@@ -151,7 +161,7 @@ fn main_() -> i32 {
     let log_file_writer: Option<Arc<Mutex<File>>> = if is_interactive {
         match get_logs_dir() {
             Ok(logs_dir) => {
-                if let Err(e) = std::fs::create_dir_all(&logs_dir) {
+                if let Err(e) = cache::create_logs_dir(&logs_dir) {
                     eprintln!("Warning: Could not create logs directory: {}", e);
                     None
                 } else {
@@ -279,12 +289,20 @@ fn main_() -> i32 {
             exitcode
         }
         Err(err) => {
-            if err.downcast_ref::<output::ReportedError>().is_none() {
-                OUTPUT.error(&format!("{}", err));
+            let msg = format!("{}", err);
+            let (reported, status) = match err.downcast_ref::<output::ExitStatusError>() {
+                Some(e) => (
+                    e.error.downcast_ref::<output::ReportedError>().is_some(),
+                    e.status,
+                ),
+                None => (err.downcast_ref::<output::ReportedError>().is_some(), 1),
+            };
+            if !reported && !OUTPUT.error_shown(&msg) {
+                OUTPUT.error(&msg);
             }
             error!("{}", err);
             info!("RIG END [pid:{}] {}", pid, cmdline);
-            1
+            status
         }
     };
 
@@ -306,6 +324,7 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("rtools", sub)) => sc_system_rtools(sub, args)?,
         Some(("pkg", sub)) => sc_pkg(sub, args)?,
         Some(("ppm", sub)) => sc_ppm(sub, args)?,
+        Some(("auth", sub)) => auth::cmd::sc_auth(sub, args)?,
         Some(("repos", sub)) => sc_repos(sub, args)?,
         Some(("resolve", sub)) => sc_resolve(sub, args)?,
         Some(("rstudio", sub)) => sc_rstudio(sub)?,

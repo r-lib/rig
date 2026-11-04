@@ -19,7 +19,7 @@ use std::path::Path;
 use clap::ArgMatches;
 use tabular::{row, Table};
 
-use crate::cache::real_cache_dir;
+use crate::cache::{cache_dir_is_rigs, real_cache_dir, CACHE_DIR_TAG};
 use crate::output::OUTPUT;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,6 +133,9 @@ fn cache_breakdown(cache_dir: &Path) -> [Usage; CacheCategory::ALL.len()] {
     };
     for entry in entries.flatten() {
         let name = entry.file_name();
+        if name == CACHE_DIR_TAG {
+            continue;
+        }
         let category = classify_entry(&name.to_string_lossy());
         let meta = match entry.metadata() {
             Ok(meta) => meta,
@@ -269,27 +272,9 @@ pub fn sc_cache_clean(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     };
 
-    let mut removed = 0u32;
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if let Some(category) = category {
-            if classify_entry(&name).key() != category {
-                continue;
-            }
-        }
+    require_rigs(&cache_dir, cache_dir_is_rigs(&cache_dir)?)?;
 
-        let path = entry.path();
-        let result = if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            fs::remove_dir_all(&path)
-        } else {
-            fs::remove_file(&path)
-        };
-        match result {
-            Ok(()) => removed += 1,
-            Err(err) => OUTPUT.warn(&format!("Cannot remove {}: {}", path.display(), err)),
-        }
-    }
+    let removed = remove_entries(entries, category);
 
     match category {
         Some(category) => OUTPUT.status(&format!(
@@ -310,6 +295,46 @@ pub fn sc_cache_clean(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn require_rigs(cache_dir: &Path, is_rigs: bool) -> Result<(), Box<dyn Error>> {
+    if !is_rigs {
+        bail!(
+            "{} does not appear to be a rig cache directory.",
+            cache_dir.display()
+        );
+    }
+    Ok(())
+}
+
+/// Delete the entries of a cache directory, only those of `category` if given,
+/// and return how many were deleted. The cache directory tag always stays.
+fn remove_entries(entries: fs::ReadDir, category: Option<&str>) -> u32 {
+    let mut removed = 0u32;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name == CACHE_DIR_TAG {
+            continue;
+        }
+        if let Some(category) = category {
+            if classify_entry(&name).key() != category {
+                continue;
+            }
+        }
+
+        let path = entry.path();
+        let result = if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            fs::remove_dir_all(&path)
+        } else {
+            fs::remove_file(&path)
+        };
+        match result {
+            Ok(()) => removed += 1,
+            Err(err) => OUTPUT.warn(&format!("Cannot remove {}: {}", path.display(), err)),
+        }
+    }
+    removed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,6 +351,56 @@ mod tests {
         assert_eq!(classify_entry("git-mirrors"), CacheCategory::GitMirrors);
         assert_eq!(classify_entry("url-pkgs"), CacheCategory::UrlPkgs);
         assert_eq!(classify_entry("scripts"), CacheCategory::Scripts);
+    }
+
+    fn cache_with_entries() -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join(CACHE_DIR_TAG), "").unwrap();
+        fs::create_dir(tmp.path().join("packages")).unwrap();
+        fs::write(tmp.path().join("packages").join("pkg.tar.gz"), b"1234567").unwrap();
+        fs::create_dir(tmp.path().join("p3m")).unwrap();
+        fs::write(tmp.path().join("stray.txt"), b"12").unwrap();
+        tmp
+    }
+
+    #[test]
+    fn remove_entries_keeps_the_tag() {
+        let tmp = cache_with_entries();
+        let removed = remove_entries(fs::read_dir(tmp.path()).unwrap(), None);
+        assert_eq!(removed, 3);
+        let left: Vec<_> = fs::read_dir(tmp.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(left, [CACHE_DIR_TAG]);
+    }
+
+    #[test]
+    fn remove_entries_takes_only_the_category() {
+        let tmp = cache_with_entries();
+        let removed = remove_entries(fs::read_dir(tmp.path()).unwrap(), Some("packages"));
+        assert_eq!(removed, 1);
+        assert!(!tmp.path().join("packages").exists());
+        assert!(tmp.path().join("p3m").exists());
+        assert!(tmp.path().join("stray.txt").exists());
+        assert!(tmp.path().join(CACHE_DIR_TAG).exists());
+    }
+
+    #[test]
+    fn the_cache_tag_is_not_counted() {
+        let tmp = cache_with_entries();
+        let totals = cache_breakdown(tmp.path());
+        let total: u64 = totals.iter().map(|u| u.count).sum();
+        // The package file and the stray file, not the tag.
+        assert_eq!(total, 2);
+    }
+
+    #[test]
+    fn require_rigs_refuses_a_directory_that_is_not() {
+        let dir = Path::new("/some/dir");
+        assert!(require_rigs(dir, true).is_ok());
+        let err = require_rigs(dir, false).unwrap_err().to_string();
+        assert!(err.contains("/some/dir"), "{}", err);
     }
 
     #[test]

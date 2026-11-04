@@ -17,6 +17,7 @@ mod macros;
 
 mod alias;
 mod args;
+mod auth;
 mod built;
 mod cache;
 mod common;

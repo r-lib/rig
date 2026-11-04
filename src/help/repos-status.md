@@ -21,10 +21,10 @@ For each repository rig prints:
   package. It is a `HEAD` request: the index itself is not downloaded, and
   the time does not depend on how large it is.
 
-* `status`: `ok` if the index is there. `source only` means the repository has
-  no index for this platform and R version, but it does have source
-  packages. Anything else is the HTTP status code the server returned, or
-  why it returned nothing at all, e.g. `timeout` or `cannot connect`.
+* `status`: `ok` if the index is there. `source only` means the repository has no
+  index for this platform and R version, but it does have source packages.
+  Anything else is the HTTP status code the server returned, or why it
+  returned nothing at all, e.g. `timeout` or `cannot connect`.
 
 * `types`: the package types the R installation's `repositories` file declares
   for the repository: `source`, `win` (Windows binaries) and `mac` (macOS
@@ -38,10 +38,10 @@ For each repository rig prints:
   resolved. Use `--raw` to print the URLs unresolved; rig still resolves them
   internally, since an unresolved URL cannot be checked.
 
-A repository whose `types` column ends in `*` serves prebuilt **Linux
-binaries** as source packages. Linux binaries have no package type of their
-own in R, so a Posit Package Manager repository offers them from a
-distribution-specific URL instead, and rig recognizes those URLs.
+A repository whose `types` column ends in `*` serves prebuilt **Linux binaries** as
+source packages. Linux binaries have no package type of their own in R, so
+a Posit Package Manager repository offers them from a distribution-specific
+URL instead, and rig recognizes those URLs.
 
 The repositories are checked in parallel, so the command takes about as
 long as the slowest repository, not as long as all of them together. An

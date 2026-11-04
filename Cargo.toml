@@ -8,7 +8,7 @@ members = ["xtask"]
 
 [package]
 name = "rig"
-version = "0.11.0"
+version = "0.11.2-dev"
 edition = "2021"
 authors = ["Gábor Csárdi <csardi.gabor@gmail.com>"]
 license = "MIT"
@@ -37,7 +37,7 @@ path = "src/shim/main.rs"
 
 [dependencies]
 # CLI
-clap = { version = "4.3.8", features = ["cargo", "color"] }
+clap = { version = "4.3.8", features = ["cargo", "color", "wrap_help"] }
 # to ignore a SIGINT (CTRL+C) when running external commands
 ctrlc = "3.4"
 # to read/write the repositories files
@@ -82,7 +82,7 @@ nix = { version = "0.28.0", features = ["fs", "user"] }
 once_cell = "1.21.3"
 # clean up paths, for rig rstudio
 path-clean = "1.0.1"
-pubgrub = "0.3.0"
+pubgrub = "0.4.0"
 # random file names, e.g. when renaming the macos installer
 rand = "0.8.5"
 # thread pool to solve multiple `rig proj lock` targets in parallel
@@ -115,6 +115,10 @@ toml = "0.8"
 toml_edit = "0.22"
 # hash url to get target path, for macOS installers
 sha2 = "0.9.8"
+# read a password from the terminal without echo, for `rig auth login`
+rpassword = "7"
+# decode JWT payloads (PPM SSO tokens)
+base64 = "0.22"
 # expand ~ in paths, e.g. in R_LIBS env vars, env vars for RStudio
 shellexpand = "2.1.0"
 simple-error = "0.2.3"
@@ -136,7 +140,12 @@ reqwest = { version = "0.13", features = [
     "rustls-native-certs",
 ], default-features = false }
 
+# system credential store, for authenticated repositories
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", features = ["apple-native"] }
+
 [target.'cfg(windows)'.dependencies]
+keyring = { version = "3.6", features = ["windows-native"] }
 reqwest = { version = "0.13", features = ["native-tls"], default-features = false }
 is_elevated = "0.1.2"
 remove_dir_all = "0.7.0"
@@ -146,7 +155,10 @@ winreg = "0.10"
 # Compiled-in Mozilla root CA bundle (like curl's cacert.pem), added as extra
 # roots on Linux so rig works in minimal containers without a system CA store.
 [target.'cfg(target_os = "linux")'.dependencies]
-webpki-root-certs = "1"
+webpki-root-certs = "1.0.10"
+# system credential store via a pure-Rust Secret Service client (zbus), so the
+# static musl build works
+keyring = { version = "3.6", features = ["async-secret-service", "crypto-rust", "async-io"] }
 
 [build-dependencies]
 clap = { version = "4.3.8", features = ["cargo", "color"] }

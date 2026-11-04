@@ -36,13 +36,13 @@ use crate::windows::get_r_binary;
 #[cfg(target_os = "linux")]
 use crate::linux::get_r_binary;
 
-use crate::built::BuiltCache;
+use crate::built::{r_platform, BuiltCache};
 use crate::cache::get_cache_dir;
 use crate::dcf::{
     DepVersionSpec, OsType, Package, PackageDependencies, RDepType, VersionConstraintType,
     DEP_TYPES_SOFT,
 };
-use crate::exclude_newer::exclude_newer_arg;
+use crate::exclude_newer::{config_exclude_newer, exclude_newer_arg};
 use crate::install::{
     install_packages, PackageInfo, REMOTE_HASH_FIELD, REMOTE_SHA_FIELD, REMOTE_TYPE_FIELD,
     REPO_BUILT_FIELD,
@@ -61,7 +61,9 @@ use crate::proj::{
 use crate::repos::feed::{BiocSetting, RepoFilter};
 use crate::repos::interpret_pkg_repos_args;
 use crate::repos::DbSourcePackageLoader;
-use crate::rproj::{DepTable, RprojLockPackage, RprojLockTarget};
+use crate::rproj::{
+    config_prefer_binary, prefer_binary_lookback, DepTable, RprojLockPackage, RprojLockTarget,
+};
 use crate::solver::{is_base_package, PackageVersionLoader, SolveRoot};
 
 use super::deps::root_package;
@@ -90,16 +92,17 @@ pub fn sc_pkg_install(
     // The packages named on the command line, by their real names, before
     // `--dev` adds their dev dependencies to `deps`.
     let named: HashSet<String> = deps.dependencies.iter().map(|d| d.name.clone()).collect();
-    let exclude_newer = match exclude_newer_arg(args)? {
-        Some(spec) => {
-            let cutoff = spec.cutoff()?;
-            let msg = format!("Ignoring package versions published after {}", cutoff);
-            OUTPUT.info(&msg);
-            info!("{}", msg);
-            Some(cutoff)
-        }
-        None => None,
-    };
+    let exclude_newer =
+        match exclude_newer_arg(args)?.map_or_else(config_exclude_newer, |s| Ok(Some(s)))? {
+            Some(spec) => {
+                let cutoff = spec.cutoff()?;
+                let msg = format!("Ignoring package versions published after {}", cutoff);
+                OUTPUT.info(&msg);
+                info!("{}", msg);
+                Some(cutoff)
+            }
+            None => None,
+        };
     let lib = resolve_library(args)?;
     // Installing needs an R version even when `--library` is a plain path: it
     // selects which binary builds are usable, and provides the `R` that installs
@@ -128,10 +131,18 @@ pub fn sc_pkg_install(
     }
 
     let target = proj_binary_target(args.get_one::<String>("platform"), &rver)?;
-    let prefer_binary = args.get_one::<usize>("prefer-binary").copied();
+    // `--prefer-binary=<n>`, else the user setting.
+    let prefer_binary = match args.get_one::<usize>("prefer-binary") {
+        Some(n) => {
+            if *n > 0 && target.is_none() {
+                OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
+            }
+            prefer_binary_lookback(*n)
+        }
+        None => config_prefer_binary()?,
+    };
     if prefer_binary.is_some() && target.is_none() {
-        OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
-        info!("Ignoring --prefer-binary: solving for source packages only");
+        info!("Ignoring prefer-binary: solving for source packages only");
     }
 
     let roots = [SolveRoot::request(deps.clone())?];
@@ -173,7 +184,16 @@ pub fn sc_pkg_install(
         debug!("Library {} does not exist yet", lib.path.display());
         vec![]
     };
-    let plan = plan_installs(&lockfile.packages, &installed, reinstall);
+    // Not an error yet if R is missing: a `--dry-run` does not need it.
+    let r_platform = get_r_binary(&rver)
+        .ok()
+        .and_then(|bin| r_platform(&bin.to_string_lossy()));
+    let plan = plan_installs(
+        &lockfile.packages,
+        &installed,
+        reinstall,
+        r_platform.as_deref(),
+    );
 
     if let Some(target) = linked_conflict(&plan, &installed) {
         bail!(
@@ -487,12 +507,12 @@ fn add_dev_deps_of_package(
     Ok(())
 }
 
-/// `--no-install-project`: leave the packages named on the command line out
+/// `--no-install-self`: leave the packages named on the command line out
 /// of the solution, keeping only their dependencies -- the same thing
 /// `rig proj sync --no-install-project` does for a project's own package.
 ///
 /// A named package still stays if some package that stays depends on it,
-/// e.g. `rig pkg install --no-install-project cli pkgA` where `pkgA` imports
+/// e.g. `rig pkg install --no-install-self cli pkgA` where `pkgA` imports
 /// `cli`, or a `--dev` dependency that imports the named package. That is
 /// iterated to a fixpoint, since a named package kept that way can in turn
 /// depend on another named package.
@@ -565,10 +585,15 @@ pub(crate) fn linked_conflict<'a>(
 /// invalidates whatever was compiled against *those*. The coupling is
 /// `LinkingTo` only: an `Imports` dependency being replaced changes nothing
 /// about how its dependents were compiled.
+///
+/// `r_platform` is the `R_PLATFORM` of the R the library is for, if known
+/// (see [`crate::built::r_platform`]): a compiled package built for another
+/// arch cannot be loaded, whatever its provenance says.
 pub(crate) fn plan_installs<'a>(
     solved: &'a [RprojLockPackage],
     installed: &[InstalledPackage],
     reinstall: bool,
+    r_platform: Option<&str>,
 ) -> Vec<Planned<'a>> {
     let by_name: HashMap<&str, &InstalledPackage> =
         installed.iter().map(|p| (p.package.as_str(), p)).collect();
@@ -594,6 +619,7 @@ pub(crate) fn plan_installs<'a>(
                     package,
                     by_name.get(package.package.as_str()).copied(),
                     &solved_hash,
+                    r_platform,
                 ) {
                     Some(reason) => (true, reason),
                     None => (false, "up to date".to_string()),
@@ -662,6 +688,7 @@ fn needs_install(
     solved: &RprojLockPackage,
     installed: Option<&InstalledPackage>,
     solved_hash: &HashMap<&str, Option<&str>>,
+    r_platform: Option<&str>,
 ) -> Option<String> {
     let installed = match installed {
         Some(x) => x,
@@ -670,6 +697,15 @@ fn needs_install(
 
     if installed.version != solved.version {
         return Some(format!("{} is installed", installed.version));
+    }
+
+    // Only compiled packages have a platform. E.g. an x64 package in the
+    // library of an aarch64 R on Windows: same tarball, but unusable.
+    let arch = |p: &str| p.split('-').next().unwrap_or(p).to_string();
+    if let (Some(want), Some(have)) = (r_platform, installed.platform.as_deref()) {
+        if arch(want) != arch(have) {
+            return Some(format!("built for {}", arch(have)));
+        }
     }
 
     // A git/GitHub package has no `RemoteHash` (that is CRAN-tarball-specific)
@@ -864,10 +900,36 @@ mod tests {
         installed: &[InstalledPackage],
         reinstall: bool,
     ) -> HashMap<String, (bool, String)> {
-        plan_installs(solved, installed, reinstall)
+        plan_installs(solved, installed, reinstall, None)
             .into_iter()
             .map(|p| (p.package.package.clone(), (p.install, p.reason)))
             .collect()
+    }
+
+    #[test]
+    fn a_package_built_for_another_arch_is_reinstalled() {
+        let solved = [
+            solved("cli", "3.6.6", Some("aa")),
+            solved("glue", "1.8.1", Some("bb")),
+            solved("rlang", "1.3.0", Some("cc")),
+        ];
+        let mut cli = inst("cli", "3.6.6", Some("aa"), &[]);
+        cli.platform = Some("x86_64-w64-mingw32".to_string());
+        let mut glue = inst("glue", "1.8.1", Some("bb"), &[]);
+        glue.platform = Some("aarch64-w64-mingw32".to_string());
+        // No platform: no compiled code.
+        let rlang = inst("rlang", "1.3.0", Some("cc"), &[]);
+        let installed = [cli, glue, rlang];
+        let out: HashMap<String, (bool, String)> =
+            plan_installs(&solved, &installed, false, Some("aarch64-w64-mingw32"))
+                .into_iter()
+                .map(|p| (p.package.package.clone(), (p.install, p.reason)))
+                .collect();
+        assert_eq!(out["cli"], (true, "built for x86_64".to_string()));
+        assert!(!out["glue"].0);
+        assert!(!out["rlang"].0);
+        // An unknown R platform checks nothing.
+        assert!(!plan(&solved, &installed, false)["cli"].0);
     }
 
     #[test]
@@ -1179,7 +1241,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // --no-install-project
+    // --no-install-self
 
     /// The names `drop_named_packages` keeps, sorted. `solution` is
     /// `(package, dependencies)`.
@@ -1432,7 +1494,7 @@ mod tests {
     fn linked_conflict_flags_a_linked_package_the_plan_would_install() {
         let solved = vec![solved("cli", "3.6.3", None)];
         let installed = vec![inst("cli", "3.6.0", None, &[]).linked_from("/src/cli")];
-        let plan = plan_installs(&solved, &installed, false);
+        let plan = plan_installs(&solved, &installed, false, None);
 
         let conflict = linked_conflict(&plan, &installed).expect("expected a conflict");
         assert_eq!(conflict.package, "cli");
@@ -1445,7 +1507,7 @@ mod tests {
         // plan never touches it.
         let solved = vec![solved("cli", "3.6.3", None)];
         let installed = vec![inst("cli", "3.6.3", None, &[]).linked_from("/src/cli")];
-        let plan = plan_installs(&solved, &installed, false);
+        let plan = plan_installs(&solved, &installed, false, None);
 
         assert!(linked_conflict(&plan, &installed).is_none());
     }

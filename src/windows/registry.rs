@@ -40,46 +40,126 @@ const UNINSTALL_REG_PATHS: [&str; 2] = [
 // Prefix of the Rtools uninstaller subkey names (e.g. "Rtools_is1").
 const RTOOLS_UNINST_PREFIX: &str = "Rtools";
 
-fn clean_registry_r(key: &RegKey) -> Result<(), Box<dyn Error>> {
-    for nm in key.enum_keys() {
-        let nm = nm?;
-        let subkey = key.open_subkey(&nm)?;
-        let path: String = subkey.get_value("InstallPath")?;
-        let path2 = Path::new(&path);
-        if !path2.exists() {
-            debug!("Cleaning registry: R {} (not in {})", nm, path);
-            key.delete_subkey_all(nm)?;
+// The registry keys the R installers record their versions under, one subkey
+// per version, in the native (64-bit) and the WOW6432Node views. HKCU\SOFTWARE
+// is not redirected for 32-bit installers, so per-user installs of 32-bit R
+// write the native `R-core\R32` key.
+const R_REG_PATHS: [&str; 6] = [
+    "SOFTWARE\\R-core\\R",
+    "SOFTWARE\\R-core\\R32",
+    "SOFTWARE\\R-core\\R64",
+    "SOFTWARE\\WOW6432Node\\R-core\\R",
+    "SOFTWARE\\WOW6432Node\\R-core\\R32",
+    "SOFTWARE\\WOW6432Node\\R-core\\R64",
+];
+
+// The parents of the R and Rtools keys, removed once they are empty.
+const R_CORE_REG_PATHS: [&str; 2] = ["SOFTWARE\\R-core", "SOFTWARE\\WOW6432Node\\R-core"];
+
+// The subkey names of `key`. They are collected up front, because enum_keys()
+// enumerates by index, so deleting subkeys while iterating it would skip the
+// entry after every deleted one.
+fn subkey_names(key: &RegKey) -> Vec<String> {
+    key.enum_keys().filter_map(|x| x.ok()).collect()
+}
+
+// Clean an R-core\R* or R-core\Rtools key (`key` must be writable): delete the
+// per-version subkeys whose install directory is gone (or not recorded at
+// all), and clear the recorded default (the `Current Version`/`InstallPath`
+// values of `key` itself) if it points to a missing directory.
+fn clean_registry_versions(key: &RegKey, what: &str) -> Result<(), Box<dyn Error>> {
+    for nm in subkey_names(key) {
+        let path = match key.open_subkey(&nm) {
+            Ok(subkey) => subkey.get_value::<String, _>("InstallPath").ok(),
+            Err(_) => continue,
+        };
+        let stale = match &path {
+            Some(p) => !Path::new(p).exists(),
+            None => true,
+        };
+        if stale {
+            debug!(
+                "Cleaning registry: {} {} (not in {})",
+                what,
+                nm,
+                path.as_deref().unwrap_or("<no InstallPath>")
+            );
+            key.delete_subkey_all(&nm)?;
+        }
+    }
+    if let Ok(p) = key.get_value::<String, _>("InstallPath") {
+        if !Path::new(&p).exists() {
+            debug!("Cleaning registry: {} default (not in {})", what, p);
+            let _ = key.delete_value("Current Version");
+            let _ = key.delete_value("InstallPath");
         }
     }
     Ok(())
 }
 
-fn clean_registry_rtools(key: &RegKey) -> Result<(), Box<dyn Error>> {
-    for nm in key.enum_keys() {
-        let nm = nm?;
-        let subkey = key.open_subkey(&nm)?;
-        let path: String = subkey.get_value("InstallPath")?;
-        let path2 = Path::new(&path);
-        if !path2.exists() {
-            debug!("Cleaning registry: Rtools {} (not in {})", nm, path);
-            key.delete_subkey_all(nm)?;
+// Delete `path` from `hive` if it has neither subkeys nor values. Best-effort.
+fn delete_key_if_empty(hive: &RegKey, path: &str) {
+    if let Ok(key) = hive.open_subkey(path) {
+        let empty = key.enum_keys().next().is_none() && key.enum_values().next().is_none();
+        drop(key);
+        if empty {
+            debug!("Cleaning registry: empty key {}", path);
+            let _ = hive.delete_subkey(path);
         }
+    }
+}
+
+fn clean_registry_paths(hive: &RegKey, paths: &[&str], what: &str) -> Result<(), Box<dyn Error>> {
+    for path in paths {
+        if let Ok(key) = hive.open_subkey_with_flags(path, KEY_READ | KEY_WRITE) {
+            clean_registry_versions(&key, what)?;
+            drop(key);
+            delete_key_if_empty(hive, path);
+        }
+    }
+    for path in R_CORE_REG_PATHS {
+        delete_key_if_empty(hive, path);
     }
     Ok(())
 }
 
+// Clean the R keys (all views) of `hive`.
+fn clean_registry_r(hive: &RegKey) -> Result<(), Box<dyn Error>> {
+    clean_registry_paths(hive, &R_REG_PATHS, "R")
+}
+
+// Clean the Rtools keys (all views) of `hive`.
+fn clean_registry_rtools(hive: &RegKey) -> Result<(), Box<dyn Error>> {
+    clean_registry_paths(hive, &RTOOLS_REG_PATHS, "Rtools")
+}
+
+// Delete the R and Rtools "Add/Remove Programs" entries of an Uninstall key
+// (`key` must be writable) whose install directory is gone.
 fn clean_registry_uninst(key: &RegKey) -> Result<(), Box<dyn Error>> {
-    for nm in key
-        .enum_keys()
-        .map(|x| x.unwrap())
-        .filter(|x| x.starts_with("Rtools") || x.starts_with("R for Windows"))
+    for nm in subkey_names(key)
+        .into_iter()
+        .filter(|x| x.starts_with(RTOOLS_UNINST_PREFIX) || x.starts_with("R for Windows"))
     {
-        let subkey = key.open_subkey(&nm).unwrap();
-        let path: String = subkey.get_value("InstallLocation").unwrap();
-        let path2 = Path::new(&path);
-        if !path2.exists() {
-            debug!("Cleaning registry (uninstaller): {}", nm);
-            key.delete_subkey_all(nm).unwrap();
+        let path = match key
+            .open_subkey(&nm)
+            .and_then(|k| k.get_value::<String, _>("InstallLocation"))
+        {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        if !Path::new(&path).exists() {
+            debug!("Cleaning registry (uninstaller): {} (not in {})", nm, path);
+            key.delete_subkey_all(&nm)?;
+        }
+    }
+    Ok(())
+}
+
+// Clean the Uninstall keys (all views) of `hive`.
+fn clean_registry_uninst_hive(hive: &RegKey) -> Result<(), Box<dyn Error>> {
+    for path in UNINSTALL_REG_PATHS {
+        if let Ok(key) = hive.open_subkey_with_flags(path, KEY_READ | KEY_WRITE) {
+            clean_registry_uninst(&key)?;
         }
     }
     Ok(())
@@ -109,59 +189,11 @@ pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     OUTPUT.status("Cleaning leftover registry entries");
     info!("Cleaning leftover registry entries");
 
-    let hive = r_registry_hive()?;
-
-    let r64r = hive.open_subkey("SOFTWARE\\R-core\\R");
-    if let Ok(x) = r64r {
-        clean_registry_r(&x)?;
-    };
-    let r64r64 = hive.open_subkey("SOFTWARE\\R-core\\R64");
-    if let Ok(x) = r64r64 {
-        clean_registry_r(&x)?;
-    };
-    let r32r = hive.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R");
-    if let Ok(x) = r32r {
-        clean_registry_r(&x)?;
-    };
-    let r32r32 = hive.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R32");
-    if let Ok(x) = r32r32 {
-        clean_registry_r(&x)?;
-    };
-    let r32r64 = hive.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R64");
-    if let Ok(x) = r32r64 {
-        clean_registry_r(&x)?;
-    };
-
-    // Rtools registers in HKLM for admin installs and HKCU for per-user installs.
-    let rtools_hive = rtools_registry_hive()?;
-    for path in RTOOLS_REG_PATHS {
-        if let Ok(x) = rtools_hive.open_subkey(path) {
-            clean_registry_rtools(&x)?;
-            if x.enum_keys().count() == 0 {
-                rtools_hive.delete_subkey(path)?;
-            }
-        }
-    }
-
-    if get_mode()? == Mode::Admin {
-        let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-        let uninst = hklm.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
-        if let Ok(x) = uninst {
-            clean_registry_uninst(&x)?;
-        };
-        let uninst32 = hklm
-            .open_subkey("SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
-        if let Ok(x) = uninst32 {
-            clean_registry_uninst(&x)?;
-        };
-    } else {
-        // User-mode installs put uninstall entries in HKCU
-        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let uninst = hkcu.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
-        if let Ok(x) = uninst {
-            clean_registry_uninst(&x)?;
-        };
-    }
+    // R and Rtools register in HKLM for admin installs and in HKCU for
+    // per-user installs, and so do their uninstaller entries.
+    clean_registry_r(&r_registry_hive()?)?;
+    clean_registry_rtools(&rtools_registry_hive()?)?;
+    clean_registry_uninst_hive(&r_registry_hive()?)?;
 
     Ok(())
 }
@@ -178,38 +210,8 @@ pub(super) fn clean_admin_registry() -> Result<(), Box<dyn Error>> {
     info!("Cleaning leftover admin-mode registry entries");
 
     let hive = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let r_keys = [
-        "SOFTWARE\\R-core\\R",
-        "SOFTWARE\\R-core\\R64",
-        "SOFTWARE\\WOW6432Node\\R-core\\R",
-        "SOFTWARE\\WOW6432Node\\R-core\\R32",
-        "SOFTWARE\\WOW6432Node\\R-core\\R64",
-    ];
-    for path in r_keys {
-        if let Ok(key) = hive.open_subkey(path) {
-            clean_registry_r(&key)?;
-        }
-        // Clear the recorded default version if it points nowhere anymore.
-        if let Ok(key) = hive.open_subkey_with_flags(path, KEY_READ | KEY_WRITE) {
-            let stale = match key.get_value::<String, _>("InstallPath") {
-                Ok(p) => !Path::new(&p).exists(),
-                Err(_) => false,
-            };
-            if stale {
-                let _ = key.delete_value("Current Version");
-                let _ = key.delete_value("InstallPath");
-            }
-        }
-    }
-
-    if let Ok(key) = hive.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall") {
-        clean_registry_uninst(&key)?;
-    }
-    if let Ok(key) =
-        hive.open_subkey("SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall")
-    {
-        clean_registry_uninst(&key)?;
-    }
+    clean_registry_r(&hive)?;
+    clean_registry_uninst_hive(&hive)?;
 
     Ok(())
 }
@@ -233,37 +235,83 @@ fn update_registry_default1(key: &RegKey, ver: &str) -> Result<(), Box<dyn Error
     Ok(())
 }
 
+// The R-core keys rig records an R version (and the default) under: the
+// WOW6432Node view for x86_64 R on an aarch64 host, the native view otherwise.
+fn r_reg_paths_for(name: &str) -> [&'static str; 2] {
+    if get_native_arch() == "aarch64" && arch_of_name(name) == "x86_64" {
+        [
+            "SOFTWARE\\WOW6432Node\\R-core\\R",
+            "SOFTWARE\\WOW6432Node\\R-core\\R64",
+        ]
+    } else {
+        ["SOFTWARE\\R-core\\R", "SOFTWARE\\R-core\\R64"]
+    }
+}
+
 fn update_registry_default_to(default: &str) -> Result<(), Box<dyn Error>> {
     let hive = r_registry_hive()?;
-    let native = get_native_arch();
-    let arch = arch_of_name(default);
-
-    if native == "aarch64" && arch == "x86_64" {
-        // x86_64 R on aarch64 host: update both WOW6432Node R and R64 keys
-        let r32r = hive.create_subkey("SOFTWARE\\WOW6432Node\\R-core\\R");
-        if let Ok(x) = r32r {
-            let (key, _) = x;
-            update_registry_default1(&key, default)?;
-        }
-        let r32r64 = hive.create_subkey("SOFTWARE\\WOW6432Node\\R-core\\R64");
-        if let Ok(x) = r32r64 {
-            let (key, _) = x;
-            update_registry_default1(&key, default)?;
-        }
-    } else {
-        // native arch: update both R and R64 keys
-        let r64r = hive.create_subkey("SOFTWARE\\R-core\\R");
-        if let Ok(x) = r64r {
-            let (key, _) = x;
-            update_registry_default1(&key, default)?;
-        }
-        let r64r64 = hive.create_subkey("SOFTWARE\\R-core\\R64");
-        if let Ok(x) = r64r64 {
-            let (key, _) = x;
+    for path in r_reg_paths_for(default) {
+        if let Ok((key, _)) = hive.create_subkey(path) {
             update_registry_default1(&key, default)?;
         }
     }
     Ok(())
+}
+
+// Record an installed R version, like the installer's `recordversion` task.
+// User mode disables that task, because the installer would record the
+// temporary install directory (and pre-4.1 installers would write to HKLM).
+pub(super) fn register_r_version(name: &str, install_dir: &str) -> Result<(), Box<dyn Error>> {
+    let hive = r_registry_hive()?;
+    let subkey = version_dir_key(name);
+    for path in r_reg_paths_for(name) {
+        let (key, _) = hive.create_subkey(format!("{}\\{}", path, subkey))?;
+        key.set_value("InstallPath", &install_dir)?;
+    }
+    Ok(())
+}
+
+// Delete the R "Add/Remove Programs" entries whose InstallLocation is `dir`.
+// Pre-4.1 R installers ignore /CURRENTUSER and write the entry to HKLM, which
+// a user-mode rig usually cannot modify, so failures are only reported.
+pub(super) fn remove_r_uninstall_entries(dir: &str) {
+    let dir = dir.trim_end_matches('\\');
+    for (hive_name, hive) in [("HKCU", HKEY_CURRENT_USER), ("HKLM", HKEY_LOCAL_MACHINE)] {
+        let hive = RegKey::predef(hive);
+        for path in UNINSTALL_REG_PATHS {
+            let Ok(parent) = hive.open_subkey(path) else {
+                continue;
+            };
+            for nm in subkey_names(&parent)
+                .into_iter()
+                .filter(|x| x.starts_with("R for Windows"))
+            {
+                let Ok(loc) = parent
+                    .open_subkey(&nm)
+                    .and_then(|k| k.get_value::<String, _>("InstallLocation"))
+                else {
+                    continue;
+                };
+                if !loc.trim_end_matches('\\').eq_ignore_ascii_case(dir) {
+                    continue;
+                }
+                let full = format!("{}\\{}", path, nm);
+                match hive.delete_subkey_all(&full) {
+                    Ok(()) => debug!("Removed uninstaller entry {}\\{}", hive_name, full),
+                    Err(e) => {
+                        let msg = format!(
+                            "Could not remove the stale uninstaller entry {0}\\{1}: {2}. \
+                             Remove it from an administrator terminal with \
+                             `reg delete \"{0}\\{1}\" /f`.",
+                            hive_name, full, e
+                        );
+                        OUTPUT.warn(&msg);
+                        warn!("{}", msg);
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub(super) fn update_registry_default() -> Result<(), Box<dyn Error>> {
@@ -490,16 +538,7 @@ pub(super) fn admin_rtools_paths() -> Result<Vec<String>, Box<dyn Error>> {
 // Deletes the now-empty `R-core\Rtools` keys. The matching uninstaller entries
 // are pruned by clean_admin_registry().
 pub(super) fn clean_admin_rtools_registry() -> Result<(), Box<dyn Error>> {
-    let hive = RegKey::predef(HKEY_LOCAL_MACHINE);
-    for path in RTOOLS_REG_PATHS {
-        if let Ok(key) = hive.open_subkey(path) {
-            clean_registry_rtools(&key)?;
-            if key.enum_keys().count() == 0 {
-                let _ = hive.delete_subkey(path);
-            }
-        }
-    }
-    Ok(())
+    clean_registry_rtools(&RegKey::predef(HKEY_LOCAL_MACHINE))
 }
 
 pub(super) fn get_latest_install_path(
@@ -750,10 +789,10 @@ mod tests {
         );
     }
 
-    // ── clean_registry_r ────────────────────────────────────────────────────
+    // ── clean_registry_versions ─────────────────────────────────────────────
 
     #[test]
-    fn clean_registry_r_removes_missing_keeps_present() {
+    fn clean_registry_versions_removes_missing_keeps_present() {
         let (root, _guard) = make_test_key("clean_r");
 
         // Subkey whose InstallPath does not exist — should be removed.
@@ -768,7 +807,7 @@ mod tests {
         keep.set_value("InstallPath", &tmp).unwrap();
         drop(keep);
 
-        clean_registry_r(&root).unwrap();
+        clean_registry_versions(&root, "R").unwrap();
 
         assert!(
             root.open_subkey("4.3.0").is_err(),
@@ -778,6 +817,76 @@ mod tests {
             root.open_subkey("4.4.0").is_ok(),
             "live entry should remain"
         );
+    }
+
+    #[test]
+    fn clean_registry_versions_removes_consecutive_stale_entries() {
+        let (root, _guard) = make_test_key("clean_r_consecutive");
+
+        // Adjacent stale entries: deleting while enumerating by index used to
+        // skip every second one.
+        for v in ["3.4.4", "3.5.3", "3.6.3", "4.0.5"] {
+            let (k, _) = root.create_subkey(v).unwrap();
+            k.set_value("InstallPath", &format!("C:\\nonexistent\\R-{}", v))
+                .unwrap();
+        }
+        // No InstallPath at all: stale as well.
+        root.create_subkey("4.1.3").unwrap();
+
+        clean_registry_versions(&root, "R").unwrap();
+
+        assert_eq!(subkey_names(&root), Vec::<String>::new());
+    }
+
+    #[test]
+    fn clean_registry_versions_clears_stale_default_only() {
+        let tmp = std::env::temp_dir().to_string_lossy().to_string();
+
+        let (stale, _guard1) = make_test_key("default_stale");
+        stale.set_value("Current Version", &"4.3.0").unwrap();
+        stale
+            .set_value("InstallPath", &"C:\\nonexistent\\R-4.3.0")
+            .unwrap();
+        clean_registry_versions(&stale, "R").unwrap();
+        assert!(stale.get_value::<String, _>("Current Version").is_err());
+        assert!(stale.get_value::<String, _>("InstallPath").is_err());
+
+        let (live, _guard2) = make_test_key("default_live");
+        live.set_value("Current Version", &"4.4.0").unwrap();
+        live.set_value("InstallPath", &tmp).unwrap();
+        clean_registry_versions(&live, "R").unwrap();
+        assert!(live.get_value::<String, _>("Current Version").is_ok());
+        assert!(live.get_value::<String, _>("InstallPath").is_ok());
+    }
+
+    #[test]
+    fn clean_registry_paths_deletes_emptied_keys() {
+        let (root, _guard) = make_test_key("clean_paths");
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let tmp = std::env::temp_dir().to_string_lossy().to_string();
+        let gone = "SOFTWARE\\rig-test\\clean_paths\\gone";
+        let kept = "SOFTWARE\\rig-test\\clean_paths\\kept";
+
+        // Only stale content: the key itself goes too.
+        let (k, _) = root.create_subkey("gone\\4.3.0").unwrap();
+        k.set_value("InstallPath", &"C:\\nonexistent\\R-4.3.0")
+            .unwrap();
+        drop(k);
+        let (k, _) = root.create_subkey("gone").unwrap();
+        k.set_value("InstallPath", &"C:\\nonexistent\\R-4.3.0")
+            .unwrap();
+        drop(k);
+
+        // A live version: the key stays.
+        let (k, _) = root.create_subkey("kept\\4.4.0").unwrap();
+        k.set_value("InstallPath", &tmp).unwrap();
+        drop(k);
+
+        clean_registry_paths(&hkcu, &[gone, kept], "R").unwrap();
+
+        assert!(hkcu.open_subkey(gone).is_err());
+        assert!(hkcu.open_subkey(kept).is_ok());
+        assert!(hkcu.open_subkey(format!("{}\\4.4.0", kept)).is_ok());
     }
 
     // ── clean_registry_uninst ────────────────────────────────────────────────
@@ -810,8 +919,26 @@ mod tests {
         k.set_value("InstallLocation", &tmp).unwrap();
         drop(k);
 
+        // Adjacent stale entries — all removed.
+        for v in ["3.4.4", "3.5.3", "3.6.3"] {
+            let (k, _) = root
+                .create_subkey(format!("R for Windows {}_is1", v))
+                .unwrap();
+            k.set_value("InstallLocation", &format!("C:\\nonexistent\\R-{}", v))
+                .unwrap();
+        }
+
+        // No InstallLocation — left alone, and no panic.
+        root.create_subkey("R for Windows 9.9.9").unwrap();
+
         clean_registry_uninst(&root).unwrap();
 
+        for v in ["3.4.4", "3.5.3", "3.6.3"] {
+            assert!(root
+                .open_subkey(format!("R for Windows {}_is1", v))
+                .is_err());
+        }
+        assert!(root.open_subkey("R for Windows 9.9.9").is_ok());
         assert!(root.open_subkey("R for Windows 4.3.0").is_err());
         assert!(root.open_subkey("Rtools43").is_err());
         assert!(

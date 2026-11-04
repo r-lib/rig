@@ -4,6 +4,7 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 
 use regex::Regex;
@@ -165,6 +166,103 @@ pub fn write_executable(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>>
     let mode = u32::from(0o777 & !current.bits());
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
     Ok(())
+}
+
+/// Give everything below `dir` the modes R gives an installed package:
+/// directories are 0755, and files are readable by everyone and writable only
+/// by the owner, keeping whichever execute bits they have. This ignores the
+/// umask, and clears any setuid, setgid and sticky bits. Symbolic links are
+/// left alone, and not followed. `dir` itself is not changed.
+#[cfg(unix)]
+pub fn normalize_modes(dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        let path = entry.path();
+        let mode = if file_type.is_dir() {
+            0o755
+        } else {
+            (entry.metadata()?.permissions().mode() | 0o644) & 0o755
+        };
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))?;
+        if file_type.is_dir() {
+            normalize_modes(&path)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+pub fn normalize_modes(_dir: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// A path in a form that R accepts on the command line.
+///
+/// On Windows `canonicalize()` returns a verbatim `\\?\C:\...` path, which R
+/// does not handle: `R CMD INSTALL` joins `/DESCRIPTION` onto a package
+/// directory, and Windows does not normalize `/` in a verbatim path, so the
+/// package looks invalid. Older R versions do not know about verbatim paths
+/// at all. So drop the `\\?\` prefix and use `/` as the separator, which every
+/// R version supports. Elsewhere the path is returned unchanged.
+pub fn r_path(path: &Path) -> PathBuf {
+    if cfg!(windows) {
+        match path.to_str() {
+            Some(s) => PathBuf::from(windows_r_path(s)),
+            None => path.to_path_buf(),
+        }
+    } else {
+        path.to_path_buf()
+    }
+}
+
+/// The longest path, in UTF-16 units, that Windows accepts without long path
+/// support. `MAX_PATH` is 260, including the terminating NUL.
+const WINDOWS_MAX_PATH: usize = 259;
+
+/// A hint for a failed `R CMD INSTALL`, if one of `paths` is too long for a
+/// Windows without long path support. Since `r_path()` gives R a plain path,
+/// such a path only works with R 4.3.0 or later, and only if long paths are
+/// enabled in Windows. Never a hint on other systems.
+pub fn long_path_hint(paths: &[&Path]) -> Option<String> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let long: Vec<String> = paths
+        .iter()
+        .filter(|p| is_too_long_for_windows(p))
+        .map(|p| p.display().to_string())
+        .collect();
+    if long.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "\n  These paths are longer than {} characters: {}\n  \
+         R needs long path support to use them: R 4.3.0 or later, and\n  \
+         `LongPathsEnabled` set in the Windows registry. Or use a shorter path.",
+        WINDOWS_MAX_PATH,
+        long.join(", ")
+    ))
+}
+
+fn is_too_long_for_windows(path: &Path) -> bool {
+    path.to_string_lossy().encode_utf16().count() > WINDOWS_MAX_PATH
+}
+
+fn windows_r_path(path: &str) -> String {
+    let plain = if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{}", rest)
+    } else if let Some(rest) = path.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        path.to_string()
+    };
+    plain.replace('\\', "/")
 }
 
 pub fn calculate_hash(s: &str) -> String {
@@ -707,13 +805,30 @@ fish_add_path --prepend --move \"$HOME/.local/bin\"
     Ok(())
 }
 
+// `rig add --without-path`: leave the user's PATH setup (shell startup files
+// on macOS and Linux, the user PATH on Windows) alone. Set once from the
+// parsed arguments; the PATH is edited from helpers that take no arguments.
+static SKIP_PATH_SETUP: AtomicBool = AtomicBool::new(false);
+
+pub fn set_skip_path_setup(skip: bool) {
+    SKIP_PATH_SETUP.store(skip, Ordering::Relaxed);
+}
+
+pub fn skip_path_setup() -> bool {
+    SKIP_PATH_SETUP.load(Ordering::Relaxed)
+}
+
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
     use crate::output::OUTPUT;
-    use std::sync::atomic::{AtomicBool, Ordering};
 
     static ADD_DONE: AtomicBool = AtomicBool::new(false);
     static WARN_DONE: AtomicBool = AtomicBool::new(false);
+
+    if skip_path_setup() {
+        debug!("--without-path, not touching shell startup files");
+        return Ok(());
+    }
 
     let binary_dir = get_binary_dir()?;
 
@@ -785,14 +900,21 @@ pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// A `reqwest::ClientBuilder` with a compiled-in Mozilla root CA bundle added
-/// as extra trust roots, so TLS still works on Linux systems/containers that
-/// have no system CA store (`rustls-platform-verifier` otherwise errors with
-/// "No CA certificates were loaded from the system"). On macOS and Windows
-/// the platform's own certificate store is always available, so this is a
-/// no-op passthrough there.
+/// `User-Agent` header sent with every HTTP request rig makes.
+pub const USER_AGENT: &str = concat!(
+    "rig/",
+    env!("CARGO_PKG_VERSION"),
+    " (+https://github.com/r-lib/rig)"
+);
+
+/// A `reqwest::ClientBuilder` that sets rig's `User-Agent` and, on Linux,
+/// adds a compiled-in Mozilla root CA bundle as extra trust roots, so TLS
+/// still works on Linux systems/containers that have no system CA store
+/// (`rustls-platform-verifier` otherwise errors with "No CA certificates were
+/// loaded from the system"). On macOS and Windows the platform's own
+/// certificate store is always available, so no extra roots are added there.
 pub fn http_client_builder() -> reqwest::ClientBuilder {
-    let builder = reqwest::Client::builder();
+    let builder = reqwest::Client::builder().user_agent(USER_AGENT);
     #[cfg(target_os = "linux")]
     let builder = {
         let mut builder = builder;
@@ -1157,5 +1279,69 @@ mod tests {
         use std::ffi::OsStr;
         let result = format_cmd_args(vec!["--help".to_string()], OsStr::new("anything"));
         assert_eq!(result[0], OsString::from("--help"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn modes_are_normalized_without_following_links() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("root");
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        let outside = tmp.path().join("outside");
+        std::fs::write(&outside, "x").unwrap();
+        for name in ["sub/plain", "sub/exec", "sub/private", "sub/setuid"] {
+            std::fs::write(root.join(name), "x").unwrap();
+        }
+        std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+        let set = |p: &Path, mode| {
+            std::fs::set_permissions(p, std::fs::Permissions::from_mode(mode)).unwrap()
+        };
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o7777;
+        set(&outside, 0o666);
+        set(&root.join("sub/plain"), 0o664);
+        set(&root.join("sub/exec"), 0o770);
+        set(&root.join("sub/private"), 0o400);
+        set(&root.join("sub/setuid"), 0o4777);
+        set(&root.join("sub"), 0o700);
+        set(&root, 0o700);
+
+        normalize_modes(&root).unwrap();
+        assert_eq!(mode(&root.join("sub/plain")), 0o644);
+        assert_eq!(mode(&root.join("sub/exec")), 0o754);
+        assert_eq!(mode(&root.join("sub/private")), 0o644);
+        assert_eq!(mode(&root.join("sub/setuid")), 0o755);
+        assert_eq!(mode(&root.join("sub")), 0o755);
+        // Not the directory it was pointed at.
+        assert_eq!(mode(&root), 0o700);
+        // Not what a link points to.
+        assert_eq!(mode(&outside), 0o666);
+    }
+}
+
+#[cfg(test)]
+mod r_path_tests {
+    use super::*;
+
+    #[test]
+    fn test_windows_r_path() {
+        assert_eq!(
+            windows_r_path(r"\\?\C:\Users\me\AppData\Local\pkg"),
+            "C:/Users/me/AppData/Local/pkg"
+        );
+        assert_eq!(
+            windows_r_path(r"\\?\UNC\server\share\lib"),
+            "//server/share/lib"
+        );
+        assert_eq!(windows_r_path(r"C:\Temp\lib"), "C:/Temp/lib");
+        assert_eq!(windows_r_path("C:/Temp/lib"), "C:/Temp/lib");
+    }
+
+    #[test]
+    fn test_is_too_long_for_windows() {
+        let ok = format!("C:/{}", "a".repeat(WINDOWS_MAX_PATH - 3));
+        assert!(!is_too_long_for_windows(Path::new(&ok)));
+        let long = format!("{}a", ok);
+        assert!(is_too_long_for_windows(Path::new(&long)));
     }
 }

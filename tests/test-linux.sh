@@ -10,6 +10,13 @@ teardown() {
     true
 }
 
+# Retired distros (e.g. Debian 12) do not get new R builds any more: there
+# is no R-devel and no build of the current R release, only of older ones.
+is_retired() {
+    source /etc/os-release
+    [[ "$ID" = "debian" && "$VERSION_ID" = "12" ]]
+}
+
 @test "empty" {
     run rig ls
     [[ "$status" -eq 0 ]]
@@ -115,6 +122,52 @@ teardown() {
     [[ -z "$output" ]]
 }
 
+@test "RIG_CACHE_DIR" {
+    run env RIG_CACHE_DIR=/tmp/rig-cache rig -q system dirs --cache
+    [[ "$status" -eq 0 ]]
+    [[ "$output" = "/tmp/rig-cache" ]]
+    run env RIG_CACHE_DIR=/tmp/rig-cache rig -q system dirs --json
+    echo "$output" | grep -q "\"cache_dir\": \"/tmp/rig-cache\""
+
+    # --no-cache changes where this run keeps things, not what is reported
+    run env RIG_CACHE_DIR=/tmp/rig-cache rig -q --no-cache system dirs --cache
+    [[ "$output" = "/tmp/rig-cache" ]]
+
+    # an empty value is the same as an unset one
+    run env RIG_CACHE_DIR= rig -q system dirs --cache
+    [[ "$output" = "$(rig -q system dirs --cache)" ]]
+}
+
+@test "--cache-dir" {
+    run rig -q --cache-dir /tmp/rig-cache-flag system dirs --cache
+    [[ "$status" -eq 0 ]]
+    [[ "$output" = "/tmp/rig-cache-flag" ]]
+
+    # accepted after the subcommand, and beats the environment
+    run env RIG_CACHE_DIR=/tmp/rig-cache rig -q system dirs --cache --cache-dir /tmp/rig-cache-flag
+    [[ "$output" = "/tmp/rig-cache-flag" ]]
+
+    # an empty value is an error
+    run rig -q --cache-dir "" system dirs --cache
+    [[ "$status" -ne 0 ]]
+}
+
+@test "cache clean does not delete from a directory that is not rig's" {
+    dir="$(mktemp -d)"
+    echo keep > "$dir/mine.txt"
+    run rig -q --cache-dir "$dir" cache clean
+    [[ "$status" -ne 0 ]]
+    [[ -f "$dir/mine.txt" ]]
+
+    # with the tag it is allowed to
+    touch "$dir/CACHEDIR.TAG"
+    run rig -q --cache-dir "$dir" cache clean
+    [[ "$status" -eq 0 ]]
+    [[ ! -e "$dir/mine.txt" ]]
+    [[ -f "$dir/CACHEDIR.TAG" ]]
+    rm -rf "$dir"
+}
+
 @test "--no-cache" {
     # accepted before and after the subcommand, and from the environment
     run rig -q --no-cache system dirs --cache
@@ -162,6 +215,11 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]4[.]3$"
 
+    if is_retired; then
+	run rig resolve devel
+	[[ ! "$status" -eq 0 ]]
+	return
+    fi
     devel=$(rig resolve devel | cut -f1 -d" ")
     if ! rig ls | grep -q '^[* ] devel$'; then
 	run rig add devel
@@ -266,12 +324,19 @@ teardown() {
 }
 
 @test "resolve" {
-    run rig resolve devel
-    [[ "$status" -eq 0 ]]
-    echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rig resolve release
-    [[ "$status" -eq 0 ]]
-    echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
+    if is_retired; then
+	run rig resolve devel
+	[[ ! "$status" -eq 0 ]]
+	run rig resolve release
+	[[ ! "$status" -eq 0 ]]
+    else
+	run rig resolve devel
+	[[ "$status" -eq 0 ]]
+	echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
+	run rig resolve release
+	[[ "$status" -eq 0 ]]
+	echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
+    fi
     run rig resolve oldrel
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
@@ -304,9 +369,11 @@ teardown() {
     run R-4.5.1 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
     [[ $status -eq 0 ]]
     [[ "$output" = "[1] TRUE" ]]
-    run R-devel -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
-    [[ $status -eq 0 ]]
-    [[ "$output" = "[1] TRUE" ]]
+    if ! is_retired; then
+	run R-devel -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
+	[[ $status -eq 0 ]]
+	[[ "$output" = "[1] TRUE" ]]
+    fi
     run R-4.4.3 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
     [[ $status -eq 0 ]]
     [[ "$output" = "[1] TRUE" ]]
@@ -435,6 +502,15 @@ teardown() {
     run env -u RVENV R-4.5.1 -q -s -e 'cat(.libPaths()[1])'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "myproj/[.]rvenv/lib"
+
+    # A library built for another R minor version is not attached: only a
+    # warning, and the library path stays as it was.
+    echo "r-minor = 0.0" > .rvenv/rvenv.cfg
+    run env -u RVENV R-4.5.1 -q -s -e 'cat(.libPaths()[1], Sys.getenv("RVENV"))'
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "Project needs R 0.0"
+    [[ "$output" != *".rvenv"* ]]
+    rm .rvenv/rvenv.cfg
     rm .rvenv/onload.R
     rmdir .rvenv/lib
 
@@ -532,6 +608,73 @@ teardown() {
     [[ "$status" -eq 0 ]]
     ! grep -q '^r_version = "4.4"$' rproj.lock
     grep -q '^r_version = "4.5"$' rproj.lock
+}
+
+@test "pkg sync" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf pkgsync && mkdir -p pkgsync/proj pkgsync/run
+    cd pkgsync/proj
+    run rig proj init -r 4.5
+    [[ "$status" -eq 0 ]]
+    run rig proj add --no-lock cli
+    [[ "$status" -eq 0 ]]
+    run rig proj lock
+    [[ "$status" -eq 0 ]]
+    cp rproj.lock ../app.lock
+    cd ../run
+
+    # a lock file that is not there is an error, and creates nothing
+    run rig pkg sync ../nope.lock --library ../lib
+    [[ "$status" -ne 0 ]]
+    [[ ! -e ../lib ]]
+    # a lock file is used as it is, and nothing is removed
+    run rig pkg sync ../app.lock --frozen
+    [[ "$status" -ne 0 ]]
+    run rig pkg sync ../app.lock --inexact
+    [[ "$status" -ne 0 ]]
+
+    # a dry run creates nothing
+    run rig pkg sync ../app.lock --library ../lib --dry-run --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ ! -e ../lib ]]
+
+    # from a directory with no project files, only the library is written,
+    # and it gets no sync stamp
+    run rig pkg sync ../app.lock --library ../lib --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ -z "$(ls -A .)" ]]
+    [[ -d ../lib/cli && ! -e ../lib/.synced ]]
+
+    # packages already in the library are left alone, even if the lock file
+    # does not list them
+    mkdir ../lib/extra
+    printf 'Package: extra\nVersion: 1.0\n' > ../lib/extra/DESCRIPTION
+    run rig pkg sync ../app.lock -l ../lib --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ -d ../lib/extra && -d ../lib/cli ]]
+
+    # the project environment is left alone, also for the project's own lock
+    # file, which is the default
+    cd ../proj
+    run rig pkg sync --library ../lib2 --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ -d ../lib2/cli ]]
+    [[ ! -e .rvenv/rvenv.cfg && ! -e .rvenv/lib ]]
+
+    # the project's own package is installed from the directory of the lock
+    # file, which needs the project there
+    sed -i 's/^type = "project"$/type = "package"/' rproj.toml
+    run rig proj lock
+    [[ "$status" -eq 0 ]]
+    cp rproj.lock ../pkg.lock
+    cd ../run
+    run rig pkg sync ../pkg.lock --library ../pkg-lib --no-install-r --no-sysreqs
+    [[ "$status" -ne 0 ]]
+    [[ ! -e ../pkg-lib ]]
+    run rig pkg sync ../pkg.lock --library ../pkg-lib \
+        --no-install-project --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ -d ../pkg-lib/cli ]]
 }
 
 @test "run script with inline dependencies" {

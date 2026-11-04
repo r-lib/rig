@@ -8,6 +8,24 @@ use log::*;
 use crate::output::OUTPUT;
 
 static NO_CACHE: OnceLock<bool> = OnceLock::new();
+static CACHE_DIR: OnceLock<String> = OnceLock::new();
+
+/// Record the directory named by the `--cache-dir` flag for this run.
+pub fn set_cache_dir(value: &str) -> Result<(), Box<dyn Error>> {
+    set_once(&CACHE_DIR, value)
+}
+
+fn set_once(cell: &OnceLock<String>, value: &str) -> Result<(), Box<dyn Error>> {
+    let _ = cell.set(value.to_string());
+    match cell.get().map(|v| v.as_str()) {
+        Some(existing) if existing != value => bail!(
+            "Cannot set cache-dir to '{}', already set to '{}'",
+            value,
+            existing
+        ),
+        _ => Ok(()),
+    }
+}
 
 /// Record whether this run may use rig's cache, from the `--no-cache` flag.
 pub fn set_no_cache(value: bool) -> Result<(), Box<dyn Error>> {
@@ -69,11 +87,136 @@ pub fn get_cache_dir() -> Result<PathBuf, Box<dyn Error>> {
     if no_cache() {
         return ephemeral_cache_dir();
     }
+    mark_new_cache_dir();
     real_cache_dir()
 }
 
 /// The persistent cache directory, whatever `--no-cache` says.
+///
+/// The `--cache-dir` flag takes precedence over `RIG_CACHE_DIR`, which takes
+/// precedence over the `cache-dir` config entry, which takes precedence over
+/// the platform's default cache location.
 pub fn real_cache_dir() -> Result<PathBuf, Box<dyn Error>> {
+    match cache_dir_override()? {
+        Some(dir) => Ok(dir),
+        None => default_cache_dir(),
+    }
+}
+
+fn cache_dir_override() -> Result<Option<PathBuf>, Box<dyn Error>> {
+    let flag = CACHE_DIR.get().map(|v| v.as_str());
+    let env = std::env::var("RIG_CACHE_DIR").ok();
+    let config = if [flag, env.as_deref()]
+        .into_iter()
+        .flatten()
+        .all(|v| v.is_empty())
+    {
+        crate::config::get_global_config_value("cache-dir")?
+    } else {
+        None
+    };
+    match resolve_cache_dir_override(flag, env.as_deref(), config.as_deref()) {
+        Some(dir) => Ok(Some(std::path::absolute(dir)?)),
+        None => Ok(None),
+    }
+}
+
+/// A well-known file name that marks a directory as a cache. This is what uv
+/// uses as well, but originates from <https://bford.info/cachedir/>.
+pub const CACHE_DIR_TAG: &str = "CACHEDIR.TAG";
+
+const CACHE_DIR_TAG_CONTENT: &str = "\
+Signature: 8a477f597d28d172789f06886806bc55
+# This file is a cache directory tag created by rig.
+# For information about cache directory tags see https://bford.info/cachedir/
+";
+
+/// Tag missing or empty directory `dir` as a cache directory for use by rig.
+///
+/// The tag is created exclusively, so a file or symlink that is already there
+/// is left alone, never followed or overwritten: rig may be running with
+/// elevated privileges in a directory someone else can write to.
+fn tag_new_cache_dir(dir: &Path) -> std::io::Result<()> {
+    let is_new = match std::fs::read_dir(dir) {
+        Ok(mut entries) => entries.next().is_none(),
+        Err(err) => err.kind() == std::io::ErrorKind::NotFound,
+    };
+    if !is_new {
+        return Ok(());
+    }
+    std::fs::create_dir_all(dir)?;
+    write_cache_dir_tag(dir)
+}
+
+fn write_cache_dir_tag(dir: &Path) -> std::io::Result<()> {
+    use std::io::Write;
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(dir.join(CACHE_DIR_TAG))
+    {
+        Ok(mut file) => file.write_all(CACHE_DIR_TAG_CONTENT.as_bytes()),
+        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+
+fn mark_new_cache_dir() {
+    static MARKED: OnceLock<()> = OnceLock::new();
+    MARKED.get_or_init(|| match cache_dir_override() {
+        Ok(Some(dir)) => {
+            if let Err(err) = tag_new_cache_dir(&dir) {
+                debug!("Cannot tag the cache directory {}: {}", dir.display(), err);
+            }
+        }
+        // The default location is always owned by rig, we don't need to tag it.
+        Ok(None) => {}
+        Err(err) => debug!("Cannot tell if the cache directory is chosen: {}", err),
+    });
+}
+
+/// Whether it is safe for rig to delete everything in the cache directory
+/// `dir`: it is the default location, or tagged, or has nothing in it.
+pub fn cache_dir_is_rigs(dir: &Path) -> Result<bool, Box<dyn Error>> {
+    Ok(cache_dir_override()?.is_none() || is_tagged_or_empty(dir))
+}
+
+fn is_tagged_or_empty(dir: &Path) -> bool {
+    // The tag has to be a regular file; a symlink might be misleading about
+    // who owns the directory.
+    let tagged = std::fs::symlink_metadata(dir.join(CACHE_DIR_TAG))
+        .map(|meta| meta.is_file())
+        .unwrap_or(false);
+    tagged
+        || match std::fs::read_dir(dir) {
+            Ok(mut entries) => entries.next().is_none(),
+            Err(_) => true,
+        }
+}
+
+/// Create the log directory, tagging a new cache directory it is in as rig's
+/// first.
+pub fn create_logs_dir(logs_dir: &Path) -> std::io::Result<()> {
+    #[cfg(not(target_os = "macos"))]
+    mark_new_cache_dir();
+    std::fs::create_dir_all(logs_dir)
+}
+
+/// The directory named by the `--cache-dir` flag, `RIG_CACHE_DIR` or the
+/// `cache-dir` config entry, in that order. An empty value counts as unset.
+fn resolve_cache_dir_override(
+    flag: Option<&str>,
+    env: Option<&str>,
+    config: Option<&str>,
+) -> Option<PathBuf> {
+    [flag, env, config]
+        .into_iter()
+        .flatten()
+        .find(|v| !v.is_empty())
+        .map(PathBuf::from)
+}
+
+fn default_cache_dir() -> Result<PathBuf, Box<dyn Error>> {
     let cache_dir = ProjectDirs::from("com", "gaborcsardi", "rig")
         .ok_or("Cannot determine cache directory")?
         .cache_dir()
@@ -201,6 +344,9 @@ pub fn get_data_dir() -> Result<PathBuf, Box<dyn Error>> {
 /// - macOS: ~/Library/Logs/com.gaborcsardi.rig/
 /// - Linux: ~/.cache/rig/logs/
 /// - Windows: %LOCALAPPDATA%\gaborcsardi\rig\cache\logs\
+///
+/// On Linux and Windows this is the `logs` directory inside the cache
+/// directory, so it follows `RIG_CACHE_DIR` / `cache-dir`.
 pub fn get_logs_dir() -> Result<PathBuf, Box<dyn Error>> {
     #[cfg(target_os = "macos")]
     {
@@ -210,12 +356,8 @@ pub fn get_logs_dir() -> Result<PathBuf, Box<dyn Error>> {
 
     #[cfg(not(target_os = "macos"))]
     {
-        // Use cache_dir for Linux/Windows
-        let logs_dir = ProjectDirs::from("com", "gaborcsardi", "rig")
-            .ok_or("Cannot determine logs directory")?
-            .cache_dir()
-            .join("logs");
-        Ok(logs_dir.to_path_buf())
+        // The logs live in the cache directory on Linux and Windows.
+        Ok(real_cache_dir()?.join("logs"))
     }
 }
 
@@ -470,6 +612,153 @@ fn create_download_dir_checked(dir: &PathBuf) -> Result<(), Box<dyn Error>> {
     // `%TEMP%` is inside the user's profile and is not shared with other
     // users, so there is nothing extra to check here.
     create_dir(dir)
+}
+
+#[cfg(test)]
+mod cache_dir_tag_tests {
+    use super::*;
+
+    #[test]
+    fn a_missing_directory_is_created_and_tagged() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("cache");
+        tag_new_cache_dir(&dir).unwrap();
+        assert!(dir.join(CACHE_DIR_TAG).is_file());
+    }
+
+    #[test]
+    fn an_empty_directory_is_tagged() {
+        let tmp = tempfile::tempdir().unwrap();
+        tag_new_cache_dir(tmp.path()).unwrap();
+        assert!(tmp.path().join(CACHE_DIR_TAG).is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_tag_is_not_followed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("cache");
+        let target = tmp.path().join("victim");
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::write(&target, "precious").unwrap();
+        std::os::unix::fs::symlink(&target, dir.join(CACHE_DIR_TAG)).unwrap();
+        write_cache_dir_tag(&dir).unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "precious");
+
+        // Nor a dangling one.
+        let dangling = tmp.path().join("dangling");
+        std::fs::remove_file(dir.join(CACHE_DIR_TAG)).unwrap();
+        std::os::unix::fs::symlink(&dangling, dir.join(CACHE_DIR_TAG)).unwrap();
+        write_cache_dir_tag(&dir).unwrap();
+        assert!(!dangling.exists());
+    }
+
+    #[test]
+    fn only_a_tagged_or_empty_directory_is_rigs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("cache");
+        assert!(is_tagged_or_empty(&dir));
+        std::fs::create_dir(&dir).unwrap();
+        assert!(is_tagged_or_empty(&dir));
+        std::fs::write(dir.join("mine.txt"), "x").unwrap();
+        assert!(!is_tagged_or_empty(&dir));
+        std::fs::write(dir.join(CACHE_DIR_TAG), "").unwrap();
+        assert!(is_tagged_or_empty(&dir));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_tag_does_not_make_a_directory_rigs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("cache");
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::write(dir.join("mine.txt"), "x").unwrap();
+        std::os::unix::fs::symlink(tmp.path(), dir.join(CACHE_DIR_TAG)).unwrap();
+        assert!(!is_tagged_or_empty(&dir));
+        // Dangling, too.
+        std::fs::remove_file(dir.join(CACHE_DIR_TAG)).unwrap();
+        std::os::unix::fs::symlink(tmp.path().join("nope"), dir.join(CACHE_DIR_TAG)).unwrap();
+        assert!(!is_tagged_or_empty(&dir));
+    }
+
+    #[test]
+    fn the_tag_has_the_signature_and_is_never_overwritten() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_cache_dir_tag(tmp.path()).unwrap();
+        let tag = std::fs::read_to_string(tmp.path().join(CACHE_DIR_TAG)).unwrap();
+        assert!(tag.starts_with("Signature: 8a477f597d28d172789f06886806bc55\n"));
+
+        std::fs::write(tmp.path().join(CACHE_DIR_TAG), "mine").unwrap();
+        write_cache_dir_tag(tmp.path()).unwrap();
+        let tag = std::fs::read_to_string(tmp.path().join(CACHE_DIR_TAG)).unwrap();
+        assert_eq!(tag, "mine");
+    }
+
+    #[test]
+    fn the_cache_dir_can_be_set_again_to_the_same_value_only() {
+        let cell = OnceLock::new();
+        set_once(&cell, "/a").unwrap();
+        set_once(&cell, "/a").unwrap();
+        let err = set_once(&cell, "/b").unwrap_err().to_string();
+        assert!(err.contains("/a") && err.contains("/b"), "{}", err);
+        assert_eq!(cell.get().map(|v| v.as_str()), Some("/a"));
+    }
+
+    #[test]
+    fn a_directory_with_files_is_not_tagged() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("mine.txt"), "x").unwrap();
+        tag_new_cache_dir(tmp.path()).unwrap();
+        assert!(!tmp.path().join(CACHE_DIR_TAG).exists());
+    }
+}
+
+#[cfg(test)]
+mod cache_dir_override_tests {
+    use super::*;
+
+    #[test]
+    fn no_override_by_default() {
+        assert_eq!(resolve_cache_dir_override(None, None, None), None);
+    }
+
+    #[test]
+    fn env_beats_config() {
+        assert_eq!(
+            resolve_cache_dir_override(None, Some("/from/env"), Some("/from/config")),
+            Some(PathBuf::from("/from/env"))
+        );
+    }
+
+    #[test]
+    fn flag_beats_env_and_config() {
+        assert_eq!(
+            resolve_cache_dir_override(Some("/from/flag"), Some("/from/env"), Some("/from/config")),
+            Some(PathBuf::from("/from/flag"))
+        );
+    }
+
+    #[test]
+    fn config_applies_without_env() {
+        assert_eq!(
+            resolve_cache_dir_override(None, None, Some("/from/config")),
+            Some(PathBuf::from("/from/config"))
+        );
+    }
+
+    #[test]
+    fn empty_values_are_unset() {
+        assert_eq!(resolve_cache_dir_override(None, Some(""), None), None);
+        assert_eq!(
+            resolve_cache_dir_override(None, Some(""), Some("/from/config")),
+            Some(PathBuf::from("/from/config"))
+        );
+        assert_eq!(resolve_cache_dir_override(None, None, Some("")), None);
+        assert_eq!(
+            resolve_cache_dir_override(Some(""), Some("/from/env"), None),
+            Some(PathBuf::from("/from/env"))
+        );
+    }
 }
 
 #[cfg(test)]

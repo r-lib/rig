@@ -98,6 +98,22 @@ pub fn exclude_newer_arg(args: &ArgMatches) -> Result<Option<ExcludeNewerSpec>, 
         .transpose()
 }
 
+/// The `exclude-newer` user setting, from `RIG_EXCLUDE_NEWER` or the
+/// `exclude-newer` key of the rig config. It is used if neither the command
+/// line nor the project manifest sets it.
+pub fn config_exclude_newer() -> Result<Option<ExcludeNewerSpec>, Box<dyn Error>> {
+    match crate::config::get_setting("RIG_EXCLUDE_NEWER", "exclude-newer")? {
+        Some(value) => match value.parse() {
+            Ok(spec) => Ok(Some(spec)),
+            Err(e) => bail!(
+                "Invalid `exclude-newer` setting in RIG_EXCLUDE_NEWER or the rig config: {}",
+                e
+            ),
+        },
+        None => Ok(None),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

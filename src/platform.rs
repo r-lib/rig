@@ -324,7 +324,8 @@ pub fn detect_platform_impl() -> Result<OsVersion, Box<dyn Error>> {
 pub fn detect_platform_impl() -> Result<OsVersion, Box<dyn Error>> {
     Ok(OsVersion {
         rig_platform: None,
-        arch: std::env::consts::ARCH.to_string(),
+        // The machine's arch, not rig's: an x86_64 rig also runs on aarch64.
+        arch: crate::windows_arch::get_native_arch().to_string(),
         vendor: "w64".to_string(),
         os: "mingw32".to_string(),
         distro: None,
