@@ -684,7 +684,7 @@ fn sc_proj_export(
 /// a file without requiring `--force`. Any read/parse failure is treated as
 /// "not rig-generated" rather than an error, since the caller falls back to
 /// the normal existing-file check.
-fn description_is_rig_generated(path: &Path) -> bool {
+pub(crate) fn description_is_rig_generated(path: &Path) -> bool {
     let Ok(file) = File::open(path) else {
         return false;
     };

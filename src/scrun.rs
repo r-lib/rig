@@ -90,6 +90,7 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
         direct,
         renviron_user,
         path_prepend,
+        cwd: None,
     };
 
     if args.get_flag("shell") {
@@ -199,7 +200,7 @@ fn no_project_renviron_user(args: &ArgMatches) -> Option<PathBuf> {
 /// current directory, which could belong to a project. `None` if
 /// `R_ENVIRON_USER` is already set (never override an explicit choice), or if
 /// the home directory cannot be determined.
-fn user_renviron() -> Option<PathBuf> {
+pub(crate) fn user_renviron() -> Option<PathBuf> {
     if std::env::var_os("R_ENVIRON_USER").is_some() {
         return None;
     }
@@ -210,19 +211,22 @@ fn user_renviron() -> Option<PathBuf> {
 /// The R binary to run and the environment to run it in, bundled together
 /// because every `sc_run_*` execution path needs all of them to build its
 /// `Command`.
-struct RunEnv {
-    rbin: String,
+pub(crate) struct RunEnv {
+    pub(crate) rbin: String,
     /// If `rbin` is an environment's `.rvenv/bin` wrapper, the real R binary
     /// it forwards to and the variables it sets (see
     /// `rvenv_wrapper_target`). Running these directly skips starting the
     /// wrapper, `rbin` is still what dry runs and logs show.
-    direct: Option<WrapperTarget>,
+    pub(crate) direct: Option<WrapperTarget>,
     /// `R_ENVIRON_USER` override for `--no-project` (see
     /// `no_project_renviron_user`).
-    renviron_user: Option<PathBuf>,
+    pub(crate) renviron_user: Option<PathBuf>,
     /// `PATH` prepend for `--activate`/`--shell` (see
     /// `activate_path_prepend`).
-    path_prepend: Option<PathBuf>,
+    pub(crate) path_prepend: Option<PathBuf>,
+    /// Working directory for R, `None` to keep the current one. The `rig
+    /// proj` tasks run in the project root.
+    pub(crate) cwd: Option<PathBuf>,
 }
 
 impl RunEnv {
@@ -231,7 +235,7 @@ impl RunEnv {
     /// never touches the parent shell's environment, but it is inherited by
     /// this process and anything it spawns (a nested shell, or R's own
     /// `system("R ...")`).
-    fn command(&self) -> Command {
+    pub(crate) fn command(&self) -> Command {
         let mut cmd = match &self.direct {
             Some((target, vars)) => {
                 let mut cmd = Command::new(target);
@@ -242,6 +246,9 @@ impl RunEnv {
         };
         if let Some(renviron) = &self.renviron_user {
             cmd.env("R_ENVIRON_USER", renviron);
+        }
+        if let Some(cwd) = &self.cwd {
+            cmd.current_dir(cwd);
         }
         if let Some(dir) = &self.path_prepend {
             cmd.env(
@@ -334,7 +341,17 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
         None => return Ok(None),
         Some(root) => root,
     };
+    project_env_r_binary(&root, args, dry_run).map(Some)
+}
 
+/// `.rvenv/bin/R` of the project at `root`, syncing the environment first if
+/// it is missing or out of date. `rig run` and the `rig proj` tasks (see
+/// `src/projtask.rs`) both use this.
+pub(crate) fn project_env_r_binary(
+    root: &Path,
+    args: &ArgMatches,
+    dry_run: bool,
+) -> Result<String, Box<dyn Error>> {
     // A directory with no manifest at all has never been initialized, so
     // there is nothing to fill in. Fail rather than fall back to the default
     // R, the same way `rig proj sync` does -- inside a project, `rig run`
@@ -353,9 +370,9 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
     // an IDE), not by this wrapper, which sets `R_LIBS_USER` itself -- but
     // fill them in if missing anyway, so a direct R start in this project
     // keeps working too.
-    ensure_rvenv_files(&root)?;
+    ensure_rvenv_files(root)?;
 
-    match rvenv_sync_needed(&root)? {
+    match rvenv_sync_needed(root)? {
         None => {}
         Some(why) if dry_run => {
             // A dry run prints a command, it does not install anything.
@@ -369,11 +386,11 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
             info!("{}", msg);
             // stdout belongs to what `rig run` runs, not to the sync.
             let _stdout_guard = StdoutToStderr::new();
-            proj_sync(&root, &ProjSyncOptions::default(), args)?;
+            proj_sync(root, &ProjSyncOptions::default(), args)?;
         }
     }
 
-    let wrapper = project_r_wrapper(&root);
+    let wrapper = project_r_wrapper(root);
     if !wrapper.exists() && !dry_run {
         let msg = format!(
             "No R wrapper at {} after syncing the project, run `rig proj sync`",
@@ -385,12 +402,10 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
     }
 
     trace!("Using the project environment at {}", wrapper.display());
-    Ok(Some(
-        wrapper
-            .to_str()
-            .ok_or("The project path is not valid Unicode")?
-            .to_string(),
-    ))
+    Ok(wrapper
+        .to_str()
+        .ok_or("The project path is not valid Unicode")?
+        .to_string())
 }
 
 // Extensions that make an argument a file rather than a name. A `[[bin]]`
@@ -416,7 +431,7 @@ fn is_bin_name(arg: &str) -> bool {
 }
 
 /// The scripts declared in the `[[bin]]` tables of the project at `root`.
-fn project_bins(root: &Path) -> Result<Vec<Bin>, Box<dyn Error>> {
+pub(crate) fn project_bins(root: &Path) -> Result<Vec<Bin>, Box<dyn Error>> {
     match proj_read_manifest_opt(root)? {
         None => Ok(vec![]),
         Some(manifest) => Ok(manifest.bin),
@@ -477,7 +492,7 @@ fn unknown_bin_error(args: &ArgMatches, name: &str) -> Result<Option<String>, Bo
 
 /// Runs the script of a `[[bin]]`, with the remaining arguments passed on to
 /// it, i.e. `rig run <name> [args...]`.
-fn sc_run_project_script(
+pub(crate) fn sc_run_project_script(
     env: RunEnv,
     args: Vec<String>,
     root: &Path,
@@ -572,7 +587,7 @@ fn sc_run_list(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
     Ok(0)
 }
 
-fn ignore_sigint() {
+pub(crate) fn ignore_sigint() {
     // Ignore CTRL+C for Rust, the R process will still get it
     let sigint = ctrlc::set_handler(|| {});
     if let Err(e) = sigint {
