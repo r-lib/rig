@@ -857,3 +857,98 @@ SCRIPT
     run rig run --locked plain.R
     [[ "$status" -ne 0 ]]
 }
+
+@test "proj test and proj check" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf testpkg && mkdir testpkg && cd testpkg
+
+    cat > DESCRIPTION <<-EOF
+	Package: testpkg
+	Version: 0.1.0
+	Title: Test Package
+	Description: A package to test rig proj test.
+	Authors@R: person("A", "B", email = "a@b.c", role = c("aut", "cre"))
+	License: CC0
+	Encoding: UTF-8
+	Depends: R (>= 4.1)
+	Suggests: testthat (>= 3.0.0)
+	Config/testthat/edition: 3
+	EOF
+    mkdir -p R man tests/testthat
+    printf 'export(add)\n' > NAMESPACE
+    printf 'add <- function(x, y) x + y\n' > R/add.R
+    cat > man/add.Rd <<-'EOF'
+	\name{add}
+	\alias{add}
+	\title{Add}
+	\usage{add(x, y)}
+	\arguments{\item{x}{a}\item{y}{b}}
+	\value{The sum.}
+	\description{Add.}
+	EOF
+    printf 'library(testthat)\nlibrary(testpkg)\ntest_check("testpkg")\n' > tests/testthat.R
+    printf 'test_that("pass", { expect_equal(add(1, 2), 3) })\n' > tests/testthat/test-pass.R
+    printf 'test_that("fail", { expect_equal(add(1, 2), 4) })\n' > tests/testthat/test-fail.R
+
+    run rig proj import
+    [[ "$status" -eq 0 ]]
+
+    # from a subdirectory, with a filter, syncs the project first
+    cd R
+    run rig proj test pass
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "PASS 1"
+    run rig proj test fail
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "FAIL 1"
+    run rig proj test --dry-run
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "test_local"
+    cd ..
+
+    # a [[bin]] called `test` replaces the built-in task
+    mkdir -p tools
+    printf 'cat("args:", commandArgs(TRUE), "wd:", basename(getwd()), "\\n")\n' > tools/test.R
+    printf '\n[[bin]]\nname = "test"\npath = "tools/test.R"\n' >> rproj.toml
+    cd R
+    run rig proj test -- --fast x
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "args: --fast x wd: testpkg"
+    run rig proj test --builtin pass
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "PASS 1"
+    cd ..
+
+    rm tests/testthat/test-fail.R
+    run rig proj check --dry-run -- --no-tests
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q '"check", "--no-manual", "testpkg_0.1.0.tar.gz", "--no-tests"'
+    run rig proj check
+    [[ "$status" -eq 0 ]]
+    [[ -f .rvenv/check/testpkg_0.1.0.tar.gz ]]
+    [[ -d .rvenv/check/testpkg.Rcheck ]]
+    ! tar tzf .rvenv/check/testpkg_0.1.0.tar.gz | grep -q -e rproj -e rvenv
+
+    # plain tests/*.R files, in a package without rproj.toml
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf basepkg && mkdir basepkg && cd basepkg
+    cat > DESCRIPTION <<-EOF
+	Package: basepkg
+	Version: 0.1.0
+	Title: Test Package
+	Description: A package to test rig proj test.
+	License: CC0
+	EOF
+    mkdir -p R tests
+    printf 'export(add)\n' > NAMESPACE
+    printf 'add <- function(x, y) x + y\n' > R/add.R
+    printf 'library(basepkg)\nstopifnot(add(1, 2) == 3)\n' > tests/pass.R
+    run rig proj test
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "Running .pass.R"
+    printf 'library(basepkg)\nstopifnot(add(1, 2) == 4)\n' > tests/fail.R
+    run rig proj test
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "Rout.fail"
+    [[ ! -e tests/fail.Rout.fail ]]
+}

@@ -24,6 +24,9 @@ the R packages the project depends on.
 - `rig proj add` and `rig proj remove` adds and removes dependencies to/from
   the project.
 
+- `rig proj test` runs the tests of the project, and `rig proj check` checks
+  a package project with `R CMD check`.
+
 ## The 'tools' package library
 
 Projects treat the package library named `tools` specially. This library is
