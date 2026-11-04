@@ -263,26 +263,32 @@ fn link_package_tree(src: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
 /// original file too, which is exactly what staging is meant to avoid. A
 /// reflink is fine -- it's copy-on-write, so the two sides diverge on the
 /// first write to either. `.git` is skipped: it's never needed to build the
-/// package and can be large.
+/// package and can be large. So is a top level `.rvenv`: when the package is
+/// the project's own package, `rig proj sync` installs the dependencies into
+/// `.rvenv/lib` at the same time, and copying files that R creates and
+/// deletes there fails.
 fn stage_local_source(src: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
-    if cfg!(target_os = "macos") && reflink_copy::reflink(src, dst).is_ok() {
+    if cfg!(target_os = "macos")
+        && !src.join(crate::rvenv::RVENV_DIR).exists()
+        && reflink_copy::reflink(src, dst).is_ok()
+    {
         return Ok(());
     }
-    stage_local_source_entries(src, dst)
+    stage_local_source_entries(src, dst, true)
 }
 
-fn stage_local_source_entries(src: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
+fn stage_local_source_entries(src: &Path, dst: &Path, top: bool) -> Result<(), Box<dyn Error>> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
-        if entry.file_name() == ".git" {
+        if entry.file_name() == ".git" || (top && entry.file_name() == crate::rvenv::RVENV_DIR) {
             continue;
         }
         let from = entry.path();
         let to = dst.join(entry.file_name());
         let file_type = entry.file_type()?;
         if file_type.is_dir() {
-            stage_local_source_entries(&from, &to)?;
+            stage_local_source_entries(&from, &to, false)?;
         } else if file_type.is_symlink() {
             recreate_symlink(&from, &to)?;
         } else if reflink_copy::reflink(&from, &to).is_err() {
@@ -599,7 +605,18 @@ where
             package_path_abs.display(),
             staged.display()
         );
-        stage_local_source(&package_path_abs, &staged)?;
+        stage_local_source(&package_path_abs, &staged).map_err(|err| {
+            let msg = format!(
+                "Failed to install {}: could not copy {} to {}: {}",
+                package_name,
+                package_path_abs.display(),
+                staged.display(),
+                err
+            );
+            OUTPUT.error(&msg);
+            error!("{}", msg);
+            msg
+        })?;
         staged
     } else {
         package_path_abs
@@ -1490,7 +1507,7 @@ mod tests {
         std::fs::write(src.join("DESCRIPTION"), "Package: foo\n").unwrap();
 
         let dst = tmp.path().join("staged");
-        stage_local_source_entries(&src, &dst).unwrap();
+        stage_local_source_entries(&src, &dst, true).unwrap();
 
         assert!(!dst.join(".git").exists());
         assert_eq!(
@@ -1504,6 +1521,23 @@ mod tests {
     }
 
     #[test]
+    fn stage_local_source_skips_the_project_environment() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("pkg");
+        std::fs::create_dir_all(src.join(".rvenv/lib/cli")).unwrap();
+        std::fs::create_dir_all(src.join("inst/.rvenv")).unwrap();
+        std::fs::write(src.join("DESCRIPTION"), "Package: foo\n").unwrap();
+
+        let dst = tmp.path().join("staged");
+        stage_local_source(&src, &dst).unwrap();
+
+        assert!(dst.join("DESCRIPTION").exists());
+        assert!(!dst.join(".rvenv").exists());
+        // only the top level one is the project environment
+        assert!(dst.join("inst/.rvenv").exists());
+    }
+
+    #[test]
     fn stage_local_source_copy_is_independent_of_the_original() {
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("pkg");
@@ -1511,7 +1545,7 @@ mod tests {
         std::fs::write(src.join("DESCRIPTION"), "Package: foo\n").unwrap();
 
         let dst = tmp.path().join("staged");
-        stage_local_source_entries(&src, &dst).unwrap();
+        stage_local_source_entries(&src, &dst, true).unwrap();
 
         // A write to the staged copy (standing in for a build writing a
         // compiled artifact) must never show up in the user's original

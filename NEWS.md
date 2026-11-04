@@ -1,5 +1,9 @@
 # rig 0.11.2-dev (development version)
 
+* `rig proj sync` no longer fails to install the project's own package
+  sometimes, mostly on Linux. It copied the project's `.rvenv`
+  directory too, while it was installing the dependencies there.
+
 * `rig pkg doctor` now reports packages built for another architecture
   on Windows too, e.g. x86_64 packages in the library of an aarch64 R.
 
