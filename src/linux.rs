@@ -2232,25 +2232,61 @@ fn render_fenced_block(existing: &str, start: &str, end: &str, body: &str) -> St
     out
 }
 
-// Download the CA bundle (if needed) and point the given user-mode R version at
-// it. Called automatically after a user-mode install.
+// System CA bundle, found by `probe_system_cert()` at startup.
+static SYSTEM_CERT: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+
+// Look for the system CA bundle. `openssl_probe::probe()` returns
+// `SSL_CERT_FILE` if it is set, so this must run before `set_cert_envvar()`
+// points it at rig's own bundle. A user-set `SSL_CERT_FILE` wins, otherwise
+// this is the first known distro location that exists.
+fn probe_system_cert() {
+    SYSTEM_CERT.get_or_init(|| {
+        let cert = openssl_probe::probe().cert_file;
+        debug!("System CA bundle: {:?}", cert);
+        cert
+    });
+}
+
+// The CA bundle to point R at: the system bundle if there is one, so R
+// trusts the same certificates as the rest of the system, e.g. the
+// certificate of a TLS-inspecting proxy. Otherwise download the Mozilla
+// bundle.
+fn get_cert_bundle(force: bool) -> Result<PathBuf, Box<dyn Error>> {
+    probe_system_cert();
+    if let Some(Some(cert)) = SYSTEM_CERT.get() {
+        info!("Using system CA bundle {}", cert.display());
+        return Ok(cert.clone());
+    }
+    download_cacert(force)
+}
+
+// Find the CA bundle, downloading it if needed, and point the given R version
+// at it. Called automatically after installing a portable R build.
 fn setup_user_cert(rver: &str, force: bool) -> Result<(), Box<dyn Error>> {
-    let cert = download_cacert(force)?;
+    let cert = get_cert_bundle(force)?;
     configure_cert(rver, &cert)?;
-    OUTPUT.success(&format!("Configured CA certificate bundle for R {}", rver));
-    info!("Configured CA certificate bundle for R {}", rver);
+    OUTPUT.success(&format!(
+        "Configured CA certificate bundle {} for R {}",
+        cert.display(),
+        rver
+    ));
+    info!(
+        "Configured CA certificate bundle {} for R {}",
+        cert.display(),
+        rver
+    );
     Ok(())
 }
 
-// `rig system update-certs`: fetch a fresh CA bundle and re-point every
-// user-mode R installation at it. User mode only.
+// `rig system update-certs`: find the system CA bundle or fetch a fresh one,
+// and re-point every user-mode R installation at it. User mode only.
 pub fn sc_system_update_certs() -> Result<(), Box<dyn Error>> {
     if get_mode()? != Mode::User {
         OUTPUT.warn("`rig system update-certs` only applies in user mode.");
         warn!("`rig system update-certs` called in admin mode, ignoring");
         return Ok(());
     }
-    let cert = download_cacert(true)?;
+    let cert = get_cert_bundle(true)?;
     let vers = sc_get_list()?;
     if vers.is_empty() {
         OUTPUT.warn("No R installations to configure.");
@@ -2258,8 +2294,16 @@ pub fn sc_system_update_certs() -> Result<(), Box<dyn Error>> {
     }
     for ver in vers {
         configure_cert(&ver, &cert)?;
-        OUTPUT.success(&format!("Configured CA certificate bundle for R {}", ver));
-        info!("Configured CA certificate bundle for R {}", ver);
+        OUTPUT.success(&format!(
+            "Configured CA certificate bundle {} for R {}",
+            cert.display(),
+            ver
+        ));
+        info!(
+            "Configured CA certificate bundle {} for R {}",
+            cert.display(),
+            ver
+        );
     }
     Ok(())
 }
@@ -2548,6 +2592,7 @@ fn setup_user_fonts(rver: &str, with_fonts: bool, force: bool) -> Result<(), Box
 }
 
 pub fn set_cert_envvar() {
+    probe_system_cert();
     match std::env::var("SSL_CERT_FILE") {
         Ok(_) => {
             debug!("SSL_CERT_FILE is already set, keeping it.");

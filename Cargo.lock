@@ -2649,6 +2649,7 @@ dependencies = [
  "log",
  "nix 0.28.0",
  "once_cell",
+ "openssl-probe",
  "owo-colors",
  "path-clean",
  "predicates 2.1.5",

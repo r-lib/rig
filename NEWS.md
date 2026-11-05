@@ -7,6 +7,12 @@
   In admin mode, you'll need to re-install portable installations to fix
   them (#501).
 
+* On Linux, rig now points portable R installations at the system CA
+  bundle, e.g. `/etc/ssl/certs/ca-certificates.crt`, so R trusts the same
+  certificates as the rest of the system. It only downloads the Mozilla
+  bundle from curl.se if it cannot find a system bundle. This happens both
+  in `rig add` and `rig system update-certs` (#501).
+
 * `rig proj sync` no longer fails to install the project's own package
   sometimes, mostly on Linux. It copied the project's `.rvenv`
   directory too, while it was installing the dependencies there.

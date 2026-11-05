@@ -272,7 +272,7 @@
 >   * https://github.com/r-hub/rtools43/releases,
 >   * https://github.com/r-hub/rtools42/releases,
 >   * https://cloud.r-project.org/bin/windows/Rtools
-> - `rig add` downloads https://curl.se/ca/cacert.pem (the CA bundle) and
->   the fallback fonts from https://github.com/r-lib/rig/releases for the
->   portable Linux R builds.
+> - `rig add` downloads https://curl.se/ca/cacert.pem (the CA bundle), if
+>   there is no system CA bundle, and the fallback fonts from
+>   https://github.com/r-lib/rig/releases for the portable Linux R builds.
 </details>
