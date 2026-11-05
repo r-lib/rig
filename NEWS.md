@@ -1,5 +1,10 @@
 # rig 0.11.2-dev (development version)
 
+* `rig pkg install` and `rig proj sync` now show why a package failed to
+  install when the error happens outside of `R CMD INSTALL`, e.g. when the
+  library is not writeable. Before, this error was only in the debug
+  output (#504).
+
 * In user mode on Linux and for portable installations in admin mode,
   `SSL_CERT_FILE` and `CURL_CA_BUNDLE` set in the shell now take precedence
   over the rig CA bundle in R's `Renviron.site`. Run
