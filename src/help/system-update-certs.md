@@ -3,9 +3,14 @@ Find or download the CA certificate bundle and configure R to use it
 ## Description
 
 Find or download the CA certificate bundle and configure R to use it
-(Linux only, [user mode](../admin-vs-user-mode.qmd)).
+(Linux only).
 
-rig points every installed R version at the system CA bundle, e.g.
+In [user mode](../admin-vs-user-mode.qmd) rig updates every installed R
+version. In admin mode it only updates the portable R builds, because the
+distro-specific builds already use the system certificates. In admin mode
+this command needs `sudo`.
+
+rig points these R versions at the system CA bundle, e.g.
 `/etc/ssl/certs/ca-certificates.crt`, so R trusts the same certificates as
 the rest of the system. If there is no system bundle, rig downloads the
 Mozilla bundle from curl.se instead.

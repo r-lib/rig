@@ -2235,14 +2235,28 @@ fn render_fenced_block(existing: &str, start: &str, end: &str, body: &str) -> St
 // System CA bundle, found by `probe_system_cert()` at startup.
 static SYSTEM_CERT: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
 
+// Passes the probe result to the rig process that `escalate()` starts with
+// `sudo`. An empty value means that there is no system bundle.
+const SYSTEM_CERT_ENV: &str = "RIG_SYSTEM_CERT_FILE";
+
 // Look for the system CA bundle. `openssl_probe::probe()` returns
 // `SSL_CERT_FILE` if it is set, so this must run before `set_cert_envvar()`
 // points it at rig's own bundle. A user-set `SSL_CERT_FILE` wins, otherwise
-// this is the first known distro location that exists.
+// this is the first known distro location that exists. `escalate()` keeps
+// `SSL_CERT_FILE`, so the escalated process would find rig's bundle; it uses
+// the result of the original process instead.
 fn probe_system_cert() {
     SYSTEM_CERT.get_or_init(|| {
+        if let Some(cert) = std::env::var_os(SYSTEM_CERT_ENV) {
+            debug!("System CA bundle from {}: {:?}", SYSTEM_CERT_ENV, cert);
+            return (!cert.is_empty()).then(|| PathBuf::from(cert));
+        }
         let cert = openssl_probe::probe().cert_file;
         debug!("System CA bundle: {:?}", cert);
+        std::env::set_var(
+            SYSTEM_CERT_ENV,
+            cert.as_deref().map(|p| p.as_os_str()).unwrap_or_default(),
+        );
         cert
     });
 }
@@ -2279,19 +2293,27 @@ fn setup_user_cert(rver: &str, force: bool) -> Result<(), Box<dyn Error>> {
 }
 
 // `rig system update-certs`: find the system CA bundle or fetch a fresh one,
-// and re-point every user-mode R installation at it. User mode only.
+// and re-point the portable R installations at it. In user mode every
+// installation is portable. In admin mode the distro-specific builds use the
+// system certificates anyway, so only the portable ones are updated.
 pub fn sc_system_update_certs() -> Result<(), Box<dyn Error>> {
-    if get_mode()? != Mode::User {
-        OUTPUT.warn("`rig system update-certs` only applies in user mode.");
-        warn!("`rig system update-certs` called in admin mode, ignoring");
+    let mode = get_mode()?;
+    let rroot = get_r_root()?;
+    let vers: Vec<String> = sc_get_list()?
+        .into_iter()
+        .filter(|v| {
+            mode == Mode::User || read_install_platform(&Path::new(&rroot).join(v)).is_some()
+        })
+        .collect();
+    if vers.is_empty() {
+        let what = if mode == Mode::User { "" } else { "portable " };
+        OUTPUT.warn(&format!("No {}R installations to configure.", what));
         return Ok(());
+    }
+    if mode == Mode::Admin {
+        escalate("updating CA certificates")?;
     }
     let cert = get_cert_bundle(true)?;
-    let vers = sc_get_list()?;
-    if vers.is_empty() {
-        OUTPUT.warn("No R installations to configure.");
-        return Ok(());
-    }
     for ver in vers {
         configure_cert(&ver, &cert)?;
         OUTPUT.success(&format!(

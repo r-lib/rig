@@ -2,16 +2,18 @@
 
 * In user mode on Linux and for portable installations in admin mode,
   `SSL_CERT_FILE` and `CURL_CA_BUNDLE` set in the shell now take precedence
-  over the rig CA bundle in R's `Renviron.site`. In user mode run
-  `rig system update-certs` to fix R versions that are already installed.
-  In admin mode, you'll need to re-install portable installations to fix
-  them (#501).
+  over the rig CA bundle in R's `Renviron.site`. Run
+  `rig system update-certs` to fix R versions that are already installed
+  (#501).
 
 * On Linux, rig now points portable R installations at the system CA
   bundle, e.g. `/etc/ssl/certs/ca-certificates.crt`, so R trusts the same
   certificates as the rest of the system. It only downloads the Mozilla
   bundle from curl.se if it cannot find a system bundle. This happens both
   in `rig add` and `rig system update-certs` (#501).
+
+* `rig system update-certs` now also works in admin mode on Linux. It
+  updates the portable R installations, and runs `sudo` if needed.
 
 * `rig proj sync` no longer fails to install the project's own package
   sometimes, mostly on Linux. It copied the project's `.rvenv`

@@ -58,6 +58,7 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
             "SSL_CERT_FILE",
             "SSL_CERT_DIR",
             "RIG_PLATFORM",
+            "RIG_SYSTEM_CERT_FILE",
         ])?;
     }
 
