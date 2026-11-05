@@ -2193,9 +2193,14 @@ const CERT_BLOCK_END: &str = "## rig SSL_CERT_FILE end";
 // Produce the contents of `Renviron.site` with the rig CA-bundle block set to
 // `cert`. Any previous rig block in `existing` is replaced (not duplicated), so
 // re-running with a new path is idempotent and leaves the rest of the file
-// untouched.
+// untouched. The `${VAR-default}` form only sets each variable if it is not
+// already set, so a value exported in the shell or set via `R_ENVIRON` still
+// wins over the rig bundle.
 fn render_renviron_cert(existing: &str, cert: &str) -> String {
-    let body = format!("SSL_CERT_FILE={}\nCURL_CA_BUNDLE={}", cert, cert);
+    let body = format!(
+        "SSL_CERT_FILE=${{SSL_CERT_FILE-{}}}\nCURL_CA_BUNDLE=${{CURL_CA_BUNDLE-{}}}",
+        cert, cert
+    );
     render_fenced_block(existing, CERT_BLOCK_START, CERT_BLOCK_END, &body)
 }
 
@@ -2673,8 +2678,8 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
         assert_eq!(
             out,
             "## rig SSL_CERT_FILE start\n\
-             SSL_CERT_FILE=/home/u/.local/share/rig/etc/cacert.pem\n\
-             CURL_CA_BUNDLE=/home/u/.local/share/rig/etc/cacert.pem\n\
+             SSL_CERT_FILE=${SSL_CERT_FILE-/home/u/.local/share/rig/etc/cacert.pem}\n\
+             CURL_CA_BUNDLE=${CURL_CA_BUNDLE-/home/u/.local/share/rig/etc/cacert.pem}\n\
              ## rig SSL_CERT_FILE end\n"
         );
     }
@@ -2684,8 +2689,8 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
         let existing = "FOO=bar\nBAZ=qux\n";
         let out = render_renviron_cert(existing, "/etc/cacert.pem");
         assert!(out.starts_with("FOO=bar\nBAZ=qux\n"));
-        assert!(out.contains("SSL_CERT_FILE=/etc/cacert.pem"));
-        assert!(out.contains("CURL_CA_BUNDLE=/etc/cacert.pem"));
+        assert!(out.contains("SSL_CERT_FILE=${SSL_CERT_FILE-/etc/cacert.pem}"));
+        assert!(out.contains("CURL_CA_BUNDLE=${CURL_CA_BUNDLE-/etc/cacert.pem}"));
     }
 
     #[test]
@@ -2696,7 +2701,7 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
         assert_eq!(second.matches(CERT_BLOCK_START).count(), 1);
         assert_eq!(second.matches(CERT_BLOCK_END).count(), 1);
         assert!(!second.contains("/old/cacert.pem"));
-        assert!(second.contains("SSL_CERT_FILE=/new/cacert.pem"));
+        assert!(second.contains("SSL_CERT_FILE=${SSL_CERT_FILE-/new/cacert.pem}"));
         assert!(second.starts_with("FOO=bar\n"));
 
         // A second run with the same path is a no-op on the contents.

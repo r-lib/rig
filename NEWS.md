@@ -1,5 +1,12 @@
 # rig 0.11.2-dev (development version)
 
+* In user mode on Linux and for portable installations in admin mode,
+  `SSL_CERT_FILE` and `CURL_CA_BUNDLE` set in the shell now take precedence
+  over the rig CA bundle in R's `Renviron.site`. In user mode run
+  `rig system update-certs` to fix R versions that are already installed.
+  In admin mode, you'll need to re-install portable installations to fix
+  them (#501).
+
 * `rig proj sync` no longer fails to install the project's own package
   sometimes, mostly on Linux. It copied the project's `.rvenv`
   directory too, while it was installing the dependencies there.
