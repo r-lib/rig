@@ -106,11 +106,21 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v7
 
+    # The redhat/* containers register with subscription-manager, using the
+    # REDHAT_* secrets, and a pull request from a fork does not get secrets.
+    # They are left out of the matrix then, rather than failing before
+    # running a single test.
     - name: Set up matrix of containers
       id: matrix-setup-x86_64
       run: |
         containers=$(make print-linux-variants-json)
+        if [ -z "$REDHAT_ORG" ]; then
+          echo "REDHAT_ORG is not available, leaving out the redhat/* containers"
+          containers=$(echo "$containers" | jq -c 'map(select(startswith("redhat/") | not))')
+        fi
         echo "containers=$containers" >> $GITHUB_OUTPUT
+      env:
+        REDHAT_ORG: ${{ secrets.REDHAT_ORG }}
 
   linux-tests-x86_64:
     needs: linux-tests-x86_64-setup
@@ -194,11 +204,21 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v7
 
+    # The redhat/* containers register with subscription-manager, using the
+    # REDHAT_* secrets, and a pull request from a fork does not get secrets.
+    # They are left out of the matrix then, rather than failing before
+    # running a single test.
     - name: Set up matrix of containers
       id: matrix-setup-aarch64
       run: |
         containers=$(make print-linux-variants-json)
+        if [ -z "$REDHAT_ORG" ]; then
+          echo "REDHAT_ORG is not available, leaving out the redhat/* containers"
+          containers=$(echo "$containers" | jq -c 'map(select(startswith("redhat/") | not))')
+        fi
         echo "containers=$containers" >> $GITHUB_OUTPUT
+      env:
+        REDHAT_ORG: ${{ secrets.REDHAT_ORG }}
 
   linux-tests-aarch64:
     needs: linux-tests-aarch64-setup
