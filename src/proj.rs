@@ -5066,7 +5066,7 @@ fn install_r_with_rig_add(r_version: &str, arch: &str) -> Result<(), Box<dyn Err
     // installation would run as root too, e.g. installing the packages into
     // the project library (#503). So run `rig add` in a child process then,
     // and only the child escalates.
-    if get_mode()? == Mode::Admin && !is_elevated_now() {
+    if rig_add_in_child(get_mode()?, is_elevated_now()) {
         return install_r_with_rig_add_process(r_version, arch);
     }
     // `rig add` is a subcommand, not a function that takes a version, so go
@@ -5080,21 +5080,47 @@ fn install_r_with_rig_add(r_version: &str, arch: &str) -> Result<(), Box<dyn Err
     Ok(())
 }
 
+/// Whether to run `rig add` in a child process, see
+/// [`install_r_with_rig_add`]: in admin mode, unless rig is already running
+/// as root (administrator on Windows), so `rig add` would escalate.
+fn rig_add_in_child(mode: Mode, elevated: bool) -> bool {
+    mode == Mode::Admin && !elevated
+}
+
+/// The `rig add` command that installs `r_version` for `arch` in a child
+/// process, in admin mode.
+fn rig_add_command(
+    exe: &Path,
+    r_version: &str,
+    arch: &str,
+    no_cache: bool,
+    cache_dir: Option<&str>,
+) -> std::process::Command {
+    let mut cmd = std::process::Command::new(exe);
+    // The global flags are not inherited by the child, pass them on.
+    // `escalate()` keeps these env vars for the escalated process.
+    cmd.arg("--admin");
+    if no_cache {
+        cmd.env("RIG_NO_CACHE", "true");
+    }
+    if let Some(dir) = cache_dir {
+        cmd.env("RIG_CACHE_DIR", dir);
+    }
+    cmd.args(&r_add_args(r_version, arch)[1..]);
+    cmd
+}
+
 /// Install `r_version` for `arch` by running `rig add` in a child process,
 /// which escalates on its own.
 fn install_r_with_rig_add_process(r_version: &str, arch: &str) -> Result<(), Box<dyn Error>> {
     let exe = std::env::current_exe()?;
-    let mut cmd = std::process::Command::new(&exe);
-    // The global flags are not inherited by the child, pass them on.
-    // `escalate()` keeps these env vars for the escalated process.
-    cmd.arg("--admin");
-    if crate::cache::no_cache() {
-        cmd.env("RIG_NO_CACHE", "true");
-    }
-    if let Some(dir) = crate::cache::cache_dir_flag() {
-        cmd.env("RIG_CACHE_DIR", dir);
-    }
-    cmd.args(&r_add_args(r_version, arch)[1..]);
+    let mut cmd = rig_add_command(
+        &exe,
+        r_version,
+        arch,
+        crate::cache::no_cache(),
+        crate::cache::cache_dir_flag(),
+    );
     debug!("Running {:?}", cmd);
     let status = cmd.status()?;
     if !status.success() {
@@ -7251,6 +7277,57 @@ mod tests {
             } else {
                 vec!["rig", "add", "4.6.1"]
             }
+        );
+    }
+
+    #[test]
+    fn r_is_installed_in_a_child_process_only_if_rig_add_would_escalate() {
+        // #503: in admin mode `rig add` re-runs the whole command line with
+        // sudo, so the rest of `rig proj sync` would run as root.
+        assert!(rig_add_in_child(Mode::Admin, false));
+        assert!(!rig_add_in_child(Mode::Admin, true));
+        assert!(!rig_add_in_child(Mode::User, false));
+        assert!(!rig_add_in_child(Mode::User, true));
+    }
+
+    #[test]
+    fn rig_add_child_command_is_a_valid_admin_mode_rig_add() {
+        let cmd = rig_add_command(Path::new("/path/to/rig"), "4.6.1", "x86_64", false, None);
+        assert_eq!(cmd.get_program(), "/path/to/rig");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        let mut expected = vec!["--admin".to_string()];
+        expected.extend(r_add_args("4.6.1", "x86_64").into_iter().skip(1));
+        assert_eq!(args, expected);
+        assert_eq!(cmd.get_envs().count(), 0);
+
+        // clap must accept it as `rig add` in admin mode
+        let argv = std::iter::once("rig".to_string()).chain(args);
+        let matches = rig_app().try_get_matches_from(argv).unwrap();
+        assert!(matches.get_flag("admin"));
+        let (name, addargs) = matches.subcommand().unwrap();
+        assert_eq!(name, "add");
+        assert_eq!(addargs.get_one::<String>("str").unwrap(), "4.6.1");
+    }
+
+    #[test]
+    fn rig_add_child_command_keeps_the_cache_settings() {
+        let cmd = rig_add_command(Path::new("rig"), "4.6.1", "x86_64", true, Some("/my/cache"));
+        let envs: HashMap<String, String> = cmd
+            .get_envs()
+            .map(|(k, v)| {
+                (
+                    k.to_string_lossy().to_string(),
+                    v.unwrap().to_string_lossy().to_string(),
+                )
+            })
+            .collect();
+        assert_eq!(envs.get("RIG_NO_CACHE").map(|s| s.as_str()), Some("true"));
+        assert_eq!(
+            envs.get("RIG_CACHE_DIR").map(|s| s.as_str()),
+            Some("/my/cache")
         );
     }
 
