@@ -22,6 +22,7 @@ use crate::common::{
 };
 use crate::dcf::*;
 use crate::download::download_multiple_first_available_with_progress;
+use crate::escalate::is_elevated_now;
 use crate::exclude_newer::{exclude_newer_arg, ExcludeNewerSpec};
 use crate::install::{
     install_packages, parse_linkingto, PackageInfo, REMOTE_GIT_FIELDS, REMOTE_HASH_FIELD,
@@ -68,7 +69,7 @@ use crate::rversion::OsVersion;
 use crate::script_meta::{script_lock_env, script_lock_path};
 use crate::solver::*;
 use crate::textfmt::{dcf_field_to_text, reflow};
-use crate::utils::{create_parent_dir_if_needed, write_atomically};
+use crate::utils::{create_parent_dir_if_needed, get_mode, write_atomically, Mode};
 use toml_edit::DocumentMut;
 
 #[cfg(target_os = "macos")]
@@ -5060,14 +5061,48 @@ fn install_r_with_rig_add(r_version: &str, arch: &str) -> Result<(), Box<dyn Err
         "R {} ({}) is not installed, installing it now",
         r_version, arch
     );
+    // In admin mode `rig add` escalates by re-running the whole current
+    // command line with sudo (gsudo on Windows), so everything after the R
+    // installation would run as root too, e.g. installing the packages into
+    // the project library (#503). So run `rig add` in a child process then,
+    // and only the child escalates.
+    if get_mode()? == Mode::Admin && !is_elevated_now() {
+        return install_r_with_rig_add_process(r_version, arch);
+    }
     // `rig add` is a subcommand, not a function that takes a version, so go
-    // through clap. It escalates on its own in admin mode.
+    // through clap.
     let matches = rig_app().try_get_matches_from(r_add_args(r_version, arch))?;
     let (_name, addargs) = match matches.subcommand() {
         Some(x) => x,
         None => bail!("Internal error: `rig add` did not parse"),
     };
     sc_add(addargs)?;
+    Ok(())
+}
+
+/// Install `r_version` for `arch` by running `rig add` in a child process,
+/// which escalates on its own.
+fn install_r_with_rig_add_process(r_version: &str, arch: &str) -> Result<(), Box<dyn Error>> {
+    let exe = std::env::current_exe()?;
+    let mut cmd = std::process::Command::new(&exe);
+    // The global flags are not inherited by the child, pass them on.
+    // `escalate()` keeps these env vars for the escalated process.
+    cmd.arg("--admin");
+    if crate::cache::no_cache() {
+        cmd.env("RIG_NO_CACHE", "true");
+    }
+    if let Some(dir) = crate::cache::cache_dir_flag() {
+        cmd.env("RIG_CACHE_DIR", dir);
+    }
+    cmd.args(&r_add_args(r_version, arch)[1..]);
+    debug!("Running {:?}", cmd);
+    let status = cmd.status()?;
+    if !status.success() {
+        let msg = format!("Failed to install R {} ({})", r_version, arch);
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!("{}", msg);
+    }
     Ok(())
 }
 

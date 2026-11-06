@@ -65,6 +65,18 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// Whether rig is already running as root, so `escalate()` would not re-run it.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub fn is_elevated_now() -> bool {
+    sudo::check() == sudo::RunningAs::Root
+}
+
+/// Whether rig is already running elevated, so `escalate()` would not re-run it.
+#[cfg(target_os = "windows")]
+pub fn is_elevated_now() -> bool {
+    is_elevated::is_elevated()
+}
+
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn get_home() -> Result<String, Box<dyn Error>> {
     let home = match std::env::var("HOME") {

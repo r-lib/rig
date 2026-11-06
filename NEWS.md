@@ -1,5 +1,11 @@
 # rig 0.11.2-dev (development version)
 
+* In admin mode, when `rig proj sync` or `rig run` need to install R, they
+  now run `rig add` in a separate process, and only that process runs with
+  `sudo` (or as administrator on Windows). Before, the whole command ran
+  again with `sudo` after the R installation, so the project library and
+  the package cache were owned by root (#503).
+
 * `rig pkg install` and `rig proj sync` now show why a package failed to
   install when the error happens outside of `R CMD INSTALL`, e.g. when the
   library is not writeable. Before, this error was only in the debug
