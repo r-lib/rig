@@ -1,5 +1,13 @@
 # rig 0.11.2-dev (development version)
 
+* On Windows in user mode, `rig add`, `rig list` and the other commands that
+  look at the installed R versions no longer fail with "Cannot extract R
+  version from ...\R-release.exe, invalid R link file?" when an
+  `R-release.exe`, `R-oldrel.exe` or `R-next.exe` link points at an R
+  outside the current R root, e.g. after an install into a different
+  `RIG_R_INSTALL_DIR`. Such a link is now skipped, as on macOS and Linux
+  (#506).
+
 * In admin mode, when `rig proj sync` or `rig run` need to install R, they
   now run `rig add` in a separate process, and only that process runs with
   `sudo` (or as administrator on Windows). Before, the whole command ran
