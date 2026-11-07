@@ -4,9 +4,10 @@ Create rproj.toml from an renv.lock file
 
 Read an `renv.lock` file and create `rproj.toml`, rig's project manifest, from
 it: one dependency per locked package (with a `^`-pinned version
-requirement), and an `R` requirement from the lock file's R version. Fails if
-`rproj.toml` already exists; use `--dependencies` to merge into an existing
-file instead.
+requirement), an `R` requirement from the lock file's R version (limited to that
+R minor version if the lock file pins a Bioconductor release, which is built for
+one R minor version), and the package repositories. Fails if `rproj.toml`
+already exists; use `--dependencies` to merge into an existing file instead.
 
 `renv.lock` has no project metadata (name, title, authors, ...), so a new
 manifest is named after the current directory.
@@ -16,6 +17,18 @@ point to a different file.
 
 After importing, run [`rig proj lock`](proj.qmd#rig-proj-lock) to solve the dependencies and write
 `rproj.lock`.
+
+## Sources
+
+renv enumerates required repositories listed in the lock file, so rig attempts
+to do the same, mapping known CRAN and Bioconductor aliases to the built-in
+repositories when possible and writing explicit `[[repository]]` entries
+otherwise. Built-in repositories are disabled if the lock file does not use
+them.
+
+Packages from any other source (e.g. GitHub, a URL or a local file) are
+currently imported as ordinary version requirements. rig prints a warning that
+they may need manual adjustment.
 
 ## Files
 
