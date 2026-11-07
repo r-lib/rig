@@ -106,10 +106,6 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v7
 
-    # The redhat/* containers register with subscription-manager, using the
-    # REDHAT_* secrets, and a pull request from a fork does not get secrets.
-    # They are left out of the matrix then, rather than failing before
-    # running a single test.
     - name: Set up matrix of containers
       id: matrix-setup-x86_64
       run: |
@@ -205,10 +201,6 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v7
 
-    # The redhat/* containers register with subscription-manager, using the
-    # REDHAT_* secrets, and a pull request from a fork does not get secrets.
-    # They are left out of the matrix then, rather than failing before
-    # running a single test.
     - name: Set up matrix of containers
       id: matrix-setup-aarch64
       run: |
