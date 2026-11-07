@@ -540,14 +540,22 @@ pub fn get_r_install_dir() -> Result<Option<String>, Box<dyn Error>> {
     Ok(None)
 }
 
+// rig builds R paths and link targets with backslashes, so a root given
+// with forward slashes (`C:/R`) gets backslashes, and loses its trailing
+// separator, to compare equal to the same root written as `C:\R`.
+#[cfg(any(target_os = "windows", test))]
+fn normalize_windows_r_install_dir(val: &str) -> String {
+    val.replace('/', "\\").trim_end_matches('\\').to_string()
+}
+
 #[cfg(target_os = "windows")]
 pub fn get_r_install_dir() -> Result<Option<String>, Box<dyn Error>> {
     if let Ok(val) = std::env::var("RIG_R_INSTALL_DIR") {
-        return Ok(Some(val.trim_end_matches('\\').to_string()));
+        return Ok(Some(normalize_windows_r_install_dir(&val)));
     }
 
     if let Some(val) = crate::config::get_global_config_value("r-install-dir")? {
-        return Ok(Some(val.trim_end_matches('\\').to_string()));
+        return Ok(Some(normalize_windows_r_install_dir(&val)));
     }
 
     if get_mode()? == Mode::User {
@@ -1343,5 +1351,17 @@ mod r_path_tests {
         assert!(!is_too_long_for_windows(Path::new(&ok)));
         let long = format!("{}a", ok);
         assert!(is_too_long_for_windows(Path::new(&long)));
+    }
+
+    #[test]
+    fn test_normalize_windows_r_install_dir() {
+        assert_eq!(normalize_windows_r_install_dir("C:\\R"), "C:\\R");
+        assert_eq!(normalize_windows_r_install_dir("C:/R"), "C:\\R");
+        assert_eq!(normalize_windows_r_install_dir("C:/R/"), "C:\\R");
+        assert_eq!(normalize_windows_r_install_dir("C:\\R\\"), "C:\\R");
+        assert_eq!(
+            normalize_windows_r_install_dir("D:/tools\\rig/r"),
+            "D:\\tools\\rig\\r"
+        );
     }
 }

@@ -6,7 +6,8 @@
   `R-release.exe`, `R-oldrel.exe` or `R-next.exe` link points at an R
   outside the current R root, e.g. after an install into a different
   `RIG_R_INSTALL_DIR`. Such a link is now skipped, as on macOS and Linux
-  (#506).
+  (#506). A `RIG_R_INSTALL_DIR` or `r-install-dir` written with forward
+  slashes, e.g. `C:/R`, now names the same root as `C:\R`.
 
 * In admin mode, when `rig proj sync` or `rig run` need to install R, they
   now run `rig add` in a separate process, and only that process runs with

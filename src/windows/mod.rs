@@ -1401,10 +1401,12 @@ fn find_r_version_in_link(path: &Path) -> Result<Option<String>, Box<dyn Error>>
 }
 
 // User mode: <root>\<version>\bin\R.exe, so the version is the path
-// component right after the root. Windows paths are case-insensitive, and so
-// is this match.
+// component right after the root. Windows paths are case-insensitive, and
+// accept both `\` and `/`, and so does this match: a link made while the root
+// was set as `C:/R` has the target `C:/R\4.5.1\bin\R.exe`.
 fn user_version_from_link_target(target: &str, user_root: &str) -> Option<String> {
-    let prefix = format!("{}\\", user_root);
+    let target = target.replace('/', "\\");
+    let prefix = format!("{}\\", user_root.replace('/', "\\"));
     if !target.to_lowercase().starts_with(&prefix.to_lowercase()) {
         return None;
     }
@@ -2882,10 +2884,17 @@ mod tests {
         );
         // A link left behind by an install into another root (#506).
         assert_eq!(user_version_from_link_target(target, "D:\\R"), None);
-        // A root with forward slashes never matches a link target.
+        // The same root with forward slashes, in the root or in the target.
         assert_eq!(
             user_version_from_link_target(target, "C:/Users/me/AppData/Roaming/rig/data/r"),
-            None
+            Some("4.5.1".to_string())
+        );
+        assert_eq!(
+            user_version_from_link_target(
+                "C:/Users/me/AppData/Roaming/rig/data/r\\4.5.1\\bin\\R.exe",
+                root
+            ),
+            Some("4.5.1".to_string())
         );
         // A directory whose name merely starts with the root is another root.
         assert_eq!(
