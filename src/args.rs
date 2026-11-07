@@ -2324,6 +2324,15 @@ pub fn rig_app() -> Command {
                         .action(clap::ArgAction::SetTrue),
                 )
                 .arg(
+                    Arg::new("exact-versions")
+                        .help(
+                            "Require exactly the locked package versions, instead of\n\
+                            compatible ones",
+                        )
+                        .long("exact-versions")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
                     Arg::new("force")
                         .help("Overwrite existing project files")
                         .long("force")

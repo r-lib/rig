@@ -3,11 +3,9 @@ Create rproj.toml from an renv.lock file
 ## Description
 
 Read an `renv.lock` file and create `rproj.toml`, rig's project manifest, from
-it: one dependency per locked package (with a `^`-pinned version
-requirement), an `R` requirement from the lock file's R version (limited to that
-R minor version if the lock file pins a Bioconductor release, which is built for
-one R minor version), and the package repositories. Fails if `rproj.toml`
-already exists; use `--dependencies` to merge into an existing file instead.
+it: one dependency per locked package, an `R` requirement from the lock file's R
+version, and the package repositories. Fails if `rproj.toml` already exists; use
+`--dependencies` to merge into an existing file instead.
 
 `renv.lock` has no project metadata (name, title, authors, ...), so a new
 manifest is named after the current directory.
@@ -26,12 +24,40 @@ repositories when possible and writing explicit `[[repository]]` entries
 otherwise. Built-in repositories are disabled if the lock file does not use
 them.
 
+When a lock file uses Bioconductor, rig will also constrain the R version to one
+compatible with that Bioconductor release.
+
 A package that renv installed from GitHub, GitLab, Bitbucket or a git URL
 becomes a `git` dependency.
 
 Packages from any other source (e.g. a URL or a local file) are currently
 imported as ordinary version requirements. rig prints a warning that they may
 need manual adjustment.
+
+## Exact versions
+
+renv restores exactly the versions in `renv.lock`. By default rig imports them
+as `^` requirements instead, which `rig proj lock` may resolve to a later
+version, if compatible. This allows the new project to take advantage of rig's
+more advanced resolution and compatibility checks.
+
+To more closely match an existing renv project library, use `--exact-versions`
+to import packages with exact versions instead, e.g. `cli = "= 3.6.1"` rather
+than `cli = "^3.6.1"`. This also limits the `R` version more carefully.
+
+`--exact-versions` has a cost: it can fail to resolve a lock file that is not
+internally consistent, e.g. one that has a package together with an older
+version of its dependency than the package needs. Using exact versions also
+makes day-to-day project operations more complex:
+
+- `rig proj lock --upgrade` and `--upgrade-package` cannot move a package
+  away from its exact version. To upgrade one, relax its requirement in
+  `rproj.toml`, e.g. with `rig proj add 'cli@^3.6.1'`.
+
+- `renv.lock` lists every package of the project, including the dependencies
+  of other packages, so each of them becomes a dependency with an exact
+  requirement in `rproj.toml`. Adding a package whose dependencies need newer
+  versions of these fails until you relax their requirements, too.
 
 ## Files
 

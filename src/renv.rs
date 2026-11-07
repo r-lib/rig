@@ -91,6 +91,11 @@ fn sc_renv_import(
     let default_input = "renv.lock".to_string();
     let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
     let dependencies_only = args.get_flag("dependencies");
+    let versions = if args.get_flag("exact-versions") {
+        VersionPolicy::Exact
+    } else {
+        VersionPolicy::Compatible
+    };
     let root = std::env::current_dir()?;
     let path = root.join(RPROJ_MANIFEST_FILE);
     let path = path.as_path();
@@ -151,6 +156,7 @@ fn sc_renv_import(
         &mut manifest,
         &lockfile,
         !dependencies_only || !path_existed,
+        versions,
     )?;
     let minor = minor_r_version(&lockfile.R.Version)?;
 
@@ -891,12 +897,24 @@ fn import_warnings(report: &ImportReport, input: &str) -> Vec<String> {
     warnings
 }
 
+/// How the locked package versions become version requirements.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum VersionPolicy {
+    /// The locked version or a later compatible one, i.e. `^<version>`.
+    Compatible,
+    /// Exactly the locked version, i.e. `= <version>`.
+    Exact,
+}
+
 /// The `R` requirement of the manifest for `lockfile`. A Bioconductor
 /// release is built for one R minor version, so a lock file with one is
 /// limited to its R minor version.
-fn r_requirement(lockfile: &REnvLockfile) -> Result<String, Box<dyn Error>> {
+fn r_requirement(
+    lockfile: &REnvLockfile,
+    versions: VersionPolicy,
+) -> Result<String, Box<dyn Error>> {
     let minor = minor_r_version(&lockfile.R.Version)?;
-    if lockfile.Bioconductor.is_none() {
+    if lockfile.Bioconductor.is_none() && versions == VersionPolicy::Compatible {
         return Ok(format!(">= {}", minor));
     }
     let (major, minor_part) = minor
@@ -920,8 +938,9 @@ fn apply_lockfile(
     manifest: &mut Rproj,
     lockfile: &REnvLockfile,
     repositories: bool,
+    versions: VersionPolicy,
 ) -> Result<ImportReport, Box<dyn Error>> {
-    manifest.add_dependency("R", &r_requirement(lockfile)?, false);
+    manifest.add_dependency("R", &r_requirement(lockfile, versions)?, false);
 
     let mut repos = ImportedRepositories::new(
         &lockfile.R.Repositories,
@@ -946,7 +965,11 @@ fn apply_lockfile(
             }
             continue;
         }
-        manifest.add_dependency(name, &format!("^{}", pkg.Version), false);
+        let requirement = match versions {
+            VersionPolicy::Compatible => format!("^{}", pkg.Version),
+            VersionPolicy::Exact => format!("= {}", pkg.Version),
+        };
+        manifest.add_dependency(name, &requirement, false);
         match repos.placement(pkg) {
             Placement::Pin(repo) => {
                 if set_repository(manifest, name, Some(&repo)) {
@@ -1146,8 +1169,12 @@ mod tests {
 
     /// Import the lock file `json` into a new manifest, which must be valid.
     fn import_report(json: &str) -> (Rproj, ImportReport) {
+        import_with(json, VersionPolicy::Compatible)
+    }
+
+    fn import_with(json: &str, versions: VersionPolicy) -> (Rproj, ImportReport) {
         let mut manifest = Rproj::minimal("proj");
-        let report = apply_lockfile(&mut manifest, &lockfile(json), true).unwrap();
+        let report = apply_lockfile(&mut manifest, &lockfile(json), true, versions).unwrap();
         manifest.check_repositories().unwrap();
         ProjRepos::from_manifest(&manifest)
             .unwrap()
@@ -1162,7 +1189,7 @@ mod tests {
 
     /// Merge the lock file `json` into `manifest`, which must stay valid.
     fn merge(manifest: &mut Rproj, json: &str) {
-        apply_lockfile(manifest, &lockfile(json), false).unwrap();
+        apply_lockfile(manifest, &lockfile(json), false, VersionPolicy::Compatible).unwrap();
         manifest.check_repositories().unwrap();
     }
 
@@ -1305,6 +1332,74 @@ mod tests {
         assert_eq!(
             m.dependencies.get("R"),
             Some(&Dependency::Version(">= 4.4".to_string()))
+        );
+    }
+
+    #[test]
+    fn exact_versions_are_equal_requirements_and_limit_r_to_its_minor_version() {
+        let (m, _) = import_with(
+            &lock(
+                &[cran(), repo("internal", INTERNAL_URL)],
+                &[
+                    pkg("cli", "3.6.3", "CRAN"),
+                    pkg("acme", "1.2-0", "internal"),
+                ],
+            ),
+            VersionPolicy::Exact,
+        );
+        assert_eq!(
+            m.dependencies.get("cli"),
+            Some(&Dependency::Version("= 3.6.3".to_string()))
+        );
+        assert_eq!(
+            m.dependencies.get("acme"),
+            Some(&Dependency::Detailed(Box::new(DepTable {
+                version: Some("= 1.2-0".to_string()),
+                repository: Some("internal".to_string()),
+                ..Default::default()
+            })))
+        );
+        assert_eq!(
+            m.dependencies.get("R"),
+            Some(&Dependency::Version(">= 4.4, < 4.5".to_string()))
+        );
+    }
+
+    #[test]
+    fn exact_versions_keep_git_packages_at_the_locked_commit() {
+        let json = lock(
+            &[cran()],
+            &[
+                r#""ts": {"Package": "ts", "Version": "0.1.0", "Source": "GitHub",
+                "RemoteUsername": "o", "RemoteRepo": "ts", "RemoteSha": "3f2a9c1"}"#
+                    .to_string(),
+            ],
+        );
+        let (m, _) = import_with(&json, VersionPolicy::Exact);
+        assert_eq!(
+            m.dependencies.get("ts"),
+            Some(&Dependency::Detailed(Box::new(DepTable {
+                git: Some("https://github.com/o/ts.git".to_string()),
+                rev: Some("3f2a9c1".to_string()),
+                ..Default::default()
+            })))
+        );
+    }
+
+    #[test]
+    fn merging_exact_versions_overwrites_existing_requirements() {
+        let mut manifest = Rproj::minimal("proj");
+        manifest.add_dependency("cli", "^3.0.0", false);
+        manifest.add_dependency("glue", ">= 1.0", false);
+        let lock = lockfile(&lock(&[cran()], &[pkg("cli", "3.6.3", "CRAN")]));
+        apply_lockfile(&mut manifest, &lock, false, VersionPolicy::Exact).unwrap();
+        assert_eq!(
+            manifest.dependencies.get("cli"),
+            Some(&Dependency::Version("= 3.6.3".to_string()))
+        );
+        assert_eq!(
+            manifest.dependencies.get("glue"),
+            Some(&Dependency::Version(">= 1.0".to_string()))
         );
     }
 
@@ -2520,7 +2615,13 @@ mod tests {
             manifest
         };
 
-        let err = apply_lockfile(&mut bioc_off_manifest(), &lock, false).unwrap_err();
+        let err = apply_lockfile(
+            &mut bioc_off_manifest(),
+            &lock,
+            false,
+            VersionPolicy::Compatible,
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("turned off"), "{}", err);
 
         let mut manifest = bioc_off_manifest();
@@ -2531,7 +2632,7 @@ mod tests {
                 ..Default::default()
             })),
         );
-        apply_lockfile(&mut manifest, &lock, false).unwrap();
+        apply_lockfile(&mut manifest, &lock, false, VersionPolicy::Compatible).unwrap();
         assert_eq!(repository_of(&manifest, "Biobase"), None);
     }
 
@@ -2557,7 +2658,8 @@ mod tests {
             &[repo("internal", INTERNAL_URL)],
             &[pkg("acme", "1.2.0", "internal")],
         ));
-        let err = apply_lockfile(&mut manifest, &lock, false).unwrap_err();
+        let err =
+            apply_lockfile(&mut manifest, &lock, false, VersionPolicy::Compatible).unwrap_err();
         assert!(err.to_string().contains("two repositories"), "{}", err);
     }
 
@@ -2570,13 +2672,14 @@ mod tests {
         manifest
             .repository
             .push(Repository::disabled(CRAN_REPOSITORY_NAME));
-        let err = apply_lockfile(&mut manifest, &lock, false).unwrap_err();
+        let err =
+            apply_lockfile(&mut manifest, &lock, false, VersionPolicy::Compatible).unwrap_err();
         assert!(err.to_string().contains("Turn CRAN on"), "{}", err);
 
         manifest
             .repository
             .push(Repository::at_url("mirror", INTERNAL_URL));
-        apply_lockfile(&mut manifest, &lock, false).unwrap();
+        apply_lockfile(&mut manifest, &lock, false, VersionPolicy::Compatible).unwrap();
         assert_eq!(repository_of(&manifest, "cli"), None);
     }
 
@@ -2601,7 +2704,7 @@ mod tests {
                 })),
             );
         let lock = lockfile(&lock(&[cran()], &[pkg("cli", "3.6.3", "CRAN")]));
-        apply_lockfile(&mut manifest, &lock, false).unwrap();
+        apply_lockfile(&mut manifest, &lock, false, VersionPolicy::Compatible).unwrap();
         assert_eq!(repository_of(&manifest, "cli"), None);
     }
 
