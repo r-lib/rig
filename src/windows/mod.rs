@@ -1382,22 +1382,42 @@ fn find_r_version_in_link(path: &Path) -> Result<Option<String>, Box<dyn Error>>
         }
     };
 
-    let version = if get_mode().unwrap_or(Mode::Admin) == Mode::User {
-        user_version_from_link_target(&target, &get_r_root()?)
+    let (version, why) = if get_mode().unwrap_or(Mode::Admin) == Mode::User {
+        let root = get_r_root()?;
+        let why = format!(
+            "it points to {}, which is not in the R installation directory, {}",
+            target, root
+        );
+        (user_version_from_link_target(&target, &root), why)
     } else {
         let x86_root = get_r_root_arch("x86_64")?;
-        admin_version_from_link_target(&target, &x86_root, get_native_arch())
+        let why = format!("cannot find the R version in its target, {}", target);
+        (
+            admin_version_from_link_target(&target, &x86_root, get_native_arch()),
+            why,
+        )
     };
 
     if version.is_none() {
-        debug!(
-            "Cannot extract R version from {} (-> {}), not under the R root, skipping it",
-            path.display(),
-            target
-        );
+        warn_skipped_alias_link(path, &why);
     }
 
     Ok(version)
+}
+
+// Warn about a skipped alias link once per run: some commands look up the
+// aliases more than once.
+fn warn_skipped_alias_link(path: &Path, why: &str) {
+    static WARNED: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+    let mut warned = WARNED.lock().unwrap_or_else(|e| e.into_inner());
+    if warned.iter().any(|p| p == path) {
+        return;
+    }
+    warned.push(path.to_path_buf());
+
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    OUTPUT.warn(&format!("Ignoring {}: {}", name, why));
+    warn!("Ignoring {}: {}", path.display(), why);
 }
 
 // User mode: <root>\<version>\bin\R.exe, so the version is the path
