@@ -175,10 +175,11 @@ teardown() {
 
 @test "add" {
     if ! rig ls | grep -q '^[* ] 4.1'; then
-        run sudo rig add 4.1 -a x86_64
+        run sudo rig add 4.1 -a x86_64 --with-site-library
         [[ "$status" -eq 0 ]]
         run rig ls
         echo "$output" | grep -q "^[* ] 4.1"
+        [[ -d /Library/Frameworks/R.framework/Versions/4.1/Resources/site-library ]]
     fi
     run sudo rig system make-links
     [[ "$status" -eq 0 ]]
@@ -325,6 +326,7 @@ teardown() {
     if ! rig ls | grep -q '^[* ] 3.3'; then
         run sudo rig add -a x86_64 3.3 --without-pak
         [[ "$status" -eq 0 ]]
+        [[ ! -e /Library/Frameworks/R.framework/Versions/3.3/Resources/site-library ]]
         run rig ls
         echo "$output" | grep -q "[* ] 3[.]3"
     fi

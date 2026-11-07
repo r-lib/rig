@@ -337,6 +337,60 @@ pub fn sc_library_set_default(name: &str, rver: Option<&str>) -> Result<(), Box<
     Ok(())
 }
 
+/// Create the `R_HOME/site-library` directory of an R installation. R only
+/// adds the site library to `.libPaths()` if this directory exists.
+pub fn create_site_library(rver: &str) -> Result<(), Box<dyn Error>> {
+    let rprofile = get_system_profile(rver)?;
+    let rhome = match rhome_from_system_profile(&rprofile) {
+        Some(x) => x,
+        None => {
+            OUTPUT.error(&format!(
+                "Cannot determine R_HOME for R {} from {}",
+                rver,
+                rprofile.display()
+            ));
+            error!(
+                "Cannot determine R_HOME for R {} from {}",
+                rver,
+                rprofile.display()
+            );
+            bail!("Cannot determine R_HOME for R {}", rver);
+        }
+    };
+    create_site_library_in(&rhome)
+}
+
+// The system profile is at `R_HOME/library/base/R/Rprofile`.
+fn rhome_from_system_profile(rprofile: &Path) -> Option<PathBuf> {
+    rprofile
+        .ancestors()
+        .nth(4)
+        .filter(|x| !x.as_os_str().is_empty())
+        .map(|x| x.to_path_buf())
+}
+
+fn create_site_library_in(rhome: &Path) -> Result<(), Box<dyn Error>> {
+    let site = rhome.join("site-library");
+    if site.exists() {
+        debug!("Site library already exists at {}", site.display());
+        return Ok(());
+    }
+
+    OUTPUT.status(&format!("Creating site library at {}", site.display()));
+    info!("Creating site library at {}", site.display());
+    if let Err(e) = std::fs::create_dir_all(&site) {
+        OUTPUT.error(&format!(
+            "Cannot create site library at {}: {}",
+            site.display(),
+            e
+        ));
+        error!("Cannot create site library at {}: {}", site.display(), e);
+        bail!("Cannot create site library at {}: {}", site.display(), e);
+    }
+
+    Ok(())
+}
+
 pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
     let rprofile = get_system_profile(rver)?;
     let lines = match read_lines(&rprofile) {
@@ -601,4 +655,58 @@ pub fn get_library_path_nocache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dy
         default.display()
     );
     Ok((main.to_path_buf(), default.to_path_buf()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rhome_from_system_profile_strips_profile_path() {
+        // Linux
+        assert_eq!(
+            rhome_from_system_profile(Path::new("/opt/R/4.5.1/lib/R/library/base/R/Rprofile")),
+            Some(PathBuf::from("/opt/R/4.5.1/lib/R"))
+        );
+        // macOS, admin mode
+        assert_eq!(
+            rhome_from_system_profile(Path::new(
+                "/Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/library/base/R/Rprofile"
+            )),
+            Some(PathBuf::from(
+                "/Library/Frameworks/R.framework/Versions/4.5-arm64/Resources"
+            ))
+        );
+        // Too short to have an R_HOME
+        assert_eq!(
+            rhome_from_system_profile(Path::new("library/base/R/Rprofile")),
+            None
+        );
+        assert_eq!(rhome_from_system_profile(Path::new("Rprofile")), None);
+    }
+
+    #[test]
+    fn create_site_library_in_creates_directory() {
+        let rhome = tempfile::tempdir().unwrap();
+        create_site_library_in(rhome.path()).unwrap();
+        assert!(rhome.path().join("site-library").is_dir());
+    }
+
+    #[test]
+    fn create_site_library_in_keeps_existing_directory() {
+        let rhome = tempfile::tempdir().unwrap();
+        let site = rhome.path().join("site-library");
+        std::fs::create_dir(&site).unwrap();
+        std::fs::write(site.join("pkg"), "").unwrap();
+        create_site_library_in(rhome.path()).unwrap();
+        assert!(site.join("pkg").exists());
+    }
+
+    #[test]
+    fn create_site_library_in_fails_if_rhome_is_not_a_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let rhome = dir.path().join("file");
+        std::fs::write(&rhome, "").unwrap();
+        assert!(create_site_library_in(&rhome).is_err());
+    }
 }
