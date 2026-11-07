@@ -114,13 +114,14 @@ jobs:
       id: matrix-setup-x86_64
       run: |
         containers=$(make print-linux-variants-json)
-        if [ -z "$REDHAT_ORG" ]; then
-          echo "REDHAT_ORG is not available, leaving out the redhat/* containers"
+        if [ -z "$REDHAT_ORG" ] && [ "$FORK_PR" = "true" ]; then
+          echo "REDHAT_ORG is not available in a pull request from a fork, leaving out the redhat/* containers"
           containers=$(echo "$containers" | jq -c 'map(select(startswith("redhat/") | not))')
         fi
         echo "containers=$containers" >> $GITHUB_OUTPUT
       env:
         REDHAT_ORG: ${{ secrets.REDHAT_ORG }}
+        FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
 
   linux-tests-x86_64:
     needs: linux-tests-x86_64-setup
@@ -212,13 +213,14 @@ jobs:
       id: matrix-setup-aarch64
       run: |
         containers=$(make print-linux-variants-json)
-        if [ -z "$REDHAT_ORG" ]; then
-          echo "REDHAT_ORG is not available, leaving out the redhat/* containers"
+        if [ -z "$REDHAT_ORG" ] && [ "$FORK_PR" = "true" ]; then
+          echo "REDHAT_ORG is not available in a pull request from a fork, leaving out the redhat/* containers"
           containers=$(echo "$containers" | jq -c 'map(select(startswith("redhat/") | not))')
         fi
         echo "containers=$containers" >> $GITHUB_OUTPUT
       env:
         REDHAT_ORG: ${{ secrets.REDHAT_ORG }}
+        FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
 
   linux-tests-aarch64:
     needs: linux-tests-aarch64-setup
