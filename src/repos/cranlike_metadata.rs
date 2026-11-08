@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
@@ -24,7 +25,9 @@ use crate::download::{
 };
 use crate::output::OUTPUT;
 use crate::rds::*;
-use crate::repos::feed::{CranlikeRepo, MetadataFeed, PkgRepo, RepoFilter, RepoId};
+use crate::repos::feed::{
+    resolve_download_url, CranlikeRepo, MetadataFeed, PkgRepo, RepoFilter, RepoId,
+};
 use crate::solver::PackageVersionLoader;
 use crate::utils::{calculate_hash, create_parent_dir_if_needed};
 
@@ -319,17 +322,7 @@ pub(crate) fn ensure_cranlike_index(
     }
 
     debug!("No PACKAGES file at {}", key);
-    save_packages_to_db(
-        &vec![],
-        &db,
-        &key,
-        r_version,
-        pkg_type,
-        path,
-        None,
-        true,
-        None,
-    )?;
+    save_packages_to_db(&[], &db, &key, r_version, pkg_type, path, None, true, None)?;
     Ok(())
 }
 
@@ -1050,10 +1043,32 @@ fn touch_repo_last_updated(
     Ok(())
 }
 
+/// `packages` of the ALLPACKAGES file at `allpackages_url`, with full
+/// download URLs. A `DownloadURL` may also be an absolute path or a path
+/// relative to the ALLPACKAGES file, see [`resolve_download_url`]. Only copies
+/// `packages` if some of them need it.
+fn resolve_download_urls<'a>(packages: &'a [Package], allpackages_url: &str) -> Cow<'a, [Package]> {
+    let full = |pkg: &Package| {
+        pkg.download_url
+            .as_deref()
+            .is_none_or(|url| url.is_empty() || reqwest::Url::parse(url).is_ok())
+    };
+    if packages.iter().all(full) {
+        return Cow::Borrowed(packages);
+    }
+    let mut packages = packages.to_vec();
+    for pkg in packages.iter_mut() {
+        if let Some(url) = &pkg.download_url {
+            pkg.download_url = Some(resolve_download_url(allpackages_url, url));
+        }
+    }
+    Cow::Owned(packages)
+}
+
 /// Parse `packages` and store them, dispatching to the feed's table.
 #[allow(clippy::too_many_arguments)]
 fn store_packages(
-    packages: &Vec<Package>,
+    packages: &[Package],
     repo_db: &PathBuf,
     repo_url_key: &str,
     r_version: Option<&str>,
@@ -1066,7 +1081,7 @@ fn store_packages(
 ) -> Result<(), Box<dyn Error>> {
     match feed {
         Feed::Cranlike => save_packages_to_db(
-            packages,
+            &resolve_download_urls(packages, repo_url_key),
             repo_db,
             repo_url_key,
             r_version,
@@ -1877,7 +1892,7 @@ fn is_repo_cache_recent(
 
 #[allow(clippy::too_many_arguments)]
 fn save_packages_to_db(
-    packages: &Vec<Package>,
+    packages: &[Package],
     db_path: &PathBuf,
     repo_url: &str,
     r_version: Option<&str>,
@@ -2322,6 +2337,41 @@ DownloadURL: https://p3m.dev/cran/2020-01-09/src/contrib/cli_2.0.1.tar.gz
             None,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn allpackages_download_urls_are_resolved() {
+        let url = "https://example.com/cran/ALLPACKAGES.zst";
+        let full = parse_dcf_bytes(
+            b"Package: a\nVersion: 1.0\nDownloadURL: https://p3m.dev/cran/a_1.0.tar.gz\n\n\
+              Package: b\nVersion: 1.0\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            resolve_download_urls(&full, url),
+            Cow::Borrowed(_)
+        ));
+
+        let mixed = parse_dcf_bytes(
+            b"Package: a\nVersion: 1.0\nDownloadURL: https://p3m.dev/cran/a_1.0.tar.gz\n\n\
+              Package: b\nVersion: 1.0\nDownloadURL: src/contrib/b_1.0.tar.gz\n\n\
+              Package: c\nVersion: 1.0\nDownloadURL: /other/c_1.0.tar.gz\n\n\
+              Package: d\nVersion: 1.0\n",
+        )
+        .unwrap();
+        let urls: Vec<Option<String>> = resolve_download_urls(&mixed, url)
+            .iter()
+            .map(|p| p.download_url.clone())
+            .collect();
+        assert_eq!(
+            urls,
+            vec![
+                Some("https://p3m.dev/cran/a_1.0.tar.gz".to_string()),
+                Some("https://example.com/cran/src/contrib/b_1.0.tar.gz".to_string()),
+                Some("https://example.com/other/c_1.0.tar.gz".to_string()),
+                None,
+            ]
+        );
     }
 
     #[test]

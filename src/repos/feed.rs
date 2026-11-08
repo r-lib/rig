@@ -262,6 +262,27 @@ impl MetadataFeed {
         feeds.push(MetadataFeed::cran());
         feeds
     }
+
+    /// The full URL of a `DownloadURL` in this feed's ALLPACKAGES or binary
+    /// indices, see [`resolve_download_url`].
+    pub fn resolve_url(&self, url: &str) -> String {
+        resolve_download_url(&self.allpackages_url, url)
+    }
+}
+
+/// The full URL of `url`, a `DownloadURL` from the ALLPACKAGES file at
+/// `allpackages_url`, or from a binary index of the same feed. It is either a
+/// full URL, an absolute path on the same server (`/cran/...`), or a path
+/// relative to the ALLPACKAGES file. A `url` that cannot be resolved is kept
+/// as is.
+pub fn resolve_download_url(allpackages_url: &str, url: &str) -> String {
+    if url.is_empty() || reqwest::Url::parse(url).is_ok() {
+        return url.to_string();
+    }
+    match reqwest::Url::parse(allpackages_url).and_then(|base| base.join(url)) {
+        Ok(full) => full.to_string(),
+        Err(_) => url.to_string(),
+    }
 }
 
 /// Whether and which Bioconductor release a solve uses, besides CRAN.
@@ -329,6 +350,28 @@ mod tests {
             feed.binaries_url,
             "https://ppm-bioc.r-pkg.org/3.22/binaries"
         );
+    }
+
+    #[test]
+    fn download_urls_resolve_against_allpackages() {
+        let feed = MetadataFeed::at(RepoId::Cran, "https://example.com/meta/");
+        assert_eq!(
+            feed.resolve_url("https://p3m.dev/cran/2020-01-01/src/contrib/a_1.0.tar.gz"),
+            "https://p3m.dev/cran/2020-01-01/src/contrib/a_1.0.tar.gz"
+        );
+        assert_eq!(
+            feed.resolve_url("src/contrib/a_1.0.tar.gz"),
+            "https://example.com/meta/src/contrib/a_1.0.tar.gz"
+        );
+        assert_eq!(
+            feed.resolve_url("../cran/a_1.0.tar.gz"),
+            "https://example.com/cran/a_1.0.tar.gz"
+        );
+        assert_eq!(
+            feed.resolve_url("/cran/2020-01-01/src/contrib/a_1.0.tar.gz"),
+            "https://example.com/cran/2020-01-01/src/contrib/a_1.0.tar.gz"
+        );
+        assert_eq!(feed.resolve_url(""), "");
     }
 
     #[test]
