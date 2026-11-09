@@ -152,10 +152,12 @@ impl PkgRepo {
 /// packages pinned to it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RepoFilter {
-    /// Package name to the only repository it may come from. `None` if that
-    /// repository is not part of the solve, e.g. Bioconductor for an R
-    /// version without a Bioconductor release: then there are no versions.
-    pub pins: HashMap<String, Option<RepoId>>,
+    /// Package name to the only repositories it may come from: the ones of
+    /// the repository it is pinned to, e.g. several for the root of a
+    /// Bioconductor mirror. Empty if that repository is not part of the
+    /// solve, e.g. Bioconductor for an R version without a Bioconductor
+    /// release: then there are no versions.
+    pub pins: HashMap<String, Vec<RepoId>>,
     /// The repositories that only serve the packages pinned to them.
     pub explicit: HashSet<RepoId>,
 }
@@ -164,7 +166,7 @@ impl RepoFilter {
     /// Whether `package` may come from `repo`.
     pub fn allows(&self, package: &str, repo: &RepoId) -> bool {
         match self.pins.get(package) {
-            Some(pin) => pin.as_ref() == Some(repo),
+            Some(pin) => pin.contains(repo),
             None => !self.explicit.contains(repo),
         }
     }

@@ -2673,13 +2673,13 @@ DownloadURL: https://p3m.dev/bioconductor/2025-10-30/packages/3.22/bioc/src/cont
             out
         };
         let mut pinned = RepoFilter::default();
-        pinned.pins.insert("cli".to_string(), Some(acme.repo_id()));
+        pinned.pins.insert("cli".to_string(), vec![acme.repo_id()]);
         assert_eq!(
             filtered(pinned),
             vec![("3.6.0".to_string(), acme.repo_id())]
         );
         let mut nowhere = RepoFilter::default();
-        nowhere.pins.insert("cli".to_string(), None);
+        nowhere.pins.insert("cli".to_string(), vec![]);
         assert!(filtered(nowhere).is_empty());
         let mut explicit = RepoFilter::default();
         explicit.explicit.insert(RepoId::Cran);
@@ -2687,7 +2687,7 @@ DownloadURL: https://p3m.dev/bioconductor/2025-10-30/packages/3.22/bioc/src/cont
             filtered(explicit.clone()),
             vec![("3.6.0".to_string(), acme.repo_id())]
         );
-        explicit.pins.insert("cli".to_string(), Some(RepoId::Cran));
+        explicit.pins.insert("cli".to_string(), vec![RepoId::Cran]);
         assert_eq!(filtered(explicit).len(), 2);
 
         let _ = std::fs::remove_file(&db);

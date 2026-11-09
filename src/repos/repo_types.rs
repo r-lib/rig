@@ -34,6 +34,9 @@ type Cache = HashMap<String, CacheEntry>;
 /// The repository at `url`, of type `declared` if that is given, detected
 /// otherwise.
 pub fn resolve_repo(url: &str, declared: Option<RepoType>) -> DetectedRepo {
+    if let Some(rtype) = declared.filter(|t| *t != RepoType::Ppm) {
+        return describe(url.trim().trim_end_matches('/'), rtype);
+    }
     let path = match crate::cache::get_cache_dir() {
         Ok(dir) => Some(dir.join(CACHE_FILE)),
         Err(e) => {

@@ -1956,9 +1956,9 @@ fn describe_solve_repos(
     let pinned = filter
         .pins
         .iter()
-        .map(|(pkg, id)| {
-            let repo = id
-                .as_ref()
+        .map(|(pkg, ids)| {
+            let repo = ids
+                .first()
                 .map(name)
                 .unwrap_or_else(|| "Bioconductor".to_string());
             (pkg.clone(), repo)
@@ -3476,7 +3476,8 @@ pub(crate) fn lock_fits_manifest(root: &Path) -> Result<bool, Box<dyn Error>> {
     let Some(lock) = read_existing_lock(root) else {
         return Ok(false);
     };
-    let solve = proj_read_solve_roots(root)?;
+    let mut solve = proj_read_solve_roots(root)?;
+    solve.repos.resolve_types(&lock.tool.rig.repositories);
     let mut lock_options = resolve_lock_options(
         solve.exclude_newer.as_ref(),
         solve.prefer_binary,
@@ -4290,6 +4291,14 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     } else {
         read_existing_lock(root)
     };
+    // The types of the repositories, from the existing lock if their URL has
+    // not changed, detected otherwise.
+    repos.resolve_types(
+        existing_lock
+            .as_ref()
+            .map(|l| l.tool.rig.repositories.as_slice())
+            .unwrap_or_default(),
+    );
 
     warn_unknown_upgrade_packages(
         &opts.upgrade_packages,
