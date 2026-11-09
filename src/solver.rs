@@ -500,6 +500,11 @@ pub struct RPackageRegistry {
     repos_description: Option<String>,
     // Package to the repository it is pinned to, for the same message.
     pinned: HashMap<RPackageName, String>,
+    // The mirror of every feed of the solve that has one, e.g. a CRAN
+    // mirror for CRAN's feed, see `MetadataFeed::mirror`. Never read by the
+    // solver itself, only by the lockfile writer, which downloads source
+    // packages from the mirror first.
+    mirrors: HashMap<RepoId, String>,
     // The `SystemRequirements` of every package version we know one for, by
     // version rather than by artifact: the source and binary builds of a
     // version share it. Never read by the solver itself, only by the lockfile
@@ -670,6 +675,17 @@ impl RPackageRegistry {
             .borrow()
             .get(&(package.clone(), version.clone()))
             .cloned()
+    }
+
+    /// Record the mirrors of the feeds of the solve, see [`Self::mirror`].
+    pub fn with_mirrors(mut self, mirrors: HashMap<RepoId, String>) -> Self {
+        self.mirrors = mirrors;
+        self
+    }
+
+    /// The mirror of the feed `repo`, without a trailing `/`, if it has one.
+    pub fn mirror(&self, repo: &RepoId) -> Option<&str> {
+        self.mirrors.get(repo).map(|m| m.as_str())
     }
 
     /// The repository of a resolved artifact, when it came from one.
@@ -1453,6 +1469,102 @@ mod tests {
         assert!(!vs.contains(&source("p", "0.9.9")));
         assert!(!vs.contains(&source("p", "1.0.1")));
         assert!(!vs.contains(&source("p", "1.0.0.1")));
+    }
+
+    // ---------------------------------------------------------------------
+    // Mirrors
+
+    /// One version of `a` from CRAN's feed, at a P3M snapshot URL.
+    struct FeedSource;
+
+    impl PackageVersionLoader for FeedSource {
+        fn load_versions(&self, package: &str) -> Result<Vec<crate::dcf::Package>, Box<dyn Error>> {
+            if package != "a" {
+                return Ok(vec![]);
+            }
+            let mut pkg =
+                crate::dcf::Package::from_crandb("a".to_string(), version("1.0.0"), vec![]);
+            pkg.download_url =
+                Some("https://p3m.dev/cran/2026-01-01/src/contrib/a_1.0.0.tar.gz".to_string());
+            pkg.sha256sum = Some("sha-a".to_string());
+            pkg.repository = Some(RepoId::Cran);
+            Ok(vec![pkg])
+        }
+    }
+
+    /// A binary of `a` from CRAN's feed.
+    struct FeedBinaries;
+
+    impl BinaryIndexLoader for FeedBinaries {
+        fn load_artifacts(&self, package: &str) -> Result<PackageArtifacts, Box<dyn Error>> {
+            let binaries = if package == "a" {
+                vec![BinaryArtifact {
+                    version: version("1.0.0"),
+                    row: 1,
+                    url: "https://p3m.dev/cran/bin/a_1.0.0.tgz".to_string(),
+                    sha256: "sha-a-bin".to_string(),
+                    linkingto: vec![],
+                    repository: Some(RepoId::Cran),
+                    built: None,
+                }]
+            } else {
+                vec![]
+            };
+            Ok(PackageArtifacts {
+                binaries,
+                source_urls: HashMap::new(),
+                source_sha256: HashMap::new(),
+            })
+        }
+
+        fn target_name(&self) -> String {
+            "stub".to_string()
+        }
+    }
+
+    fn lock_sources(binaries: Option<Box<dyn BinaryIndexLoader>>) -> Vec<String> {
+        let reg = RPackageRegistry::with_loaders(Box::new(FeedSource), binaries).with_mirrors(
+            HashMap::from([(RepoId::Cran, "https://cran.acme.com".to_string())]),
+        );
+        reg.add_package_version(
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+            ranges("a"),
+        );
+        let solution = resolve(
+            &reg,
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+        )
+        .unwrap();
+        let target = crate::rproj::RprojLockTarget::from_solution(&reg, &solution);
+        target
+            .packages
+            .iter()
+            .find(|p| p.package == "a")
+            .unwrap()
+            .sources
+            .clone()
+    }
+
+    #[test]
+    fn source_packages_come_from_the_mirror_first() {
+        assert_eq!(
+            lock_sources(None),
+            vec![
+                "https://cran.acme.com/src/contrib/a_1.0.0.tar.gz",
+                "https://cran.acme.com/src/contrib/Archive/a/a_1.0.0.tar.gz",
+                "https://p3m.dev/cran/2026-01-01/src/contrib/a_1.0.0.tar.gz",
+            ]
+        );
+    }
+
+    #[test]
+    fn binary_packages_come_from_the_feed() {
+        assert_eq!(
+            lock_sources(Some(Box::new(FeedBinaries))),
+            vec!["https://p3m.dev/cran/bin/a_1.0.0.tgz"]
+        );
     }
 
     // ---------------------------------------------------------------------

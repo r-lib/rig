@@ -2035,6 +2035,10 @@ pub(crate) fn sc_proj_solve_deps(
     let (repos_description, pinned) = describe_solve_repos(&repos, filter);
     let feeds = PkgRepo::feeds(&repos);
     let cranlike = PkgRepo::cranlike(&repos);
+    let mirrors: HashMap<RepoId, String> = feeds
+        .iter()
+        .filter_map(|f| f.mirror.clone().map(|m| (f.repo.clone(), m)))
+        .collect();
     let bioc_version = feeds.iter().find_map(|f| match &f.repo {
         RepoId::Bioc(v) => Some(v.clone()),
         _ => None,
@@ -2058,6 +2062,7 @@ pub(crate) fn sc_proj_solve_deps(
     let reg: RPackageRegistry = RPackageRegistry::with_loaders(Box::new(loader), binaries)
         .with_bioc_version(bioc_version)
         .with_repo_description(repos_description, pinned)
+        .with_mirrors(mirrors)
         .prefer_binary(prefer_binary)
         .with_preferences(pins.preferred.clone())
         .with_overrides(&pins.overrides);

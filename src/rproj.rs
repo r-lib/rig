@@ -3190,16 +3190,33 @@ impl RprojLockTarget {
             // that has been superseded has moved into the archive.
             let filename = format!("{}_{}.tar.gz", k, v.version);
             let repository = registry.artifact_repository(k, v);
-            let sources = match registry.artifact_url(k, v) {
-                Some(url) => vec![url],
-                None => vec![
-                    format!("https://cloud.r-project.org/src/contrib/{}", filename),
-                    format!(
-                        "https://cloud.r-project.org/src/contrib/Archive/{}/{}",
-                        k, filename
-                    ),
-                ],
+            let in_cran_layout = |base: &str| {
+                vec![
+                    format!("{}/src/contrib/{}", base, filename),
+                    format!("{}/src/contrib/Archive/{}/{}", base, k, filename),
+                ]
             };
+            let mut sources = match registry.artifact_url(k, v) {
+                Some(url) => vec![url],
+                None => in_cran_layout("https://cloud.r-project.org"),
+            };
+            // The cache file is named after the feed's URL, wherever the
+            // file is downloaded from.
+            let primary_url = sources[0].clone();
+            // A source package of a feed with a mirror, e.g. CRAN's feed for
+            // a CRAN mirror, comes from the mirror first, and from the feed's
+            // URL if the mirror does not have it. A binary package always
+            // comes from the feed's URL.
+            if let Some(mirror) = repository
+                .as_ref()
+                .filter(|_| !binary)
+                .and_then(|r| registry.mirror(r))
+            {
+                let mut mirrored = in_cran_layout(mirror);
+                mirrored.retain(|u| !sources.contains(u));
+                mirrored.append(&mut sources);
+                sources = mirrored;
+            }
             // The cache file name has to tell two builds of one version apart,
             // and the repository path does not: several binaries share it.
             // A package of a CRAN-like repository without checksums has no
@@ -3208,7 +3225,7 @@ impl RprojLockTarget {
             let cranlike_url = repository
                 .as_ref()
                 .filter(|r| r.is_cranlike())
-                .map(|_| sources[0].as_str());
+                .map(|_| primary_url.as_str());
             let key = artifact_cache_key(
                 metadata
                     .get(REMOTE_HASH_FIELD)
@@ -3220,7 +3237,7 @@ impl RprojLockTarget {
                     None
                 },
             );
-            let target = target_path(&sources[0], &format!("src/{}", filename), key.as_deref());
+            let target = target_path(&primary_url, &format!("src/{}", filename), key.as_deref());
             let system_requirements = registry
                 .system_requirements(k, &v.version)
                 .filter(|_| lock_needs_system_requirements(platform.as_deref(), binary));
