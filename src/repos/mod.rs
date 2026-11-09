@@ -24,6 +24,8 @@ pub(crate) use configured::{configured_repos, resolve_bioc_vars};
 pub(crate) mod interpret_repos_args;
 mod repos_add;
 use repos_add::sc_repos_add;
+pub mod detect;
+use detect::sc_repos_detect;
 mod repos_enable;
 use repos_enable::{sc_repos_disable, sc_repos_enable};
 mod repos_rm;
@@ -48,6 +50,7 @@ pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn 
     match args.subcommand() {
         Some(("add", s)) => sc_repos_add(s, args, mainargs),
         Some(("available", s)) => sc_repos_available(s, args, mainargs),
+        Some(("detect", s)) => sc_repos_detect(s, args, mainargs),
         Some(("disable", s)) => sc_repos_disable(s, args, mainargs),
         Some(("enable", s)) => sc_repos_enable(s, args, mainargs),
         Some(("list", s)) => sc_repos_list(s, args, mainargs),
