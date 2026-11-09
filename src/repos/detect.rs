@@ -43,7 +43,7 @@ use crate::utils::{http_client, http_client_builder};
 use super::feed::{BIOC_METADATA_URL, PPM_METADATA_URL};
 use super::latest_bioc_release;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RepoType {
     Cran,
@@ -73,11 +73,42 @@ impl RepoType {
             RepoType::CranLike => "cran-like",
         }
     }
+
+    pub const ALL: [RepoType; 10] = [
+        RepoType::Cran,
+        RepoType::PpmCran,
+        RepoType::PpmBioc,
+        RepoType::PpmOther,
+        RepoType::PpmSnapshot,
+        RepoType::Ppm,
+        RepoType::Bioc,
+        RepoType::Extended,
+        RepoType::RUniverse,
+        RepoType::CranLike,
+    ];
+}
+
+impl std::str::FromStr for RepoType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<RepoType, String> {
+        RepoType::ALL
+            .into_iter()
+            .find(|t| t.as_str() == s)
+            .ok_or_else(|| {
+                let all: Vec<&str> = RepoType::ALL.iter().map(|t| t.as_str()).collect();
+                format!(
+                    "Unknown repository type: '{}', must be one of {}",
+                    s,
+                    all.join(", ")
+                )
+            })
+    }
 }
 
 /// The result of the detection, and the shape of the `--json` output of
 /// `rig repos detect`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DetectedRepo {
     /// The URL, without a trailing `/`.
     pub url: String,
@@ -111,7 +142,7 @@ pub struct DetectedRepo {
 }
 
 /// One repository of a PPM instance, in the `ppm_repos` of the PPM root.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PpmRepoInfo {
     pub name: String,
     /// PPM's own type of the repository: `R` or `Bioconductor`.
@@ -130,7 +161,7 @@ pub struct PpmRepoInfo {
 }
 
 impl DetectedRepo {
-    fn new(url: &str, repo_type: RepoType) -> DetectedRepo {
+    pub(crate) fn new(url: &str, repo_type: RepoType) -> DetectedRepo {
         let (extensible, metadata) = match repo_type {
             RepoType::Extended => (false, Some(url.to_string())),
             _ => extension_of(repo_type),

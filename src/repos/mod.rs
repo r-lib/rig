@@ -25,6 +25,7 @@ pub(crate) mod interpret_repos_args;
 mod repos_add;
 use repos_add::sc_repos_add;
 pub mod detect;
+pub mod protocol;
 use detect::sc_repos_detect;
 mod repos_enable;
 use repos_enable::{sc_repos_disable, sc_repos_enable};
