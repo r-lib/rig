@@ -3217,6 +3217,28 @@ impl RprojLockTarget {
                 mirrored.append(&mut sources);
                 sources = mirrored;
             }
+            // A package of an r-universe repository: the commit it was built
+            // from, and that commit as the last source, so that it can be
+            // built from git once r-universe replaces the file. There is no
+            // `RemoteType`, which would make it a git package.
+            if let Some(remote) = registry.r_universe_remote(k, v) {
+                metadata.insert(REMOTE_SHA_FIELD.to_string(), remote.sha.clone());
+                metadata.insert(REMOTE_URL_FIELD.to_string(), remote.url.clone());
+                if let Some(subdir) = &remote.subdir {
+                    metadata.insert(REMOTE_SUBDIR_FIELD.to_string(), subdir.clone());
+                }
+                if let Some(ref_) = &remote.ref_ {
+                    metadata.insert(REMOTE_REF_FIELD.to_string(), ref_.clone());
+                }
+                sources.push(
+                    LockSource::Git {
+                        url: remote.url,
+                        commit: remote.sha,
+                        subdir: remote.subdir,
+                    }
+                    .to_string(),
+                );
+            }
             // The cache file name has to tell two builds of one version apart,
             // and the repository path does not: several binaries share it.
             // A package of a CRAN-like repository without checksums has no

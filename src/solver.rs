@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::dcf::*;
 use crate::repos::feed::RepoId;
+use crate::repos::r_universe::RUniverseRemote;
 
 type RPackageName = String;
 
@@ -505,6 +506,12 @@ pub struct RPackageRegistry {
     // solver itself, only by the lockfile writer, which downloads source
     // packages from the mirror first.
     mirrors: HashMap<RepoId, String>,
+    // The r-universe repositories of the solve, see `with_r_universes`.
+    r_universes: HashSet<RepoId>,
+    // Where every artifact of an r-universe repository was built from, see
+    // `set_r_universe_remote`. Never read by the solver itself, only by the
+    // lockfile writer.
+    r_universe_remotes: RefCell<HashMap<(RPackageName, RegistryPackageVersion), RUniverseRemote>>,
     // The `SystemRequirements` of every package version we know one for, by
     // version rather than by artifact: the source and binary builds of a
     // version share it. Never read by the solver itself, only by the lockfile
@@ -681,6 +688,43 @@ impl RPackageRegistry {
     pub fn with_mirrors(mut self, mirrors: HashMap<RepoId, String>) -> Self {
         self.mirrors = mirrors;
         self
+    }
+
+    /// Record the r-universe repositories of the solve, see
+    /// [`Self::is_r_universe`].
+    pub fn with_r_universes(mut self, repos: HashSet<RepoId>) -> Self {
+        self.r_universes = repos;
+        self
+    }
+
+    /// Whether `repo` is an r-universe repository.
+    pub fn is_r_universe(&self, repo: &RepoId) -> bool {
+        self.r_universes.contains(repo)
+    }
+
+    /// Record where an artifact of an r-universe repository was built from.
+    pub fn set_r_universe_remote(
+        &self,
+        package: &RPackageName,
+        version: &RegistryPackageVersion,
+        remote: RUniverseRemote,
+    ) {
+        self.r_universe_remotes
+            .borrow_mut()
+            .insert((package.clone(), version.clone()), remote);
+    }
+
+    /// Where an artifact of an r-universe repository was built from, if
+    /// known.
+    pub fn r_universe_remote(
+        &self,
+        package: &RPackageName,
+        version: &RegistryPackageVersion,
+    ) -> Option<RUniverseRemote> {
+        self.r_universe_remotes
+            .borrow()
+            .get(&(package.clone(), version.clone()))
+            .cloned()
     }
 
     /// The mirror of the feed `repo`, without a trailing `/`, if it has one.

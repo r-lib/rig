@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use clap::ArgMatches;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use pubgrub::resolve;
 use rayon::prelude::*;
 use simple_error::SimpleError;
@@ -48,8 +48,9 @@ use crate::repos::binaries::loader::{
 };
 use crate::repos::binaries::{PpmStatus, MANYLINUX};
 use crate::repos::cranlike_metadata::{ensure_repos_fresh, minor_r_version};
-use crate::repos::feed::{BiocSetting, PkgRepo, RepoFilter, RepoId};
+use crate::repos::feed::{BiocSetting, CranlikeProtocol, PkgRepo, RepoFilter, RepoId};
 use crate::repos::interpret_repos_args::{interpret_pkg_repos_args, PkgReposArgs};
+use crate::repos::r_universe::{lookup_remotes, url_sha256, RemoteRequest};
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
@@ -2039,6 +2040,11 @@ pub(crate) fn sc_proj_solve_deps(
         .iter()
         .filter_map(|f| f.mirror.clone().map(|m| (f.repo.clone(), m)))
         .collect();
+    let r_universes: HashSet<RepoId> = cranlike
+        .iter()
+        .filter(|r| r.protocol == CranlikeProtocol::RUniverse)
+        .map(|r| r.repo_id())
+        .collect();
     let bioc_version = feeds.iter().find_map(|f| match &f.repo {
         RepoId::Bioc(v) => Some(v.clone()),
         _ => None,
@@ -2063,6 +2069,7 @@ pub(crate) fn sc_proj_solve_deps(
         .with_bioc_version(bioc_version)
         .with_repo_description(repos_description, pinned)
         .with_mirrors(mirrors)
+        .with_r_universes(r_universes)
         .prefer_binary(prefer_binary)
         .with_preferences(pins.preferred.clone())
         .with_overrides(&pins.overrides);
@@ -2121,7 +2128,10 @@ pub(crate) fn sc_proj_solve_deps(
     let solution = resolve(&reg, root_pkg, root_version);
 
     match solution {
-        Ok(sol) => Ok((reg, sol)),
+        Ok(sol) => {
+            record_r_universe_remotes(&reg, &sol);
+            Ok((reg, sol))
+        }
         Err(e) => {
             // The target goes into the message here, where the platform is
             // known, so that a batch of parallel solves can report the failure
@@ -2141,6 +2151,58 @@ pub(crate) fn sc_proj_solve_deps(
                 bail!(ReportedError(msg))
             }
             bail!("{}", msg)
+        }
+    }
+}
+
+/// Look up where every package of the solution that comes from an
+/// r-universe repository was built from, for the lock file, see
+/// [`crate::repos::r_universe`]. A package that cannot be looked up is
+/// locked without it, with a warning: it cannot be built from git if
+/// r-universe replaces its file later.
+fn record_r_universe_remotes(reg: &RPackageRegistry, solution: &RegistrySolution) {
+    let mut found: Vec<(&String, &RegistryPackageVersion)> = vec![];
+    let mut requests: Vec<RemoteRequest> = vec![];
+    for (pkg, ver) in solution.iter() {
+        let Some(RepoId::Cranlike { url, .. }) = reg
+            .artifact_repository(pkg, ver)
+            .filter(|r| reg.is_r_universe(r))
+        else {
+            continue;
+        };
+        // The sha256 of the file itself, which is not `RemoteHash` for a
+        // binary package.
+        let Some(sha256) = reg
+            .artifact_url(pkg, ver)
+            .and_then(|u| url_sha256(&u))
+            .or_else(|| reg.artifact_sha256(pkg, ver))
+        else {
+            continue;
+        };
+        found.push((pkg, ver));
+        requests.push(RemoteRequest {
+            repo_url: url,
+            package: pkg.clone(),
+            version: ver.version.to_string(),
+            sha256,
+        });
+    }
+    if requests.is_empty() {
+        return;
+    }
+    let remotes = lookup_remotes(&requests);
+    for ((pkg, ver), (req, remote)) in found.into_iter().zip(requests.iter().zip(remotes)) {
+        match remote {
+            Some(remote) => reg.set_r_universe_remote(pkg, ver, remote),
+            None => {
+                let msg = format!(
+                    "Cannot find the git commit of {} {} at {}, it cannot be installed \
+                     once r-universe replaces this build",
+                    req.package, req.version, req.repo_url
+                );
+                OUTPUT.warn(&msg);
+                warn!("{}", msg);
+            }
         }
     }
 }
@@ -6476,7 +6538,7 @@ pub(crate) fn lockfile_package_info(
     // package from the downloaded file itself.
     let source = lock_package_source(pkg);
     let local = matches!(source, Some(LockSource::Local { .. }));
-    let file_path = match &source {
+    let mut file_path = match &source {
         Some(LockSource::Local { path }) => PathBuf::from(path),
         _ => {
             let base = cache_dir.join("packages").join(&pkg.target);
@@ -6486,10 +6548,26 @@ pub(crate) fn lockfile_package_info(
             }
         }
     };
+    // An r-universe package that had to be built from git, see
+    // `download_r_universe_packages`: its file is not there, its git
+    // checkout is, and it is installed from source.
+    let mut binary = pkg.binary;
+    if let Some((_, commit, subdir)) = git_fallback(pkg) {
+        let checkout = cache_dir
+            .join("packages")
+            .join(git_fallback_target(&commit));
+        if !file_path.exists() && checkout.exists() {
+            file_path = match subdir {
+                Some(subdir) => checkout.join(subdir),
+                None => checkout,
+            };
+            binary = false;
+        }
+    }
     let mut info = PackageInfo {
         name: pkg.package.clone(),
         version: pkg.version.clone(),
-        binary: pkg.binary,
+        binary,
         file_path,
         dependencies: pkg.dependencies.clone(),
         hash: pkg.metadata.get(REMOTE_HASH_FIELD).cloned(),
@@ -6527,12 +6605,16 @@ pub(crate) fn download_lockfile_packages(
     // Get cache directory
     let cache_dir = get_cache_dir()?;
 
+    // An r-universe package can be built from git if its file is gone, see
+    // `download_r_universe_packages`.
+    let (fallback_packages, packages): (Vec<&RprojLockPackage>, Vec<&RprojLockPackage>) =
+        packages.iter().partition(|pkg| git_fallback(pkg).is_some());
     // A git/GitHub/url package's `target` is a directory, fetched by
     // checking out a git worktree or downloading and extracting an archive,
     // not a plain HTTP download to a file -- handled separately, see
     // `fetch_git_lockfile_packages`.
     let (git_packages, http_packages): (Vec<&RprojLockPackage>, Vec<&RprojLockPackage>) =
-        packages.iter().partition(|pkg| {
+        packages.into_iter().partition(|pkg| {
             !matches!(
                 lock_package_source(pkg),
                 None | Some(LockSource::Http { .. })
@@ -6540,7 +6622,120 @@ pub(crate) fn download_lockfile_packages(
         });
 
     fetch_git_lockfile_packages(&git_packages, &cache_dir)?;
-    download_http_lockfile_packages(&http_packages, &cache_dir)
+    download_http_lockfile_packages(&http_packages, &cache_dir)?;
+    download_r_universe_packages(&fallback_packages, &cache_dir)
+}
+
+/// The git source after the file of a lockfile package, if it has one: an
+/// r-universe package, see [`crate::repos::r_universe`]. Its URL, commit and
+/// subdirectory.
+fn git_fallback(pkg: &RprojLockPackage) -> Option<(String, String, Option<String>)> {
+    if !matches!(lock_package_source(pkg), Some(LockSource::Http { .. })) {
+        return None;
+    }
+    pkg.sources
+        .iter()
+        .skip(1)
+        .find_map(|s| match LockSource::parse(s) {
+            Ok(LockSource::Git {
+                url,
+                commit,
+                subdir,
+            }) => Some((url, commit, subdir)),
+            _ => None,
+        })
+}
+
+/// Where the git checkout of an r-universe package goes in the package
+/// cache, see [`git_fallback`].
+fn git_fallback_target(commit: &str) -> String {
+    format!("git/r-universe/{}", commit)
+}
+
+/// Download r-universe packages, see [`crate::repos::r_universe`]. r-universe
+/// replaces the file of a package when its git repository changes, so the
+/// locked file may be gone, or a file of the same name may be another build.
+/// A file that cannot be downloaded, or does not have the locked sha256, is
+/// built from git instead, at the locked commit.
+fn download_r_universe_packages(
+    packages: &[&RprojLockPackage],
+    cache_dir: &Path,
+) -> Result<(), Box<dyn Error>> {
+    for pkg in packages {
+        let Some((url, commit, subdir)) = git_fallback(pkg) else {
+            continue;
+        };
+        let file = cache_dir.join("packages").join(&pkg.target);
+        let checkout = cache_dir
+            .join("packages")
+            .join(git_fallback_target(&commit));
+        if !file.exists() && checkout.exists() {
+            OUTPUT.success(&format!(
+                "{} is cached at {}",
+                pkg.package,
+                checkout.display()
+            ));
+            continue;
+        }
+
+        let urls: Vec<String> = pkg
+            .sources
+            .iter()
+            .filter(|s| matches!(LockSource::parse(s), Ok(LockSource::Http { .. })))
+            .cloned()
+            .collect();
+        let urls: Vec<&str> = urls.iter().map(|s| s.as_str()).collect();
+        create_parent_dir_if_needed(&file)?;
+        // The sha256 of the file is in its URL. Without one, `RemoteHash`
+        // is the sha256 of a source package, but not of a binary, see
+        // `url_sha256`.
+        let want = urls.iter().find_map(|u| url_sha256(u)).or_else(|| {
+            pkg.metadata
+                .get(REMOTE_HASH_FIELD)
+                .filter(|_| !pkg.binary)
+                .cloned()
+        });
+        let problem = match crate::download::download_first_available_(
+            &urls,
+            &file,
+            Some(PACKAGE_FILE_TTL),
+            None,
+            None,
+        ) {
+            Err(e) => Some(format!("cannot download it: {}", e)),
+            Ok(_) => match want.as_ref() {
+                Some(want) => match crate::utils::calculate_file_hash(&file) {
+                    Ok(have) if have == *want => None,
+                    Ok(_) => Some("r-universe has another build of it now".to_string()),
+                    Err(e) => Some(format!("cannot read it: {}", e)),
+                },
+                None => None,
+            },
+        };
+        let Some(problem) = problem else {
+            OUTPUT.success(&format!("Downloaded {}", pkg.package));
+            continue;
+        };
+
+        if file.exists() {
+            std::fs::remove_file(&file)?;
+        }
+        let msg = format!(
+            "{} {}: {}, building it from {} at {}",
+            pkg.package, pkg.version, problem, url, commit
+        );
+        OUTPUT.warn(&msg);
+        info!("{}", msg);
+        create_parent_dir_if_needed(&checkout)?;
+        crate::pkgsource::git::fetch_git_checkout(
+            &url,
+            Some(&commit),
+            subdir.as_deref(),
+            &checkout,
+        )?;
+        OUTPUT.success(&format!("Fetched {}", pkg.package));
+    }
+    Ok(())
 }
 
 /// The parsed `sources` entry of a lockfile package, see [`LockSource`].
@@ -6699,6 +6894,120 @@ fn download_http_lockfile_packages(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A lockfile package of an r-universe repository: its file at `url`,
+    /// with sha256 `hash`, and the git commit `commit` of `repo`.
+    fn r_universe_lock_package(
+        name: &str,
+        url: &str,
+        hash: &str,
+        repo: &str,
+        commit: &str,
+    ) -> RprojLockPackage {
+        RprojLockPackage {
+            package: name.to_string(),
+            version: "1.0".to_string(),
+            binary: true,
+            platform: "testos".to_string(),
+            dependencies: vec![],
+            metadata: HashMap::from([(REMOTE_HASH_FIELD.to_string(), hash.to_string())]),
+            sources: vec![
+                url.to_string(),
+                LockSource::Git {
+                    url: repo.to_string(),
+                    commit: commit.to_string(),
+                    subdir: None,
+                }
+                .to_string(),
+            ],
+            target: format!("bin/{}_1.0.tgz", name),
+            groups: vec![],
+            extra_groups: vec![],
+            is_project: false,
+            repository: Some("rlib".to_string()),
+            system_requirements: None,
+            os_type: None,
+        }
+    }
+
+    // `#[ignore]`d for the same reason as the git tests in
+    // `crate::pkgsource::git`: `git` spawns `git-upload-pack` via `PATH`,
+    // which other tests change while the suite runs. Run with
+    // `cargo test -- --ignored`.
+    #[test]
+    #[ignore]
+    fn r_universe_packages_are_built_from_git_if_their_file_is_gone() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let fixture = crate::pkgsource::git::tests::bare_fixture();
+        let repo = format!("file://{}", fixture.path().join("work").display());
+        let probe = tempfile::tempdir().unwrap();
+        let commit =
+            crate::pkgsource::git::fetch_git_checkout(&repo, Some("main"), None, probe.path())
+                .unwrap();
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let server = rt.block_on(MockServer::start());
+        for (p, status, body) in [
+            ("/good.tgz", 200, "good"),
+            ("/changed.tgz", 200, "rebuilt"),
+            ("/gone.tgz", 404, ""),
+        ] {
+            rt.block_on(
+                Mock::given(method("GET"))
+                    .and(path(p))
+                    .respond_with(ResponseTemplate::new(status).set_body_string(body))
+                    .mount(&server),
+            );
+        }
+        let good_file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(good_file.path(), "good").unwrap();
+        let hash = crate::utils::calculate_file_hash(good_file.path()).unwrap();
+
+        let cache = tempfile::tempdir().unwrap();
+        let pkgs: Vec<RprojLockPackage> = ["good", "changed", "gone"]
+            .iter()
+            .map(|n| {
+                // The binary's sha256 is in its URL, like on r-universe.
+                let url = format!("{}/{}.tgz?sha256={}", server.uri(), n, hash);
+                r_universe_lock_package(n, &url, &hash, &repo, &commit)
+            })
+            .collect();
+        let refs: Vec<&RprojLockPackage> = pkgs.iter().collect();
+        download_r_universe_packages(&refs, cache.path()).unwrap();
+
+        let checkout = cache
+            .path()
+            .join("packages")
+            .join(git_fallback_target(&commit));
+        let good = lockfile_package_info(&pkgs[0], cache.path(), None);
+        assert!(good.binary);
+        assert_eq!(
+            good.file_path,
+            cache.path().join("packages/bin/good_1.0.tgz")
+        );
+        assert!(good.file_path.exists());
+        for pkg in &pkgs[1..] {
+            let info = lockfile_package_info(pkg, cache.path(), None);
+            assert!(!info.binary, "{}", pkg.package);
+            assert_eq!(info.file_path, checkout, "{}", pkg.package);
+            assert!(checkout.join("DESCRIPTION").exists());
+            assert!(!cache.path().join("packages").join(&pkg.target).exists());
+        }
+    }
+
+    #[test]
+    fn git_fallback_needs_a_file_first() {
+        let pkg = r_universe_lock_package("a", "https://x/a.tgz", "h", "https://g/a", "abc");
+        assert_eq!(
+            git_fallback(&pkg),
+            Some(("https://g/a".to_string(), "abc".to_string(), None))
+        );
+        let mut git_only = pkg.clone();
+        git_only.sources.remove(0);
+        assert_eq!(git_fallback(&git_only), None);
+    }
     use crate::dcf::RDepType;
     use crate::rproj::{Dependency, Group, Workspace};
     use std::collections::BTreeMap;
