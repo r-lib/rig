@@ -274,6 +274,7 @@ impl ProjRepos {
                     url: repo.url.clone(),
                     metadata,
                     explicit: repo.is_explicit(),
+                    ..Default::default()
                 }
             })
             .collect()

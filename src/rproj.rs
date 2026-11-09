@@ -39,6 +39,7 @@ use crate::install::{
 use crate::pkgsource::lock::LockSource;
 use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::minor_r_version;
+use crate::repos::detect::RepoType;
 use crate::repos::feed::RepoId;
 use crate::rvenv::RPROJ_LOCK_FILE;
 use crate::solver::{RPackageRegistry, RegistrySolution};
@@ -678,12 +679,18 @@ pub struct Group {
 /// one off with `enabled = false`, pins Bioconductor's `version`, or puts the
 /// built-in repository at its place in the order. `explicit = true` makes a
 /// repository serve only the dependencies pinned to it with
-/// `{ repository = "<name>" }`. See [`Rproj::check_repositories`].
+/// `{ repository = "<name>" }`. `type` gives the type of a repository with a
+/// `url`, it is detected if not given, and `extend = false` turns off the
+/// extended metadata of a repository. See [`Rproj::check_repositories`].
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub struct Repository {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
+    pub repo_type: Option<RepoType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extend: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -739,6 +746,12 @@ impl Repository {
     /// Whether the repository only serves the dependencies pinned to it.
     pub fn is_explicit(&self) -> bool {
         self.explicit.unwrap_or(false)
+    }
+
+    /// Whether the extended metadata of the repository is used, if it has
+    /// one.
+    pub fn is_extended(&self) -> bool {
+        self.extend.unwrap_or(true)
     }
 }
 
@@ -962,6 +975,12 @@ impl Rproj {
                 if repo.url.is_some() {
                     bail!(
                         "`[[repository]]` `{}` is a built-in repository, it cannot have a `url`",
+                        repo.name
+                    );
+                }
+                if repo.repo_type.is_some() {
+                    bail!(
+                        "`[[repository]]` `{}` is a built-in repository, it cannot have a `type`",
                         repo.name
                     );
                 }
@@ -2877,6 +2896,14 @@ pub struct LockRepository {
     /// with `%v` for the Bioconductor version. Absent for the others.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<String>,
+    /// The type of a repository with a `url`, declared or detected when the
+    /// lock file was made. Locking again uses this instead of detecting the
+    /// type again, as long as the URL is the same.
+    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
+    pub repo_type: Option<RepoType>,
+    /// `false` if the extended metadata of the repository is turned off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extend: Option<bool>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub explicit: bool,
 }
@@ -5593,6 +5620,26 @@ foo = "bar"
         let url_version =
             parse("[[repository]]\nname = \"other\"\nurl = \"https://x\"\nversion = \"1\"\n");
         assert!(url_version.check_repositories().is_err());
+
+        // `type` and `extend`.
+        let typed = parse(
+            "[[repository]]\nname = \"rlib\"\nurl = \"https://x\"\ntype = \"r-universe\"\n\n\
+             [[repository]]\nname = \"cran\"\nextend = false\n",
+        );
+        assert!(typed.check_repositories().is_ok());
+        assert_eq!(typed.repository[0].repo_type, Some(RepoType::RUniverse));
+        assert!(typed.repository[0].is_extended());
+        assert!(!typed.repository[1].is_extended());
+        let text = toml::to_string_pretty(&typed).unwrap();
+        assert!(text.contains("type = \"r-universe\""), "{}", text);
+        assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), typed);
+        let builtin_type = parse("[[repository]]\nname = \"cran\"\ntype = \"cran\"\n");
+        assert!(builtin_type.check_repositories().is_err());
+        let bad_type = toml::from_str::<Rproj>(
+            "[project]\nname = \"p\"\nversion = \"1.0.0\"\n\
+             [[repository]]\nname = \"x\"\nurl = \"https://x\"\ntype = \"nope\"\n",
+        );
+        assert!(bad_type.is_err());
 
         // Round trip keeps the entry and its place.
         let both = parse(

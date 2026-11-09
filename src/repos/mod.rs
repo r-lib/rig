@@ -26,6 +26,7 @@ mod repos_add;
 use repos_add::sc_repos_add;
 pub mod detect;
 pub mod protocol;
+pub mod repo_types;
 use detect::sc_repos_detect;
 mod repos_enable;
 use repos_enable::{sc_repos_disable, sc_repos_enable};

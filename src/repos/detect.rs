@@ -631,6 +631,55 @@ fn classify_ppm(url: &str, api: &PpmApi) -> Result<DetectedRepo, Box<dyn Error>>
     Ok(d)
 }
 
+/// A repository of a known type `rtype` at `url`, with the details that
+/// follow from the URL alone, without network access: the parts of a PPM
+/// URL, the Bioconductor version and repository, and the flavor of extended
+/// metadata. The repositories of a PPM root are not known this way.
+pub(crate) fn describe(url: &str, rtype: RepoType) -> DetectedRepo {
+    let url = normalize_url(url);
+    let mut d = DetectedRepo::new(&url, rtype);
+    match rtype {
+        RepoType::PpmCran
+        | RepoType::PpmBioc
+        | RepoType::PpmOther
+        | RepoType::PpmSnapshot
+        | RepoType::Ppm => {
+            let (base, rest) = split_ppm_url(&url, None);
+            let path = parse_ppm_path(&rest);
+            d.ppm_base = Some(base);
+            d.ppm_repo = path.repo;
+            d.distro = path.distro;
+            d.snapshot = path.snapshot;
+            if let Some(v) = &path.bioc_version {
+                d.bioc_version = Some(v.clone());
+            }
+            if let Some(sub) = &path.bioc_subrepo {
+                let v = path.bioc_version.unwrap_or_default();
+                d = d.with_bioc_subrepo(&v, sub);
+            }
+        }
+        RepoType::Bioc => {
+            if let Some((version, subrepo)) = parse_bioc_subrepo_path(&url) {
+                d = d.with_bioc_subrepo(&version, &subrepo);
+            } else if let Some(version) = parse_bioc_version_path(&url) {
+                d.bioc_version = Some(version);
+            }
+        }
+        RepoType::Extended => match path_segments(&url).last() {
+            Some(v) if is_bioc_version(v) => {
+                d.extended_flavor = Some("bioc".to_string());
+                d.bioc_version = Some(v.clone());
+            }
+            _ if url.to_lowercase().contains("bioc") => {
+                d.extended_flavor = Some("bioc".to_string());
+            }
+            _ => d.extended_flavor = Some("cran".to_string()),
+        },
+        RepoType::Cran | RepoType::RUniverse | RepoType::CranLike => {}
+    }
+    d
+}
+
 // ------------------------------------------------------------------------
 // Network
 // ------------------------------------------------------------------------
@@ -1232,6 +1281,58 @@ mod tests {
         }
         let d = classify_ppm("https://x.com/rspm/cran/latest", &api).unwrap();
         assert!(d.guessed);
+    }
+
+    #[test]
+    fn test_repo_type_names() {
+        let names: Vec<&str> = RepoType::ALL.iter().map(|t| t.as_str()).collect();
+        assert_eq!(names, crate::args::REPO_TYPES);
+        for t in RepoType::ALL {
+            assert_eq!(t.as_str().parse::<RepoType>().unwrap(), t);
+            let json = serde_json::to_string(&t).unwrap();
+            assert_eq!(json, format!("\"{}\"", t.as_str()));
+        }
+        assert!("nope".parse::<RepoType>().is_err());
+    }
+
+    #[test]
+    fn test_describe() {
+        let d = describe(
+            "https://p3m.dev/cran/__linux__/jammy/latest/",
+            RepoType::PpmCran,
+        );
+        assert_eq!(d.url, "https://p3m.dev/cran/__linux__/jammy/latest");
+        assert_eq!(d.ppm_base.as_deref(), Some("https://p3m.dev"));
+        assert_eq!(d.ppm_repo.as_deref(), Some("cran"));
+        assert_eq!(d.distro.as_deref(), Some("jammy"));
+        assert_eq!(d.snapshot.as_deref(), Some("latest"));
+        assert!(d.extensible);
+
+        let d = describe(
+            "https://bioconductor.org/packages/3.22/bioc",
+            RepoType::Bioc,
+        );
+        assert_eq!(d.bioc_version.as_deref(), Some("3.22"));
+        assert_eq!(d.bioc_subrepo.as_deref(), Some("bioc"));
+        assert!(!d.extensible);
+
+        let d = describe("https://bioconductor.org/packages/3.22", RepoType::Bioc);
+        assert_eq!(d.bioc_version.as_deref(), Some("3.22"));
+        assert_eq!(d.bioc_subrepo, None);
+
+        let d = describe("https://ppm.r-pkg.org", RepoType::Extended);
+        assert_eq!(d.extended_flavor.as_deref(), Some("cran"));
+        let d = describe("https://ppm-bioc.r-pkg.org", RepoType::Extended);
+        assert_eq!(d.extended_flavor.as_deref(), Some("bioc"));
+        let d = describe("https://x.org/meta/3.21", RepoType::Extended);
+        assert_eq!(d.extended_flavor.as_deref(), Some("bioc"));
+        assert_eq!(d.bioc_version.as_deref(), Some("3.21"));
+
+        let d = describe("https://cloud.r-project.org", RepoType::Cran);
+        assert_eq!(
+            d,
+            DetectedRepo::new("https://cloud.r-project.org", RepoType::Cran)
+        );
     }
 
     #[test]

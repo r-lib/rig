@@ -7400,6 +7400,16 @@ mod tests {
         assert!(text.contains("[[tool.rig.repository]]"), "{}", text);
         let back: RprojLock = toml::from_str(&text).unwrap();
         assert_eq!(back.tool.rig, opts);
+
+        // The type and `extend` of a repository round trip, too.
+        let mut typed = lock;
+        typed.tool.rig.repositories[0].repo_type = Some(crate::repos::detect::RepoType::Cran);
+        typed.tool.rig.repositories[0].extend = Some(false);
+        let text = typed.to_toml().unwrap();
+        assert!(text.contains("type = \"cran\""), "{}", text);
+        assert!(text.contains("extend = false"), "{}", text);
+        let back: RprojLock = toml::from_str(&text).unwrap();
+        assert_eq!(back.tool.rig, typed.tool.rig);
     }
 
     #[test]
