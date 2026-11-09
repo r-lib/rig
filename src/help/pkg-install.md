@@ -23,17 +23,29 @@ repositories for this command only, the setup of the R version stays the
 same. Both take a comma-separated list and can be repeated. `--with-repos`
 adds repositories, by name, like [`rig repos enable`](repos.qmd#rig-repos-enable), by URL, or as
 `name=URL`, e.g. `--index=rlib=https://r-lib.r-universe.dev`. A repository
-given by URL is a CRAN-like repository and comes before the others.
+given by URL comes before the others.
 `--without-repos=<names>` leaves out repositories, and `--without-repos`
 without names leaves out all configured repositories, so only the ones in
 `--with-repos` are used, e.g. `--no-index
 --index=https://r-lib.r-universe.dev`. URLs cannot contain commas.
 
-For P3M and for Bioconductor's software repository rig reads their full
-package history, from <https://ppm.r-pkg.org> and <https://ppm-bioc.r-pkg.org>,
-so older and archived versions are available, too. Any other repository,
-e.g. CRAN itself, an r-universe, or one added with [`rig repos add`](repos.qmd#rig-repos-add), is read
-from its `PACKAGES` files, so only its current packages are available.
+How rig reads a repository depends on its type. The repositories built into
+rig have a type, a repository added with [`rig repos add`](repos.qmd#rig-repos-add) gets one when you
+add it, and rig finds out the type of any other repository from the server,
+and remembers it for a week.
+
+For CRAN, a CRAN mirror, P3M, and Bioconductor's software repository rig
+reads their full package history, from <https://ppm.r-pkg.org> and
+<https://ppm-bioc.r-pkg.org>, so older and archived versions are available,
+too. A source package of CRAN is downloaded from the CRAN mirror first, if
+there is one. Any other repository, e.g. an r-universe, a P3M snapshot, or
+your own CRAN-like repository, is read from its `PACKAGES` files, so only its
+current packages are available. `rig repos add --no-extend` makes rig read a
+CRAN mirror from its `PACKAGES` files, too.
+
+For a package of an r-universe, rig also looks up the git commit it was built
+from. If r-universe replaced the package file since rig read its `PACKAGES`
+file, rig builds the package from git, at that commit.
 
 A CRAN-like repository has binary packages for macOS and Windows, if it has
 `PACKAGES` files for them in the standard place, e.g.

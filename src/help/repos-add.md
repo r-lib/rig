@@ -22,6 +22,17 @@ you would put into the `repos` option in R, i.e. the directory that has the
 `src/contrib` directory in it, and the `bin` directory, if the repository has
 binary packages.
 
+rig finds out the type of the repository from the server, and stores it with
+the repository: a CRAN mirror, a repository of Posit Package Manager, a
+Bioconductor mirror, an r-universe, or another CRAN-like repository. The type
+decides how [`rig pkg`](pkg.qmd) reads the repository. For a CRAN mirror rig reads the
+full history of CRAN, so older versions are available, too, and downloads
+source packages from the mirror first. `--no-extend` turns this off, and rig
+only reads the `PACKAGES` files of the mirror. Use `--type` to give the type
+yourself, e.g. if rig cannot reach the server now. The types are `cran`,
+`ppm-cran`, `ppm-bioc`, `ppm-other`, `ppm-snapshot`, `ppm`, `bioc`,
+`extended`, `r-universe` and `cran-like`.
+
 If the repository needs a username and a password, put the username into
 the URL, e.g. `https://alice@cran.acme.com/cran`, but not the password: rig
 refuses URLs with a password. See [`rig auth`](auth.qmd) and the [authentication guide](../auth.qmd) for
@@ -51,4 +62,8 @@ rig repos add acme-universe https://acme.r-universe.dev --enable
 # Add a repository and enable it for all R versions, also the ones
 # installed later
 rig repos add acme https://cran.acme.com --enable --all-versions
+
+# Add a CRAN mirror that rig cannot reach now, and only use its own
+# PACKAGES files
+rig repos add acme https://cran.acme.com --type cran --no-extend
 ```
