@@ -54,6 +54,15 @@ minor branch. E.g. it is not possible to have R 4.6.0 and R 4.6.1 installed
 at the same time. Adding one of them will automatically remove the other.
 In user mode there is no such restriction.
 
+With `--with-site-library`, rig also creates a site library after
+installing R: the `site-library` directory in the R home directory
+(`R.home()`), if it does not exist yet. R only uses a site library if this
+directory exists, and then puts it on `.libPaths()` after the user library.
+In admin mode the site library is shared by all users of the machine, and
+only administrators can install packages into it. In user mode it is inside
+your own R installation. By default (`--without-site-library`) rig does not
+create it.
+
 If no default R version is set yet, `rig add` makes the new version the
 default, as `rig default` would. In user mode that creates the `R` and
 `Rscript` quick links, and registers the version with RStudio and Positron:
@@ -115,6 +124,9 @@ rig add 4.6.1
 
 # Install a version and print information about it as JSON
 rig add --json release
+
+# Install the latest release, and create a site library for it
+rig add release --with-site-library
 
 # Install latest version within a minor branch
 rig add 4.6
