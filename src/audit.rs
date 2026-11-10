@@ -25,13 +25,14 @@ use log::info;
 use serde::Serialize;
 use tabular::{Row, Table};
 
-use crate::dcf::RPackageVersion;
+use crate::dcf::{PackageDependencies, RPackageVersion, VersionConstraintType};
 use crate::output::OUTPUT;
 use crate::pkg::list::{read_installed, resolve_library};
 use crate::proj::{proj_lock_root, proj_read_solve_roots, read_existing_lock, BASE_PKGS};
 use crate::repos::cranlike_metadata::{archived_package_in, repos_report_policy, AuditVersion};
 use crate::repos::feed::{BiocSetting, PkgRepo, RepoId};
 use crate::repos::{interpret_pkg_repos_args, DbSourcePackageLoader};
+use crate::rproj::RPROJ_MANIFEST_FILE;
 use crate::rvenv::{find_project_root, find_workspace_root, project_library};
 
 /// A package version to check, and where it is.
@@ -90,8 +91,12 @@ struct Scope {
 }
 
 enum Fixer {
-    /// A project at this root.
-    Project(PathBuf),
+    /// A project at this root, with the dependencies of its manifest, or
+    /// of every member of a workspace.
+    Project {
+        root: PathBuf,
+        deps: PackageDependencies,
+    },
     /// A library, with the `--library` and `--r-version` values for
     /// `rig pkg install`.
     Library {
@@ -110,7 +115,7 @@ pub fn sc_audit(args: &ArgMatches, mainargs: &ArgMatches) -> Result<i32, Box<dyn
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
-        print_report(&report);
+        print_report(&report, !fix);
     }
 
     let failing: Vec<&Finding> = report.findings.iter().filter(|f| f.fails()).collect();
@@ -118,17 +123,46 @@ pub fn sc_audit(args: &ArgMatches, mainargs: &ArgMatches) -> Result<i32, Box<dyn
         return Ok(if failing.is_empty() { 0 } else { 1 });
     }
 
-    let mut fixes: BTreeMap<String, String> = BTreeMap::new();
+    let mut fixes: BTreeMap<String, Fix> = BTreeMap::new();
     for f in &failing {
         match &f.fixed_in {
             Some(v) => {
-                fixes.insert(f.package.clone(), v.clone());
+                let fix = fixes.entry(f.package.clone()).or_insert_with(|| Fix {
+                    from: vec![],
+                    to: v.clone(),
+                    why: vec![],
+                });
+                if !fix.from.contains(&f.version) {
+                    fix.from.push(f.version.clone());
+                }
+                let why = if f.issue == "vulnerable" {
+                    f.details.clone()
+                } else {
+                    f.issue.to_string()
+                };
+                if !fix.why.contains(&why) {
+                    fix.why.push(why);
+                }
             }
             None => OUTPUT.warn(&format!(
                 "No version of {} without known problems, cannot fix it.",
                 f.package
             )),
         }
+    }
+    // `rig proj lock --upgrade-package` cannot go against the manifest.
+    if let Fixer::Project { deps, .. } = &scope.fixer {
+        fixes.retain(|pkg, fix| match manifest_conflict(deps, pkg, &fix.to) {
+            Some(cs) => {
+                OUTPUT.warn(&format!(
+                    "Cannot upgrade {} to {}, {} requires {} {}. \
+                     Relax the constraint to fix it.",
+                    pkg, fix.to, RPROJ_MANIFEST_FILE, pkg, cs
+                ));
+                false
+            }
+            None => true,
+        });
     }
     if fixes.is_empty() {
         return Ok(1);
@@ -147,7 +181,7 @@ pub fn sc_audit(args: &ArgMatches, mainargs: &ArgMatches) -> Result<i32, Box<dyn
         Ok(0)
     } else {
         if !json {
-            print_report(&report);
+            print_report(&report, false);
         }
         Ok(1)
     }
@@ -225,7 +259,10 @@ fn project_scope(args: &ArgMatches) -> Result<Scope, Box<dyn Error>> {
     Ok(Scope {
         subjects,
         repos,
-        fixer: Fixer::Project(root),
+        fixer: Fixer::Project {
+            root,
+            deps: solve.merged,
+        },
     })
 }
 
@@ -430,7 +467,9 @@ fn nearest_good_version(
         .map(|(v, _)| v.clone())
 }
 
-fn print_report(report: &Report) {
+/// `summary` adds a line with the number of problems found, and the hint
+/// to run `rig audit --fix`.
+fn print_report(report: &Report, summary: bool) {
     if !report.has_policy_data {
         OUTPUT.warn(
             "None of the repositories reports vulnerabilities or blocked versions, \
@@ -489,7 +528,7 @@ fn print_report(report: &Report) {
     .collect();
     if found.is_empty() {
         OUTPUT.success("No known vulnerabilities or blocked packages.");
-    } else {
+    } else if summary {
         OUTPUT.warn(&format!(
             "Found {}. `rig audit --fix` upgrades them.",
             found.join(" and ")
@@ -540,28 +579,70 @@ fn repos_argv(args: &ArgMatches) -> Vec<String> {
     out
 }
 
+/// The constraints on `package` in `deps`, e.g. `==1.5`, if `version` does
+/// not satisfy them.
+fn manifest_conflict(deps: &PackageDependencies, package: &str, version: &str) -> Option<String> {
+    let ver = RPackageVersion::from_str(version).ok()?;
+    let mut conflict = false;
+    let mut out: Vec<String> = vec![];
+    for dep in deps.dependencies.iter().filter(|d| d.name == package) {
+        for cs in &dep.constraints {
+            let (op, ok) = match cs.constraint_type {
+                VersionConstraintType::Less => ("<", ver < cs.version),
+                VersionConstraintType::LessOrEqual => ("<=", ver <= cs.version),
+                VersionConstraintType::Equal => ("==", ver == cs.version),
+                VersionConstraintType::Greater => (">", ver > cs.version),
+                VersionConstraintType::GreaterOrEqual => (">=", ver >= cs.version),
+            };
+            conflict |= !ok;
+            out.push(format!("{}{}", op, cs.version));
+        }
+    }
+    if conflict {
+        Some(out.join(", "))
+    } else {
+        None
+    }
+}
+
+/// An upgrade of a package by `--fix`.
+struct Fix {
+    /// The installed or locked versions, usually only one.
+    from: Vec<String>,
+    to: String,
+    /// The vulnerability ids, or `blocked`.
+    why: Vec<String>,
+}
+
 /// Upgrade the packages of `fixes` to their versions, see the module docs.
 /// `repos` are the `--with-repos` and `--without-repos` arguments.
 fn run_fix(
     fixer: &Fixer,
-    fixes: &BTreeMap<String, String>,
+    fixes: &BTreeMap<String, Fix>,
     repos: &[String],
     dry_run: bool,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     let specs: Vec<String> = fixes
         .iter()
-        .map(|(pkg, ver)| format!("{}@=={}", pkg, ver))
+        .map(|(pkg, fix)| format!("{}@=={}", pkg, fix.to))
         .collect();
-    for (pkg, ver) in fixes {
-        if dry_run {
-            OUTPUT.info(&format!("Would upgrade {} to {}", pkg, ver));
-        } else {
-            OUTPUT.info(&format!("Upgrading {} to {}", pkg, ver));
-        }
+    for (pkg, fix) in fixes {
+        OUTPUT.info(&format!(
+            "{} {} from {} to {} ({})",
+            if dry_run {
+                "Would upgrade"
+            } else {
+                "Upgrading"
+            },
+            pkg,
+            fix.from.join(", "),
+            fix.to,
+            fix.why.join(", ")
+        ));
     }
     match fixer {
-        Fixer::Project(root) => {
+        Fixer::Project { root, .. } => {
             if dry_run {
                 OUTPUT.info(&format!(
                     "Dry run, not updating the project at {}",
@@ -697,6 +778,20 @@ mod tests {
         let rows = vec![row("0.3.0", blocked()), row("0.3.0", None)];
         let found = check_version("otel", &v("0.3.0"), None, &rows, None).unwrap();
         assert!(found.is_empty());
+    }
+
+    #[test]
+    fn manifest_constraints_can_block_the_fix() {
+        let mut deps = PackageDependencies::from_str("jsonlite (== 1.5), otel", "Imports").unwrap();
+        deps.append(&mut PackageDependencies::from_str("cli (>= 3.0)", "Imports").unwrap());
+        assert_eq!(
+            manifest_conflict(&deps, "jsonlite", "1.8").as_deref(),
+            Some("==1.5")
+        );
+        assert_eq!(manifest_conflict(&deps, "jsonlite", "1.5"), None);
+        assert_eq!(manifest_conflict(&deps, "otel", "0.3.0"), None);
+        assert_eq!(manifest_conflict(&deps, "cli", "3.6.0"), None);
+        assert_eq!(manifest_conflict(&deps, "other", "1.0"), None);
     }
 
     #[test]
