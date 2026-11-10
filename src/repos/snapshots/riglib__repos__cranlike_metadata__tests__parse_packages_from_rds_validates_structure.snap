@@ -248,4 +248,5 @@ Package {
     repository: None,
     system_requirements: None,
     os_type: None,
+    policy: None,
 }

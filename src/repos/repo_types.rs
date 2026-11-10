@@ -20,7 +20,8 @@ use super::detect::{describe, detect_repo_type, DetectedRepo, RepoType};
 /// How long a detected type is used before it is detected again.
 pub const CACHE_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
-const CACHE_FILE: &str = "repo-types.json";
+/// Version 2 knows about the own extended metadata of PPM CRAN repositories.
+const CACHE_FILE: &str = "repo-types-2.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CacheEntry {
@@ -34,7 +35,7 @@ type Cache = HashMap<String, CacheEntry>;
 /// The repository at `url`, of type `declared` if that is given, detected
 /// otherwise.
 pub fn resolve_repo(url: &str, declared: Option<RepoType>) -> DetectedRepo {
-    if let Some(rtype) = declared.filter(|t| *t != RepoType::Ppm) {
+    if let Some(rtype) = declared.filter(|t| !needs_detection(*t)) {
         return describe(url.trim().trim_end_matches('/'), rtype);
     }
     let path = match crate::cache::get_cache_dir() {
@@ -47,6 +48,13 @@ pub fn resolve_repo(url: &str, declared: Option<RepoType>) -> DetectedRepo {
     resolve_repo_with(url, declared, path.as_deref(), now(), |u| {
         detect_repo_type(u)
     })
+}
+
+/// Whether a declared type still needs detection, for the details that do
+/// not follow from the URL: the repositories of a PPM root, and whether a PPM
+/// CRAN repository serves its own extended metadata.
+fn needs_detection(rtype: RepoType) -> bool {
+    matches!(rtype, RepoType::Ppm | RepoType::PpmCran)
 }
 
 fn now() -> u64 {
@@ -72,7 +80,7 @@ where
     match declared {
         // The repositories of a PPM root are only known from its API.
         Some(RepoType::Ppm) => {
-            let detected = cached_or_detect(url, cache, now, &detect);
+            let detected = cached_or_detect(url, cache, now, &detect, true);
             if detected.repo_type == RepoType::Ppm {
                 detected
             } else {
@@ -83,12 +91,30 @@ where
                 describe(url, RepoType::Ppm)
             }
         }
+        // A declared type is not checked, but the detection may find the
+        // repository's own extended metadata.
+        Some(RepoType::PpmCran) => {
+            let detected = cached_or_detect(url, cache, now, &detect, false);
+            if detected.repo_type == RepoType::PpmCran {
+                detected
+            } else {
+                describe(url, RepoType::PpmCran)
+            }
+        }
         Some(rtype) => describe(url, rtype),
-        None => cached_or_detect(url, cache, now, &detect),
+        None => cached_or_detect(url, cache, now, &detect, true),
     }
 }
 
-fn cached_or_detect<F>(url: &str, cache: Option<&Path>, now: u64, detect: &F) -> DetectedRepo
+/// The cached or detected type of the repository at `url`. If the detection
+/// fails, it is a CRAN-like repository, with a warning if `warn` is true.
+fn cached_or_detect<F>(
+    url: &str,
+    cache: Option<&Path>,
+    now: u64,
+    detect: &F,
+    warn: bool,
+) -> DetectedRepo
 where
     F: Fn(&str) -> Result<DetectedRepo, Box<dyn Error>>,
 {
@@ -103,11 +129,15 @@ where
     let repo = match detect(url) {
         Ok(repo) => repo,
         Err(e) => {
-            OUTPUT.warn(&format!(
-                "Cannot detect the type of repository {}, using it as a CRAN-like \
-                 repository: {}",
-                url, e
-            ));
+            if warn {
+                OUTPUT.warn(&format!(
+                    "Cannot detect the type of repository {}, using it as a CRAN-like \
+                     repository: {}",
+                    url, e
+                ));
+            } else {
+                debug!("Cannot detect the type of repository {}: {}", url, e);
+            }
             return DetectedRepo::new(url, RepoType::CranLike);
         }
     };
@@ -164,13 +194,44 @@ mod tests {
     fn declared_type_needs_no_detection() {
         let calls = Cell::new(0);
         let d = resolve_repo_with(
-            "https://p3m.dev/cran/latest/",
-            Some(RepoType::PpmCran),
+            "https://p3m.dev/all/latest/",
+            Some(RepoType::PpmOther),
             None,
             0,
             detector(RepoType::CranLike, &calls),
         );
         assert_eq!(calls.get(), 0);
+        assert_eq!(d.repo_type, RepoType::PpmOther);
+        assert_eq!(d.ppm_repo.as_deref(), Some("all"));
+    }
+
+    #[test]
+    fn declared_ppm_cran_is_detected_for_its_metadata() {
+        let calls = Cell::new(0);
+        let det = |url: &str| -> Result<DetectedRepo, Box<dyn Error>> {
+            calls.set(calls.get() + 1);
+            let mut d = describe(url, RepoType::PpmCran);
+            d.metadata = Some("https://ppm.acme.com/cran".to_string());
+            Ok(d)
+        };
+        let d = resolve_repo_with(
+            "https://ppm.acme.com/cran/latest/",
+            Some(RepoType::PpmCran),
+            None,
+            0,
+            det,
+        );
+        assert_eq!(calls.get(), 1);
+        assert_eq!(d.metadata.as_deref(), Some("https://ppm.acme.com/cran"));
+
+        // The declared type wins if the detection does not agree.
+        let d = resolve_repo_with(
+            "https://p3m.dev/cran/latest/",
+            Some(RepoType::PpmCran),
+            None,
+            0,
+            |_| Err("down".into()),
+        );
         assert_eq!(d.repo_type, RepoType::PpmCran);
         assert_eq!(d.ppm_repo.as_deref(), Some("cran"));
     }

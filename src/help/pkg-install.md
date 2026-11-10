@@ -37,11 +37,18 @@ and remembers it for a week.
 For CRAN, a CRAN mirror, P3M, and Bioconductor's software repository rig
 reads their full package history, from <https://ppm.r-pkg.org> and
 <https://ppm-bioc.r-pkg.org>, so older and archived versions are available,
-too. A source package of CRAN is downloaded from the CRAN mirror first, if
+too. The CRAN package history also has the known vulnerabilities of each
+version. A source package of CRAN is downloaded from the CRAN mirror first, if
 there is one. Any other repository, e.g. an r-universe, a P3M snapshot, or
 your own CRAN-like repository, is read from its `PACKAGES` files, so only its
 current packages are available. `rig repos add --no-extend` makes rig read a
 CRAN mirror from its `PACKAGES` files, too.
+
+A CRAN repository of Posit Package Manager may serve its own full package
+history. Then rig reads that instead of <https://ppm.r-pkg.org>. It also
+says which versions the repository blocks, and their known
+vulnerabilities. rig never installs a blocked version, and it warns about a
+version with known vulnerabilities. See [`rig audit`](audit.qmd).
 
 For a package of an r-universe, rig also looks up the git commit it was built
 from. If r-universe replaced the package file since rig read its `PACKAGES`

@@ -28,6 +28,7 @@ use crate::rds::*;
 use crate::repos::feed::{
     resolve_download_url, CranlikeRepo, MetadataFeed, PkgRepo, RepoFilter, RepoId,
 };
+use crate::repos::policy::VersionPolicy;
 use crate::solver::PackageVersionLoader;
 use crate::utils::{calculate_hash, create_parent_dir_if_needed};
 
@@ -158,7 +159,11 @@ fn ensure_archived_fresh(feed: &MetadataFeed) -> Result<(), Box<dyn Error>> {
 /// The name of `feed` in status messages.
 fn feed_display_name(feed: &MetadataFeed) -> String {
     match &feed.repo {
-        RepoId::Cran => "P3M".to_string(),
+        RepoId::Cran if is_append_only(&feed.allpackages_url) => "P3M".to_string(),
+        RepoId::Cran => feed
+            .allpackages_url
+            .trim_end_matches("/ALLPACKAGES.zst")
+            .to_string(),
         RepoId::Bioc(v) => format!("Bioconductor {}", v),
         RepoId::Cranlike { name, .. } => name.clone(),
     }
@@ -479,6 +484,10 @@ pub struct DbSourcePackageLoader {
     /// The packages `os_type` hid every version of, with their `OS_type`,
     /// see [`PackageVersionLoader::os_type_hidden`].
     os_type_hidden: RefCell<HashMap<String, String>>,
+    /// The versions of each package that are hidden because their
+    /// repository blocks them, with the reason, see
+    /// [`PackageVersionLoader::blocked_hidden`].
+    blocked_hidden: RefCell<HashMap<String, Vec<(RPackageVersion, String)>>>,
 }
 
 impl DbSourcePackageLoader {
@@ -502,6 +511,7 @@ impl DbSourcePackageLoader {
             filter: RepoFilter::default(),
             os_type: None,
             os_type_hidden: RefCell::new(HashMap::new()),
+            blocked_hidden: RefCell::new(HashMap::new()),
         })
     }
 
@@ -523,6 +533,7 @@ impl DbSourcePackageLoader {
             filter: RepoFilter::default(),
             os_type: None,
             os_type_hidden: RefCell::new(HashMap::new()),
+            blocked_hidden: RefCell::new(HashMap::new()),
         }
     }
 
@@ -644,6 +655,7 @@ impl PackageVersionLoader for DbSourcePackageLoader {
             // Only for a CRAN-like repository, to reinstall a newer build.
             built: Option<String>,
             os_type: Option<String>,
+            policy: Option<VersionPolicy>,
             repo: RepoId,
             rank: usize,
         }
@@ -654,9 +666,11 @@ impl PackageVersionLoader for DbSourcePackageLoader {
         let mut sysreqs_any: HashMap<String, String> = HashMap::new();
         // The `OS_type` of a version hidden because of it, if any.
         let mut hidden_os_type: Option<String> = None;
+        // The versions hidden because their repository blocks them.
+        let mut hidden_blocked: Vec<(String, String)> = vec![];
         let mut stmt = self.conn.prepare_cached(
             "SELECT version, dependencies, sha256sum, repo_id, download_url, \
-             system_requirements, built, os_type FROM packages WHERE name = ?1",
+             system_requirements, built, os_type, policy FROM packages WHERE name = ?1",
         )?;
         let rows = stmt.query_map(params![package], |row| {
             Ok((
@@ -668,10 +682,12 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                 row.get::<_, Option<String>>(5)?,
                 row.get::<_, Option<String>>(6)?,
                 row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<String>>(8)?,
             ))
         })?;
         for row in rows {
-            let (ver, deps_json, sha256sum, repo_id, download_url, sysreqs, built, os_type) = row?;
+            let (ver, deps_json, sha256sum, repo_id, download_url, sysreqs, built, os_type, policy) =
+                row?;
             let Some((rank, repo)) = self.repo_of(repo_id) else {
                 continue; // row from a repo we do not source from
             };
@@ -691,6 +707,11 @@ impl PackageVersionLoader for DbSourcePackageLoader {
             if !self.filter.allows(package, repo) {
                 continue; // pinned to another repo, or an explicit repo
             }
+            let policy = policy.and_then(|p| serde_json::from_str::<VersionPolicy>(&p).ok());
+            if let Some(p) = policy.as_ref().filter(|p| p.is_blocked()) {
+                hidden_blocked.push((ver.clone(), p.block_reason()));
+                continue; // the repository refuses to serve it
+            }
             if best.get(&ver).is_some_and(|b| b.rank <= rank) {
                 continue;
             }
@@ -703,6 +724,7 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                     system_requirements: sysreqs,
                     built: built.filter(|_| repo.is_cranlike()),
                     os_type,
+                    policy,
                     repo: repo.clone(),
                     rank,
                 },
@@ -723,8 +745,26 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                 .system_requirements
                 .or_else(|| sysreqs_any.get(&ver).cloned());
             pkg.os_type = row.os_type;
+            pkg.policy = row.policy;
             pkg.repository = Some(row.repo);
             out.push(pkg);
+        }
+        // A version that another repository serves is not hidden.
+        let mut blocked: Vec<(RPackageVersion, String)> = vec![];
+        for (ver, reason) in hidden_blocked {
+            let Ok(v) = RPackageVersion::from_str(&ver) else {
+                continue;
+            };
+            if out.iter().any(|p| p.version == v) || blocked.iter().any(|(b, _)| *b == v) {
+                continue;
+            }
+            blocked.push((v, reason));
+        }
+        if !blocked.is_empty() {
+            blocked.sort_by(|a, b| a.0.cmp(&b.0));
+            self.blocked_hidden
+                .borrow_mut()
+                .insert(package.to_string(), blocked);
         }
         if let (true, Some(os_type)) = (out.is_empty(), hidden_os_type) {
             self.os_type_hidden
@@ -737,6 +777,120 @@ impl PackageVersionLoader for DbSourcePackageLoader {
     fn os_type_hidden(&self, package: &str) -> Option<String> {
         self.os_type_hidden.borrow().get(package).cloned()
     }
+
+    fn blocked_hidden(&self, package: &str) -> Vec<(RPackageVersion, String)> {
+        self.blocked_hidden
+            .borrow()
+            .get(package)
+            .cloned()
+            .unwrap_or_default()
+    }
+}
+
+/// One version of a package in a repository, with the repository's policy
+/// about it, see [`DbSourcePackageLoader::audit_versions`].
+#[derive(Debug, Clone)]
+pub struct AuditVersion {
+    pub version: RPackageVersion,
+    /// The hash of the original source tarball, `RemoteHash` of an
+    /// installed package.
+    pub sha256sum: Option<String>,
+    pub policy: Option<VersionPolicy>,
+    /// The day the version was published, `YYYY-MM-DD`, see
+    /// [`snapshot_date`], if known.
+    pub published: Option<String>,
+}
+
+/// A package version with a policy, see
+/// [`DbSourcePackageLoader::policy_versions`].
+pub struct PolicyVersion {
+    pub package: String,
+    pub version: String,
+    pub policy: VersionPolicy,
+}
+
+impl DbSourcePackageLoader {
+    /// Every package version with a policy, i.e. known vulnerabilities or
+    /// a block, in the repositories of this loader. For the summary of
+    /// `rig audit`.
+    pub fn policy_versions(&self) -> Result<Vec<PolicyVersion>, Box<dyn Error>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT name, version, repo_id, policy FROM packages WHERE policy IS NOT NULL",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+        let mut out = vec![];
+        for row in rows {
+            let (name, version, repo_id, policy) = row?;
+            if self.repo_of(repo_id).is_none() {
+                continue;
+            }
+            if let Ok(policy) = serde_json::from_str::<VersionPolicy>(&policy) {
+                out.push(PolicyVersion {
+                    package: name,
+                    version,
+                    policy,
+                });
+            }
+        }
+        Ok(out)
+    }
+
+    /// Every version of `package` in the repositories of this loader, from
+    /// every repository, with the blocked ones, and without any of the
+    /// filters of [`PackageVersionLoader::load_versions`]. For `rig audit`.
+    pub fn audit_versions(&self, package: &str) -> Result<Vec<AuditVersion>, Box<dyn Error>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT version, sha256sum, repo_id, policy, download_url FROM packages WHERE name = ?1",
+        )?;
+        let rows = stmt.query_map(params![package], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
+        })?;
+        let mut out = vec![];
+        for row in rows {
+            let (ver, sha256sum, repo_id, policy, download_url) = row?;
+            if self.repo_of(repo_id).is_none() {
+                continue;
+            }
+            let Ok(version) = RPackageVersion::from_str(&ver) else {
+                continue;
+            };
+            out.push(AuditVersion {
+                version,
+                sha256sum,
+                policy: policy.and_then(|p| serde_json::from_str(&p).ok()),
+                published: download_url
+                    .as_deref()
+                    .and_then(snapshot_date)
+                    .map(|d| d.to_string()),
+            });
+        }
+        out.sort_by(|a, b| a.version.cmp(&b.version));
+        Ok(out)
+    }
+}
+
+/// Whether `package` is archived in the extended feed `feed`, from the
+/// cache, see [`archived_package`].
+pub fn archived_package_in(
+    feed: &MetadataFeed,
+    package: &str,
+) -> Result<Option<ArchivedPackage>, Box<dyn Error>> {
+    let repo_local = repo_local_file(&feed.archived_url)?;
+    let repo_db = repo_db_file(&repo_local)?;
+    archived_package_in_db(&repo_db, &feed.archived_url, package)
 }
 
 /// The names of the packages in `feed`'s ALLPACKAGES history, from the
@@ -988,6 +1142,22 @@ enum Feed {
     Archived,
 }
 
+/// Whether the metadata file at `url` only ever grows at its end, so that a
+/// refresh may fetch only the new records, see [`try_trailing_refresh`].
+/// This holds for the default P3M feeds of CRAN and Bioconductor, which are
+/// histories. Other feeds, e.g. the own metadata of a PPM repository, may
+/// change old records, e.g. to block a version, so they are always
+/// downloaded in full.
+fn is_append_only(url: &str) -> bool {
+    let cran = MetadataFeed::cran();
+    url == cran.allpackages_url
+        || url == cran.archived_url
+        || url.starts_with(&format!(
+            "{}/",
+            MetadataFeed::bioc_metadata_url().trim_end_matches("/%v")
+        ))
+}
+
 /// Outcome of ensuring a cranlike metadata file is present and fresh in the DB.
 enum CacheState {
     /// The metadata was (re)downloaded, parsed and stored.
@@ -1178,10 +1348,14 @@ fn force_full_download(
         None
     };
 
+    // No age check of the download file: the database records how fresh
+    // the metadata is, and the file is deleted once its rows are stored. A
+    // file that is still there was left by a run that was interrupted
+    // before storing it, so it is not a cache hit. Only the etag is.
     let (dl_status, new_etag) = download_first_available_(
         candidate_urls,
         repo_local,
-        None,
+        Some(std::time::Duration::ZERO),
         None,
         existing_etag.as_deref(),
     )?;
@@ -1288,7 +1462,9 @@ fn ensure_packages_cached(
     }
 
     announce_update(display_name);
-    if let Some((parsed_len, tail_hash)) = get_repo_progress(&repo_db, repo_url_key, pkg_type) {
+    let progress = get_repo_progress(&repo_db, repo_url_key, pkg_type)
+        .filter(|_| is_append_only(candidate_urls[0]));
+    if let Some((parsed_len, tail_hash)) = progress {
         let plain_url = candidate_urls[0].trim_end_matches(".zst");
         match try_trailing_refresh(plain_url, parsed_len, &tail_hash) {
             Ok(TrailingOutcome::Unchanged) => {
@@ -1716,6 +1892,8 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
             repository: None,
             system_requirements: normalize_system_requirements(&system_requirements),
             os_type: normalize_os_type(&os_type),
+            // Only a repository's extended metadata has these.
+            policy: None,
         };
         packages.push(pkg);
     }
@@ -1778,17 +1956,19 @@ fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
             repo_id INTEGER NOT NULL,
             system_requirements TEXT,
             os_type TEXT,
+            policy TEXT,
             FOREIGN KEY (repo_id) REFERENCES repos(id)
         )",
         [],
     )?;
 
-    // Databases created before rig stored `SystemRequirements` or `OS_type`
-    // lack the column. Their rows have no value for it, so after adding it,
+    // Databases created before rig stored `SystemRequirements`, `OS_type`
+    // or the repository policy fields (`Blocked`, `Vulnerabilities`, etc.,
+    // as JSON, see [`crate::repos::policy::VersionPolicy`]) lack the column. Their rows have no value for it, so after adding it,
     // forget every repo's cache state: the next lookup then downloads and
     // parses each feed again, in full, instead of a trailing-only refresh
     // that would only fill in the new rows.
-    for column in ["system_requirements", "os_type"] {
+    for column in ["system_requirements", "os_type", "policy"] {
         match conn.execute(
             &format!("ALTER TABLE packages ADD COLUMN {} TEXT", column),
             [],
@@ -1948,8 +2128,8 @@ fn save_packages_to_db(
         "INSERT INTO packages
          (name, version, dependencies, download_url, file, path, built,
           license, platform, arch, graphics_api_version, internals_id, filesize,
-          sha256sum, repo_id, system_requirements, os_type)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+          sha256sum, repo_id, system_requirements, os_type, policy)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
     )?;
 
     for pkg in packages {
@@ -1958,6 +2138,10 @@ fn save_packages_to_db(
             .built
             .as_ref()
             .and_then(|b| serde_json::to_string(b).ok());
+        let policy_json = pkg
+            .policy
+            .as_ref()
+            .and_then(|p| serde_json::to_string(p).ok());
 
         stmt.execute(params![
             &pkg.name,
@@ -1977,6 +2161,7 @@ fn save_packages_to_db(
             repo_id,
             &pkg.system_requirements,
             &pkg.os_type,
+            policy_json,
         ])?;
     }
 
@@ -2372,6 +2557,70 @@ DownloadURL: https://p3m.dev/cran/2020-01-09/src/contrib/cli_2.0.1.tar.gz
                 None,
             ]
         );
+    }
+
+    #[test]
+    fn loader_hides_blocked_versions() {
+        let url = "https://example.com/cran/ALLPACKAGES.zst";
+        let mut db = std::env::temp_dir();
+        db.push(format!("rig-test-blocked-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&db);
+        ensure_db_schema(&db).unwrap();
+        store_feed(
+            &db,
+            url,
+            "\
+Package: otel
+Version: 0.2.0
+Vulnerabilities: RSEC-2026-9 (7.5)
+
+Package: otel
+Version: 0.3.0
+Blocked: package
+BlockedRule: 9
+BlockedReason: Block otel 0.3.0
+
+Package: otel
+Version: 0.4.0
+BlockedUntil: 2999-01-01T00:00:00Z
+
+Package: otel
+Version: 0.1.0
+BlockedUntil: 2000-01-01T00:00:00Z
+",
+        );
+
+        let loader =
+            DbSourcePackageLoader::from_conn(open_db(&db).unwrap(), &[(url, RepoId::Cran)]);
+        let mut versions: Vec<Package> = loader.load_versions("otel").unwrap();
+        versions.sort_by(|a, b| a.version.cmp(&b.version));
+        let found: Vec<String> = versions.iter().map(|p| p.version.to_string()).collect();
+        assert_eq!(found, vec!["0.1.0", "0.2.0"]);
+
+        // The vulnerabilities come along, for the warnings after the solve.
+        let policy = versions[1].policy.as_ref().unwrap();
+        assert_eq!(policy.vulnerabilities[0].id, "RSEC-2026-9");
+        assert_eq!(policy.vulnerabilities[0].score, Some(7.5));
+
+        let hidden: Vec<(String, String)> = loader
+            .blocked_hidden("otel")
+            .into_iter()
+            .map(|(v, r)| (v.to_string(), r))
+            .collect();
+        assert_eq!(
+            hidden,
+            vec![
+                (
+                    "0.3.0".to_string(),
+                    "package rule 9: Block otel 0.3.0".to_string()
+                ),
+                (
+                    "0.4.0".to_string(),
+                    "too new, available from 2999-01-01T00:00:00Z".to_string()
+                ),
+            ]
+        );
+        let _ = std::fs::remove_file(&db);
     }
 
     #[test]

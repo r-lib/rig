@@ -2225,7 +2225,7 @@ type GitSourceKey = (String, Option<String>, Option<String>);
 /// target always resolves fresh, same as before any sticky-lock behavior
 /// existed. Shared by [`existing_git_shas`] and [`existing_lock_satisfies`]
 /// so a `proj_lock` run parses the file once instead of twice.
-fn read_existing_lock(root: &Path) -> Option<RprojLock> {
+pub(crate) fn read_existing_lock(root: &Path) -> Option<RprojLock> {
     let text = fs::read_to_string(root.join(RPROJ_LOCK_FILE)).ok()?;
     let mut lock = RprojLock::parse(&text).ok()?;
     absolute_local_paths(&mut lock, root);
@@ -2240,7 +2240,7 @@ fn read_existing_lock(root: &Path) -> Option<RprojLock> {
 /// resolved it to, as long as the span itself is unchanged. Otherwise the
 /// cutoff would move every day and the lock would never be reused. `--upgrade`
 /// ignores the existing lock, so it resolves the span afresh.
-fn resolve_lock_options(
+pub(crate) fn resolve_lock_options(
     exclude_newer: Option<&ExcludeNewerSpec>,
     prefer_binary: Option<usize>,
     repos: &ProjRepos,
@@ -3703,7 +3703,7 @@ pub(crate) fn proj_lock_host(
 ///
 /// A workspace has one lock file and one library, both at its root, so a
 /// command run in a member directory has to act on the whole workspace.
-fn proj_lock_root() -> Result<PathBuf, Box<dyn Error>> {
+pub(crate) fn proj_lock_root() -> Result<PathBuf, Box<dyn Error>> {
     let cwd = std::env::current_dir()?;
     if let Some(workspace) = find_workspace_root(&cwd)? {
         if workspace != cwd {
@@ -4596,6 +4596,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
 
     let mut targets: Vec<RprojLockTarget> = reused;
     let mut summaries: Vec<TargetSolution> = vec![];
+    let mut policy_notes = PolicyNotes::default();
     for (rver, platform_key, result) in solved {
         let (registry, solution) = match result {
             Ok(v) => v,
@@ -4612,6 +4613,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             }
         };
 
+        policy_notes.add(&registry, &solution);
         let mut target = RprojLockTarget::from_solution(&registry, &solution);
         let groups = compute_package_groups(&solve.group_roots, &target.packages);
         let extra_groups = compute_package_groups(&solve.extra_roots, &target.packages);
@@ -4690,6 +4692,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         };
         print_solution_table(&summaries, header.as_deref());
     }
+    policy_notes.print();
 
     // Deterministic diffs: always the same order regardless of the order
     // --r-version/--platform were given in.
@@ -4706,6 +4709,63 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     info!("Written project lockfile to {}", label);
 
     Ok(())
+}
+
+/// What the repositories' policies say about the packages of one or more
+/// solutions: the picked versions with known vulnerabilities, and the
+/// packages whose newer versions are blocked. Collected over the solves of
+/// all targets, and printed once, see [`PolicyNotes::print`].
+#[derive(Default)]
+pub(crate) struct PolicyNotes {
+    vulnerable: BTreeSet<String>,
+    blocked: BTreeSet<String>,
+}
+
+impl PolicyNotes {
+    pub fn add(&mut self, registry: &RPackageRegistry, solution: &RegistrySolution) {
+        for (pkg, ver) in solution_to_sorted_vec(registry, solution).iter() {
+            if pkg == "R" || BASE_PKGS.contains(&pkg.as_str()) || registry.is_local(pkg) {
+                continue;
+            }
+            if let Some(vulns) = registry.vulnerabilities(pkg, &ver.version) {
+                let list: Vec<String> = vulns.iter().map(|v| v.to_string()).collect();
+                self.vulnerable.insert(format!(
+                    "{} {} has known vulnerabilities: {}.",
+                    pkg,
+                    ver.version,
+                    list.join(", ")
+                ));
+            }
+            let newer: Vec<String> = registry
+                .blocked_versions(pkg)
+                .into_iter()
+                .filter(|(v, _)| *v > ver.version)
+                .map(|(v, reason)| format!("{} ({})", v, reason))
+                .collect();
+            if !newer.is_empty() {
+                self.blocked.insert(format!(
+                    "Using {} {}, the repository blocks {}.",
+                    pkg,
+                    ver.version,
+                    newer.join(", ")
+                ));
+            }
+        }
+    }
+
+    pub fn print(&self) {
+        for msg in &self.blocked {
+            info!("{}", msg);
+            OUTPUT.info(msg);
+        }
+        for msg in &self.vulnerable {
+            info!("{}", msg);
+            OUTPUT.warn(msg);
+        }
+        if !self.vulnerable.is_empty() {
+            OUTPUT.info("Run `rig audit` for details.");
+        }
+    }
 }
 
 /// What one solved target says about one package, for [`proj_lock`]'s summary.

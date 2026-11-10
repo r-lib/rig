@@ -134,6 +134,28 @@ impl PkgRepo {
             .collect()
     }
 
+    /// `repos` with a single CRAN feed. A solve has one CRAN: if one of
+    /// the feeds is not the default (P3M's) feed, e.g. the own metadata of a
+    /// PPM CRAN repository, it replaces the default one. Otherwise the first
+    /// CRAN feed wins.
+    pub fn one_cran_feed(repos: Vec<PkgRepo>) -> Vec<PkgRepo> {
+        let is_cran = |r: &PkgRepo| matches!(r, PkgRepo::Extended(f) if f.repo == RepoId::Cran);
+        let default_url = MetadataFeed::cran().allpackages_url;
+        let keep = repos
+            .iter()
+            .position(|r| {
+                matches!(r, PkgRepo::Extended(f)
+                    if f.repo == RepoId::Cran && f.allpackages_url != default_url)
+            })
+            .or_else(|| repos.iter().position(is_cran));
+        repos
+            .into_iter()
+            .enumerate()
+            .filter(|(i, r)| !is_cran(r) || Some(*i) == keep)
+            .map(|(_, r)| r)
+            .collect()
+    }
+
     /// The CRAN-like repositories in `repos`, in order.
     pub fn cranlike(repos: &[PkgRepo]) -> Vec<CranlikeRepo> {
         repos
@@ -398,6 +420,34 @@ mod tests {
         assert_eq!(
             feed.binaries_url,
             "https://ppm-bioc.r-pkg.org/3.22/binaries"
+        );
+    }
+
+    #[test]
+    fn own_cran_feed_replaces_the_default() {
+        let own = PkgRepo::Extended(MetadataFeed::at(RepoId::Cran, "http://localhost:4242/cran"));
+        let default = PkgRepo::Extended(MetadataFeed::cran());
+        let bioc = PkgRepo::Extended(MetadataFeed::bioc("3.22"));
+        let other = PkgRepo::Cranlike(CranlikeRepo::new("acme", "https://acme.com"));
+
+        let repos = vec![default.clone(), other.clone(), own.clone(), bioc.clone()];
+        assert_eq!(
+            PkgRepo::one_cran_feed(repos),
+            vec![other.clone(), own.clone(), bioc.clone()]
+        );
+
+        let repos = vec![bioc.clone(), default.clone(), default.clone()];
+        assert_eq!(PkgRepo::one_cran_feed(repos), vec![bioc, default]);
+
+        assert_eq!(PkgRepo::one_cran_feed(vec![other.clone()]), vec![other]);
+    }
+
+    #[test]
+    fn relative_ppm_download_urls_resolve() {
+        let feed = MetadataFeed::at(RepoId::Cran, "http://localhost:4242/cran");
+        assert_eq!(
+            feed.resolve_url("2025-08-30/src/contrib/otel_0.2.0.tar.gz"),
+            "http://localhost:4242/cran/2025-08-30/src/contrib/otel_0.2.0.tar.gz"
         );
     }
 

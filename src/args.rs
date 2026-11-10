@@ -129,6 +129,50 @@ fn pkg_repos_args() -> [Arg; 2] {
     ]
 }
 
+/// The arguments of `rig audit` and `rig pkg audit`, with the help of
+/// `--library` and `--r-version`.
+fn audit_args(library_help: &'static str, rversion_help: &'static str) -> Vec<Arg> {
+    let mut args = vec![
+        Arg::new("library")
+            .help(library_help)
+            .long("library")
+            .short('l')
+            .num_args(1)
+            .required(false),
+        Arg::new("r-version")
+            .help(rversion_help)
+            .long("r-version")
+            .short('r')
+            .num_args(1)
+            .required(false),
+    ];
+    args.extend(pkg_repos_args());
+    args.extend([
+        exclude_newer_arg().help(
+            "With --fix, only upgrade to package versions published by this\n\
+            date. A date (2025-06-01), an RFC 3339 timestamp, or a span back\n\
+            from today (7 days, 2 weeks, P1M). Not before 2017-10-10.",
+        ),
+        Arg::new("fix")
+            .help("Upgrade the affected packages to the nearest version without known problems")
+            .long("fix")
+            .num_args(0)
+            .required(false),
+        Arg::new("dry-run")
+            .help("With --fix, show what would be upgraded, without changing anything")
+            .long("dry-run")
+            .num_args(0)
+            .requires("fix")
+            .required(false),
+        Arg::new("json")
+            .help("JSON output")
+            .long("json")
+            .num_args(0)
+            .required(false),
+    ]);
+    args
+}
+
 /// `--with-repos` (`--index`) and `--without-repos` (`--no-index`) of the
 /// `rig proj` commands that solve. They change the project's repositories,
 /// the ones in rproj.toml, for this command only.
@@ -2435,6 +2479,16 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("audit")
+                .about(ABOUT_PKG_AUDIT)
+                .long_about(HELP_PKG_AUDIT)
+                .display_order(0)
+                .args(audit_args(
+                    "Library name or path to check, instead of the default library",
+                    "R version whose library to check, instead of the default",
+                )),
+        )
+        .subcommand(
             Command::new("doctor")
                 .about(ABOUT_PKG_DOCTOR)
                 .long_about(HELP_PKG_DOCTOR)
@@ -3609,7 +3663,17 @@ pub fn rig_app() -> Command {
                 .value_parser(clap::builder::NonEmptyStringValueParser::new()),
         );
 
+    let cmd_audit = Command::new("audit")
+        .about(ABOUT_AUDIT)
+        .long_about(HELP_AUDIT)
+        .display_order(0)
+        .args(audit_args(
+            "Library name or path to check, instead of the project or the default library",
+            "R version whose library to check, instead of the project or the default",
+        ));
+
     rig = rig
+        .subcommand(cmd_audit)
         .subcommand(cmd_default)
         .subcommand(cmd_list)
         .subcommand(cmd_add)

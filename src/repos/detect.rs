@@ -26,7 +26,7 @@
 //! The decision itself is in pure functions ([`classify`], [`classify_ppm`]),
 //! which get the probe results as input, so they are tested without network.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 
 use futures::future;
@@ -199,6 +199,21 @@ fn extension_of(repo_type: RepoType) -> (bool, Option<String>) {
         RepoType::PpmBioc | RepoType::Bioc => (true, Some(BIOC_METADATA_URL.to_string())),
         _ => (false, None),
     }
+}
+
+/// Whether a live PPM repository `name` of type `repo_type` is extensible,
+/// and the base URL of its extended metadata. A CRAN repository that serves
+/// its own extended metadata uses that, instead of P3M's.
+fn ppm_extension_of(
+    base: &str,
+    name: &str,
+    repo_type: RepoType,
+    api: &PpmApi,
+) -> (bool, Option<String>) {
+    if repo_type == RepoType::PpmCran && api.own_metadata.contains(name) {
+        return (true, Some(format!("{}/{}", base, name)));
+    }
+    extension_of(repo_type)
 }
 
 // ------------------------------------------------------------------------
@@ -520,6 +535,11 @@ pub struct PpmApi {
     /// The source types of repositories, by repository id. Only for the
     /// repository of the URL, or for all R repositories of a PPM root URL.
     pub sources: HashMap<i64, Vec<i64>>,
+    /// The names of the repositories, of the same ones as `sources`, that
+    /// serve their own extended metadata, `<base>/<name>/ALLPACKAGES.zst`.
+    /// This metadata has the repository's policy: blocked versions and known
+    /// vulnerabilities.
+    pub own_metadata: HashSet<String>,
 }
 
 /// The type of a live (not snapshot) PPM R repository, from its sources, and
@@ -538,17 +558,13 @@ fn ppm_repo_type(name: &str, is_bioc: bool, sources: Option<&Vec<i64>>) -> (Repo
 
 /// The R and Bioconductor repositories of a PPM instance at `base`, for the
 /// PPM root. Other repositories (Python, etc.) are left out.
-fn ppm_repo_list(
-    base: &str,
-    repos: &[PpmRepo],
-    sources: &HashMap<i64, Vec<i64>>,
-) -> Vec<PpmRepoInfo> {
+fn ppm_repo_list(base: &str, repos: &[PpmRepo], api: &PpmApi) -> Vec<PpmRepoInfo> {
     repos
         .iter()
         .filter(|r| r.is_r())
         .map(|r| {
-            let (repo_type, guessed) = ppm_repo_type(&r.name, r.is_bioc(), sources.get(&r.id));
-            let (extensible, metadata) = extension_of(repo_type);
+            let (repo_type, guessed) = ppm_repo_type(&r.name, r.is_bioc(), api.sources.get(&r.id));
+            let (extensible, metadata) = ppm_extension_of(base, &r.name, repo_type, api);
             PpmRepoInfo {
                 name: r.name.clone(),
                 ppm_type: r.repo_type.clone(),
@@ -588,7 +604,7 @@ fn classify_ppm(url: &str, api: &PpmApi) -> Result<DetectedRepo, Box<dyn Error>>
         let mut d = mk(RepoType::Ppm);
         match &api.repos {
             Some(repos) => {
-                d.ppm_repos = ppm_repo_list(&base, repos, &api.sources);
+                d.ppm_repos = ppm_repo_list(&base, repos, api);
                 // Extensible if at least one of its repositories is.
                 d.extensible = d.ppm_repos.iter().any(|r| r.extensible);
             }
@@ -637,6 +653,9 @@ fn classify_ppm(url: &str, api: &PpmApi) -> Result<DetectedRepo, Box<dyn Error>>
     let sources = repo.and_then(|r| api.sources.get(&r.id));
     let (rtype, guessed) = ppm_repo_type(name, is_bioc, sources);
     let mut d = mk(rtype);
+    if rtype == RepoType::PpmCran {
+        (d.extensible, d.metadata) = ppm_extension_of(&base, name, rtype, api);
+    }
     d.guessed = guessed;
     if guessed {
         d.notes
@@ -769,10 +788,23 @@ async fn ppm_api(client: &reqwest::Client, url: &str) -> PpmApi {
         .filter_map(|(r, s)| s.map(|s| (r.id, s.iter().map(|s| s.source_type).collect())))
         .collect();
 
+    let found = future::join_all(wanted.iter().map(|r| {
+        let murl = format!("{}/{}/ALLPACKAGES.zst", base, r.name);
+        async move { probe_url(client, &murl).await }
+    }))
+    .await;
+    let own_metadata = wanted
+        .iter()
+        .zip(found)
+        .filter(|(_, p)| matches!(p.status, Some(200..=299)))
+        .map(|(r, _)| r.name.clone())
+        .collect();
+
     PpmApi {
         base: Some(base),
         repos: Some(repos),
         sources,
+        own_metadata,
     }
 }
 
@@ -913,6 +945,7 @@ mod tests {
                 repo(6, "snapshot", "R"),
             ]),
             sources,
+            own_metadata: HashSet::new(),
         }
     }
 
@@ -1108,6 +1141,29 @@ mod tests {
         // A repository that is called `snapshot`, at `latest`.
         let d = classify_ppm("https://p3m.dev/snapshot/latest", &api).unwrap();
         assert_eq!(d.repo_type, RepoType::PpmCran);
+        assert_eq!(d.metadata.as_deref(), Some(PPM_METADATA_URL));
+    }
+
+    #[test]
+    fn test_classify_ppm_cran_own_metadata() {
+        let mut api = p3m_api(Some(vec![PPM_SOURCE_CRAN]));
+        api.own_metadata.insert("cran".to_string());
+        let d = classify_ppm("https://p3m.dev/cran/latest", &api).unwrap();
+        assert_eq!(d.repo_type, RepoType::PpmCran);
+        assert!(d.extensible);
+        assert_eq!(d.metadata.as_deref(), Some("https://p3m.dev/cran"));
+
+        // Only a CRAN repository uses its own metadata, for now.
+        let mut other = p3m_api(Some(vec![PPM_SOURCE_CRAN, 3]));
+        other.own_metadata.insert("all".to_string());
+        let d = classify_ppm("https://p3m.dev/all/latest", &other).unwrap();
+        assert_eq!(d.repo_type, RepoType::PpmOther);
+        assert_eq!(d.metadata, None);
+
+        // And the same for the repositories of a PPM root.
+        let d = classify_ppm("https://p3m.dev", &api).unwrap();
+        let cran = d.ppm_repos.iter().find(|r| r.name == "cran").unwrap();
+        assert_eq!(cran.metadata.as_deref(), Some("https://p3m.dev/cran"));
     }
 
     #[test]
