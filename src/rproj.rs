@@ -2323,9 +2323,28 @@ fn format_dep_entry(dep: &DepVersionSpec) -> (String, bool) {
     match dep.constraints.first() {
         None => (dep.name.clone(), false),
         Some(c) => (
-            format!("{} ({} {})", dep.name, c.constraint_type, c.version),
+            format!(
+                "{} ({} {})",
+                dep.name,
+                description_operator(&c.constraint_type),
+                c.version
+            ),
             dep.constraints.len() > 1,
         ),
+    }
+}
+
+/// The operator R accepts in a DESCRIPTION dependency entry. This differs
+/// from [`VersionConstraintType`]'s `Display` (used for `rproj.toml`) for
+/// equality, which R spells `==` (a single `=` is not supported), and for
+/// strict comparisons, which R spells `>`/`<`, not `>>`/`<<`.
+fn description_operator(op: &VersionConstraintType) -> &'static str {
+    match op {
+        VersionConstraintType::GreaterOrEqual => ">=",
+        VersionConstraintType::LessOrEqual => "<=",
+        VersionConstraintType::Equal => "==",
+        VersionConstraintType::Greater => ">",
+        VersionConstraintType::Less => "<",
     }
 }
 
@@ -4882,6 +4901,30 @@ foo = "bar"
         assert!(desc.contains("Depends:\n    R (>= 4.1)\n"));
         assert!(desc.contains("Imports:\n    dplyr (>= 1.1.0),\n    rlang (>= 1.0)\n"));
         assert!(desc.contains("Suggests:\n    testthat (>= 3.0)\n"));
+    }
+
+    #[test]
+    fn to_description_writes_r_comparison_operators() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.insert(
+            "cli".to_string(),
+            Dependency::Version("= 3.6.0".to_string()),
+        );
+        m.dependencies.insert(
+            "dplyr".to_string(),
+            Dependency::Version("== 1.1.0".to_string()),
+        );
+        m.dependencies.insert(
+            "rlang".to_string(),
+            Dependency::Version("> 1.0".to_string()),
+        );
+        m.add_dependency("testthat", "= 3.0", true);
+
+        let (desc, dropped) = m.to_description().unwrap();
+        assert!(dropped.is_empty());
+        assert!(desc
+            .contains("Imports:\n    cli (== 3.6.0),\n    dplyr (== 1.1.0),\n    rlang (> 1.0)\n"));
+        assert!(desc.contains("Suggests:\n    testthat (== 3.0)\n"));
     }
 
     #[test]
