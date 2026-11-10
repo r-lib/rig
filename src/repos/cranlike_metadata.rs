@@ -1317,10 +1317,14 @@ fn force_full_download(
         None
     };
 
+    // No age check of the download file: the database records how fresh
+    // the metadata is, and the file is deleted once its rows are stored. A
+    // file that is still there was left by a run that was interrupted
+    // before storing it, so it is not a cache hit. Only the etag is.
     let (dl_status, new_etag) = download_first_available_(
         candidate_urls,
         repo_local,
-        None,
+        Some(std::time::Duration::ZERO),
         None,
         existing_etag.as_deref(),
     )?;
