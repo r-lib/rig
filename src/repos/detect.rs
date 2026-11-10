@@ -280,6 +280,23 @@ fn probes_from_vec(mut v: Vec<Probe>) -> Probes {
     }
 }
 
+/// Whether a probe of the file at `url` was redirected to something that is
+/// not that file. Some servers redirect a missing file to a page that exists,
+/// e.g. `https://www.rforge.net/ALLPACKAGES.zst` to
+/// `https://www.rforge.net/ALLPACKAGES.zst/`, which answers 200. The file is
+/// only found if the path of the final URL still ends with its file name.
+fn redirected_away(url: &str, final_url: Option<&str>) -> bool {
+    let final_url = match final_url {
+        Some(f) if f != url => f,
+        _ => return false,
+    };
+    let file = url.rsplit('/').next().unwrap_or("");
+    match Url::parse(final_url) {
+        Ok(u) => !u.path().ends_with(&format!("/{}", file)),
+        Err(_) => false,
+    }
+}
+
 // ------------------------------------------------------------------------
 // URL paths
 // ------------------------------------------------------------------------
@@ -786,7 +803,9 @@ pub async fn detect_repo_type(url: &str) -> Result<DetectedRepo, Box<dyn Error>>
         async move {
             let r = probe_url(client, &purl).await;
             Probe {
-                status: r.status,
+                status: redirected_away(&purl, r.final_url.as_deref())
+                    .then_some(404)
+                    .or(r.status),
                 repository_type: r.repository_type,
             }
         }
@@ -805,6 +824,30 @@ pub async fn detect_repo_type(url: &str) -> Result<DetectedRepo, Box<dyn Error>>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn redirect_to_another_page_is_not_found() {
+        let url = "https://www.rforge.net/ALLPACKAGES.zst";
+        assert!(redirected_away(
+            url,
+            Some("https://www.rforge.net/ALLPACKAGES.zst/")
+        ));
+        assert!(redirected_away(
+            url,
+            Some("https://www.rforge.net/index.html")
+        ));
+        assert!(!redirected_away(url, Some(url)));
+        assert!(!redirected_away(url, None));
+        // A redirect to the same file elsewhere, e.g. a CDN, is fine.
+        assert!(!redirected_away(
+            url,
+            Some("https://cdn.example.com/rforge/ALLPACKAGES.zst")
+        ));
+        assert!(!redirected_away(
+            "https://example.com/src/contrib/PACKAGES",
+            Some("https://mirror.example.com/cran/src/contrib/PACKAGES?token=x")
+        ));
+    }
 
     fn ok() -> Probe {
         Probe {
