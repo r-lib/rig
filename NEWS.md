@@ -6,15 +6,6 @@
   the nearest version without known problems. It exits with status 1 if it
   finds problems, so it can be used in CI.
 
-* For a CRAN repository of Posit Package Manager that serves its own
-  package history (`ALLPACKAGES`), rig now reads that instead of
-  <https://ppm.r-pkg.org>. It includes the versions the repository blocks
-  and their known vulnerabilities. `rig proj lock` and `rig pkg install`
-  never pick a blocked version, tell you when a newer version is blocked,
-  and warn about versions with known vulnerabilities. A download that the
-  repository refuses now says that the package is blocked, instead of
-  suggesting an authentication problem.
-
 * rig now reads a package repository according to its type (CRAN mirror,
   Posit Package Manager, Bioconductor, r-universe, etc.), detected from the
   server or set with `type` in `rproj.toml` or `rig repos add --type`. For
