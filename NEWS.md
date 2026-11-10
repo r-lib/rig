@@ -1,5 +1,9 @@
 # rig 0.11.2-dev (development version)
 
+* `rig proj renv import` improvements:
+   - import repositories, detect their type,
+   - warns about packages from unsupported sources (e.g. GitHub).
+
 * New `rig audit` command: it checks the packages of a project's lock file
   and library, or of an R library, for known vulnerabilities and for
   versions that the repository blocks. `rig audit --fix` upgrades them to
@@ -158,16 +162,6 @@
   `--no-install-self`. The old name still works, as an alias (#442).
   `rig proj sync` accepts `--no-install-self` as an alias of
   `--no-install-project`.
-
-* `rig proj renv import` now imports the package repositories of the `renv.lock`
-  file, mapping known CRAN and Bioconductor aliases to the built-in repositories
-  when possible and writing explicit `[[repository]]` entries otherwise. The
-  built-in repositories that the lock file does not use are turned off. A lock
-  file with a Bioconductor release also locks the R version to one that matches
-  it.
-
-* `rig proj renv import` now warns about packages from unsupported sources (e.g.
-  GitHub) so they can be manually adjusted.
 
 # rig 0.11.0
 
