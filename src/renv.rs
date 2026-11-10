@@ -431,6 +431,7 @@ impl REnvLockfilePackage {
         let host_repo = |default_host: &str, api: &str| -> Option<String> {
             let user = non_empty(&self.RemoteUsername)?;
             let repo = non_empty(&self.RemoteRepo)?;
+            let repo = repo.strip_suffix(".git").unwrap_or(repo);
             let host = non_empty(&self.RemoteHost)
                 .map(|h| git_host(h, api))
                 .unwrap_or_else(|| default_host.to_string());
@@ -2332,6 +2333,16 @@ mod tests {
                 host
             );
         }
+    }
+
+    #[test]
+    fn a_repository_name_can_end_in_dot_git() {
+        let t = git_dep(
+            r#"{"Package": "r", "Version": "0.1.0", "Source": "GitHub",
+                "RemoteUsername": "o", "RemoteRepo": "r.git"}"#,
+        )
+        .unwrap();
+        assert_eq!(t.git.as_deref(), Some("https://github.com/o/r.git"));
     }
 
     #[test]
