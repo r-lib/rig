@@ -4,7 +4,8 @@
   and library, or of an R library, for known vulnerabilities and for
   versions that the repository blocks. `rig audit --fix` upgrades them to
   the nearest version without known problems. It exits with status 1 if it
-  finds problems, so it can be used in CI.
+  finds problems, so it can be used in CI. `rig pkg audit` does the same
+  for a library, also in a project.
 
 * rig now reads a package repository according to its type (CRAN mirror,
   Posit Package Manager, Bioconductor, r-universe, etc.), detected from the

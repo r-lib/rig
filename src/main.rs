@@ -324,7 +324,11 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("self", sub)) => sc_self(sub, args)?,
         Some(("system", sub)) => sc_system(sub, args)?,
         Some(("rtools", sub)) => sc_system_rtools(sub, args)?,
-        Some(("pkg", sub)) => sc_pkg(sub, args)?,
+        Some(("pkg", sub)) => match sub.subcommand() {
+            // The only `rig pkg` command with an exit status.
+            Some(("audit", s)) => retval = audit::sc_pkg_audit(s, args)?,
+            _ => sc_pkg(sub, args)?,
+        },
         Some(("ppm", sub)) => sc_ppm(sub, args)?,
         Some(("auth", sub)) => auth::cmd::sc_auth(sub, args)?,
         Some(("repos", sub)) => sc_repos(sub, args)?,

@@ -124,6 +124,7 @@ rig audit                  # in a project: rproj.lock and the project library
 rig audit --library mylib  # a library of the default R version
 rig audit --fix --dry-run  # show the upgrades that would fix the problems
 rig audit --fix            # upgrade to the nearest versions without problems
+rig pkg audit              # the default library, also in a project
 ```
 
 It exits with status 1 if it finds vulnerable or blocked packages, so you

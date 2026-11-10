@@ -20,7 +20,8 @@ target, and the project library. Outside of a project it checks the default
 library of the default R version. `--library` and `--r-version` select
 another library, also in a project. In [user mode](../admin-vs-user-mode.qmd)
 the libraries are in your home directory, in admin mode they may be
-system-wide.
+system-wide. [`rig pkg audit`](pkg.qmd#rig-pkg-audit) always checks a
+library, never a project.
 
 Packages installed from GitHub, git, a URL or a local directory are not in
 any repository, so they are not checked.

@@ -15,6 +15,9 @@
 //! is not blocked and has no known vulnerabilities: in a project with
 //! `rig proj lock --upgrade-package` and `rig proj sync`, otherwise with
 //! `rig pkg install`.
+//!
+//! `rig pkg audit` is the same, but it always checks a library, never a
+//! project.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::error::Error;
@@ -106,16 +109,34 @@ enum Fixer {
 }
 
 pub fn sc_audit(args: &ArgMatches, mainargs: &ArgMatches) -> Result<i32, Box<dyn Error>> {
+    audit_main(args, mainargs, false)
+}
+
+/// `rig pkg audit`: [`sc_audit`] for a library, also in a project.
+pub fn sc_pkg_audit(args: &ArgMatches, mainargs: &ArgMatches) -> Result<i32, Box<dyn Error>> {
+    audit_main(args, mainargs, true)
+}
+
+fn audit_main(
+    args: &ArgMatches,
+    mainargs: &ArgMatches,
+    library_only: bool,
+) -> Result<i32, Box<dyn Error>> {
     let json = args.get_flag("json") || mainargs.get_flag("json");
     let fix = args.get_flag("fix");
     let dry_run = args.get_flag("dry-run");
 
-    let scope = audit_scope(args)?;
+    let scope = audit_scope(args, library_only)?;
     let report = run_audit(&scope)?;
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
-        print_report(&report, !fix);
+        let fix_cmd = if library_only {
+            "rig pkg audit --fix"
+        } else {
+            "rig audit --fix"
+        };
+        print_report(&report, (!fix).then_some(fix_cmd));
     }
 
     let failing: Vec<&Finding> = report.findings.iter().filter(|f| f.fails()).collect();
@@ -173,7 +194,7 @@ pub fn sc_audit(args: &ArgMatches, mainargs: &ArgMatches) -> Result<i32, Box<dyn
     }
 
     // What is left after the fix.
-    let scope = audit_scope(args)?;
+    let scope = audit_scope(args, library_only)?;
     let report = run_audit(&scope)?;
     let left = report.findings.iter().filter(|f| f.fails()).count();
     if left == 0 {
@@ -181,7 +202,7 @@ pub fn sc_audit(args: &ArgMatches, mainargs: &ArgMatches) -> Result<i32, Box<dyn
         Ok(0)
     } else {
         if !json {
-            print_report(&report, false);
+            print_report(&report, None);
         }
         Ok(1)
     }
@@ -189,8 +210,11 @@ pub fn sc_audit(args: &ArgMatches, mainargs: &ArgMatches) -> Result<i32, Box<dyn
 
 /// The packages to check, from the project of the current directory, or
 /// from a library if `--library` or `--r-version` is given, or if there is
-/// no project.
-fn audit_scope(args: &ArgMatches) -> Result<Scope, Box<dyn Error>> {
+/// no project. With `library_only` always from a library.
+fn audit_scope(args: &ArgMatches, library_only: bool) -> Result<Scope, Box<dyn Error>> {
+    if library_only {
+        return library_scope(args);
+    }
     let explicit_library = args.get_one::<String>("library").is_some()
         || args.get_one::<String>("r-version").is_some();
     let cwd = std::env::current_dir()?;
@@ -467,9 +491,9 @@ fn nearest_good_version(
         .map(|(v, _)| v.clone())
 }
 
-/// `summary` adds a line with the number of problems found, and the hint
-/// to run `rig audit --fix`.
-fn print_report(report: &Report, summary: bool) {
+/// `fix_cmd` adds a line with the number of problems found, and the hint
+/// to run it, e.g. `rig audit --fix`.
+fn print_report(report: &Report, fix_cmd: Option<&str>) {
     if !report.has_policy_data {
         OUTPUT.warn(
             "None of the repositories reports vulnerabilities or blocked versions, \
@@ -528,10 +552,11 @@ fn print_report(report: &Report, summary: bool) {
     .collect();
     if found.is_empty() {
         OUTPUT.success("No known vulnerabilities or blocked packages.");
-    } else if summary {
+    } else if let Some(fix_cmd) = fix_cmd {
         OUTPUT.warn(&format!(
-            "Found {}. `rig audit --fix` upgrades them.",
-            found.join(" and ")
+            "Found {}. `{}` upgrades them.",
+            found.join(" and "),
+            fix_cmd
         ));
     }
 }

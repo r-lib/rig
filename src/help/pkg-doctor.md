@@ -5,7 +5,8 @@ Find problems with the packages in a library
 Check the packages installed in an R package library, and report the ones
 that may not work: missing dependencies, dependencies that are too old, and
 packages compiled against another version of a `LinkingTo` dependency than
-the one installed now. This command does not start R.
+the one installed now. This command does not start R. It does not check
+for known vulnerabilities, use [`rig pkg audit`](#rig-pkg-audit) for that.
 
 Example output:
 ```
