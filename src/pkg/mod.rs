@@ -217,16 +217,16 @@ fn is_bioc_entry(name: &str, url: &str) -> bool {
 /// What the rig configuration says about a repository, by its name in the
 /// `repositories` file, see [`repo_settings`].
 #[derive(Debug, Clone, Default)]
-struct RepoSettings {
+pub(crate) struct RepoSettings {
     /// The base URL of the extended metadata, see
     /// [`crate::repos::config::RepoEntry::metadata`].
     metadata: Option<String>,
-    repo_type: Option<RepoType>,
+    pub(crate) repo_type: Option<RepoType>,
     extend: Option<bool>,
 }
 
 /// The settings of the built-in and custom repositories, by lowercase name.
-fn repo_settings() -> Result<HashMap<String, RepoSettings>, Box<dyn Error>> {
+pub(crate) fn repo_settings() -> Result<HashMap<String, RepoSettings>, Box<dyn Error>> {
     let mut settings: HashMap<String, RepoSettings> = HashMap::new();
     for entry in get_repos_config()?.iter().flat_map(|r| r.repos.iter()) {
         settings

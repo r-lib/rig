@@ -1,15 +1,10 @@
 # rig 0.11.2-dev (development version)
 
-* rig now reads a package repository according to its type, not its name.
-  It finds out the type from the server, e.g. a CRAN mirror, a Posit
-  Package Manager repository, a Bioconductor mirror or an r-universe, or
-  you can give it with `type` in `rproj.toml` and `rig repos add --type`.
-  For a CRAN mirror or a CRAN repository of Posit Package Manager, rig now
-  reads the full history of CRAN, so older versions are available, and
-  downloads source packages from the mirror first. `extend = false` in
-  `rproj.toml` and `rig repos add --no-extend` turn this off. `rig pkg`
-  now also reads the full history of CRAN for the CRAN entry of an R
-  installation.
+* rig now reads a package repository according to its type (CRAN mirror,
+  Posit Package Manager, Bioconductor, r-universe, etc.), detected from the
+  server or set with `type` in `rproj.toml` or `rig repos add --type`. For
+  CRAN mirrors rig reads the full history of CRAN, so older versions are
+  available, too.
 
 * `rig proj lock` and `rig pkg install` now record the git commit of the
   packages of an r-universe repository. If r-universe replaces the package
