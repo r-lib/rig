@@ -39,6 +39,10 @@
   library of an aarch64 R. `rig pkg install` and `rig proj sync` now also
   reinstall packages that were built for another architecture.
 
+* `rig proj export` now writes exact version requirements as
+  `pkg (== 1.0.0)` in `DESCRIPTION`, because R does not support a single
+  `=`. It also writes strict bounds as `>` and `<`, not `>>` and `<<`.
+
 # rig 0.11.1
 
 * New `rig proj sync --check` option to check that the project
