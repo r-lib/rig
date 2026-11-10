@@ -24,6 +24,20 @@ std::include!("help-generated.in");
 
 // Accepted values of `--pak-version`. "rc" is deprecated: it is the same as
 // "stable" now, so we still accept it, but do not advertise it in the help.
+/// The repository types, see `RepoType` in `src/repos/detect.rs`.
+pub const REPO_TYPES: [&str; 10] = [
+    "cran",
+    "ppm-cran",
+    "ppm-bioc",
+    "ppm-other",
+    "ppm-snapshot",
+    "ppm",
+    "bioc",
+    "extended",
+    "r-universe",
+    "cran-like",
+];
+
 fn pak_version_values() -> clap::builder::PossibleValuesParser {
     clap::builder::PossibleValuesParser::new([
         clap::builder::PossibleValue::new("stable"),
@@ -113,6 +127,50 @@ fn pkg_repos_args() -> [Arg; 2] {
             .action(clap::ArgAction::Append)
             .required(false),
     ]
+}
+
+/// The arguments of `rig audit` and `rig pkg audit`, with the help of
+/// `--library` and `--r-version`.
+fn audit_args(library_help: &'static str, rversion_help: &'static str) -> Vec<Arg> {
+    let mut args = vec![
+        Arg::new("library")
+            .help(library_help)
+            .long("library")
+            .short('l')
+            .num_args(1)
+            .required(false),
+        Arg::new("r-version")
+            .help(rversion_help)
+            .long("r-version")
+            .short('r')
+            .num_args(1)
+            .required(false),
+    ];
+    args.extend(pkg_repos_args());
+    args.extend([
+        exclude_newer_arg().help(
+            "With --fix, only upgrade to package versions published by this\n\
+            date. A date (2025-06-01), an RFC 3339 timestamp, or a span back\n\
+            from today (7 days, 2 weeks, P1M). Not before 2017-10-10.",
+        ),
+        Arg::new("fix")
+            .help("Upgrade the affected packages to the nearest version without known problems")
+            .long("fix")
+            .num_args(0)
+            .required(false),
+        Arg::new("dry-run")
+            .help("With --fix, show what would be upgraded, without changing anything")
+            .long("dry-run")
+            .num_args(0)
+            .requires("fix")
+            .required(false),
+        Arg::new("json")
+            .help("JSON output")
+            .long("json")
+            .num_args(0)
+            .required(false),
+    ]);
+    args
 }
 
 /// `--with-repos` (`--index`) and `--without-repos` (`--no-index`) of the
@@ -517,6 +575,27 @@ pub fn rig_app() -> Command {
             Arg::new("reinstall")
                 .help("Reinstall, even if this R version is already installed.")
                 .long("reinstall")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
+            Arg::new("no-default")
+                .help(
+                    "Do not make this R version the default, even if no default\n\
+                    R version is set yet.",
+                )
+                .long("no-default")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
+            Arg::new("without-path")
+                .help(
+                    "Do not put rig's quick-link directory on the PATH (user mode):\n\
+                    rig otherwise edits the shell startup files on macOS and Linux,\n\
+                    and the user PATH on Windows, when it is missing.",
+                )
+                .long("without-path")
                 .num_args(0)
                 .required(false),
         )
@@ -2236,6 +2315,18 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false),
                 )
+                .arg(
+                    Arg::new("check")
+                        .help(
+                            "Check that the project environment is in sync with\n\
+                            rproj.lock, without changing anything. Fails if sync\n\
+                            would install, remove or update anything.",
+                        )
+                        .long("check")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with_all(["exclude-newer", "with-repos", "without-repos"]),
+                )
                 .args(sysreqs_args()),
         );
     let cmd_renv = Command::new("renv")
@@ -2288,6 +2379,16 @@ pub fn rig_app() -> Command {
                     Arg::new("dependencies")
                         .help("Only merge dependencies, not metadata")
                         .long("dependencies")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("keep-ppm-snapshots")
+                        .help(
+                            "Keep Posit Package Manager snapshots as they are, instead\n\
+                            of using the built-in CRAN and Bioconductor repositories\n\
+                            for public snapshots and `latest` for private ones.",
+                        )
+                        .long("keep-ppm-snapshots")
                         .action(clap::ArgAction::SetTrue),
                 )
                 .arg(
@@ -2386,6 +2487,16 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false),
                 ),
+        )
+        .subcommand(
+            Command::new("audit")
+                .about(ABOUT_PKG_AUDIT)
+                .long_about(HELP_PKG_AUDIT)
+                .display_order(0)
+                .args(audit_args(
+                    "Library name or path to check, instead of the default library",
+                    "R version whose library to check, instead of the default",
+                )),
         )
         .subcommand(
             Command::new("doctor")
@@ -3235,6 +3346,21 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
+                    Arg::new("type")
+                        .help("Type of the repository, detected if not given")
+                        .long("type")
+                        .num_args(1)
+                        .value_parser(REPO_TYPES)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-extend")
+                        .help("Do not use extended metadata for the repository")
+                        .long("no-extend")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
                     Arg::new("force")
                         .help("Replace the repository if it already exists")
                         .long("force")
@@ -3547,7 +3673,17 @@ pub fn rig_app() -> Command {
                 .value_parser(clap::builder::NonEmptyStringValueParser::new()),
         );
 
+    let cmd_audit = Command::new("audit")
+        .about(ABOUT_AUDIT)
+        .long_about(HELP_AUDIT)
+        .display_order(0)
+        .args(audit_args(
+            "Library name or path to check, instead of the project or the default library",
+            "R version whose library to check, instead of the project or the default",
+        ));
+
     rig = rig
+        .subcommand(cmd_audit)
         .subcommand(cmd_default)
         .subcommand(cmd_list)
         .subcommand(cmd_add)
@@ -3815,6 +3951,28 @@ mod tests {
     }
 
     #[test]
+    fn add_no_default_and_without_path_are_off_unless_given() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "add", "4.6.1"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        assert!(!sub.get_flag("no-default"));
+
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "add", "--no-default", "4.6.1"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        assert!(sub.get_flag("no-default"));
+        assert!(!sub.get_flag("without-path"));
+
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "add", "--without-path", "4.6.1"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        assert!(sub.get_flag("without-path"));
+    }
+
+    #[test]
     fn proj_lock_r_version_and_platform_take_comma_separated_lists() {
         let matches = rig_app()
             .try_get_matches_from([
@@ -4019,6 +4177,30 @@ mod tests {
         let (_name, sub) = matches.subcommand().unwrap();
         let (_name, sub) = sub.subcommand().unwrap();
         assert!(sub.get_flag("frozen"));
+    }
+
+    #[test]
+    fn proj_sync_check_flag() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--frozen", "--check"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert!(sub.get_flag("check"));
+        assert!(sub.get_flag("frozen"));
+        assert!(rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "sync",
+                "--check",
+                "--exclude-newer",
+                "7 days"
+            ])
+            .is_err());
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--check", "--with-repos", "bioc"])
+            .is_err());
     }
 
     #[test]

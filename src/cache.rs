@@ -27,6 +27,11 @@ fn set_once(cell: &OnceLock<String>, value: &str) -> Result<(), Box<dyn Error>> 
     }
 }
 
+/// The directory given in the `--cache-dir` flag, if any.
+pub fn cache_dir_flag() -> Option<&'static str> {
+    CACHE_DIR.get().map(|v| v.as_str())
+}
+
 /// Record whether this run may use rig's cache, from the `--no-cache` flag.
 pub fn set_no_cache(value: bool) -> Result<(), Box<dyn Error>> {
     match NO_CACHE.set(value) {

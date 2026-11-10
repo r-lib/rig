@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use crate::config::{get_global_config_json, set_global_config_json};
 use crate::hardcoded::*;
 
+use super::detect::RepoType;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum Enabled {
@@ -24,6 +26,13 @@ pub struct RepoEntry {
     /// one. May contain `%v`, the Bioconductor version.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<String>,
+    /// The type of the repository. Detected if not given, see
+    /// [`crate::repos::repo_types::resolve_repo`].
+    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
+    pub repo_type: Option<RepoType>,
+    /// `false` turns off the extended metadata of the repository.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extend: Option<bool>,
     pub platforms: Option<Vec<String>>,
     pub archs: Option<Vec<String>>,
     pub rversions: Option<Vec<String>>,
@@ -58,6 +67,14 @@ pub struct CustomRepo {
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// The type of the repository, given with `--type` or detected by
+    /// `rig repos add`. `None` if it could not be detected then, e.g. for a
+    /// URL with a Bioconductor version variable.
+    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
+    pub repo_type: Option<RepoType>,
+    /// `false` turns off the extended metadata, `rig repos add --no-extend`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extend: Option<bool>,
     /// Enabled for R versions installed later, too. Set by
     /// `rig repos add --enable --all-versions`.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -81,6 +98,8 @@ impl CustomRepo {
                 description: self.description.clone(),
                 url: self.url.clone(),
                 metadata: None,
+                repo_type: self.repo_type,
+                extend: self.extend,
                 platforms: None,
                 archs: None,
                 rversions: None,
@@ -152,6 +171,8 @@ mod tests {
             url: "https://cran.acme.com".to_string(),
             title: None,
             description: None,
+            repo_type: None,
+            extend: None,
             default,
         }
     }

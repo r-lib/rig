@@ -56,12 +56,22 @@ impl fmt::Display for RepoId {
     }
 }
 
+/// How rig talks to a CRAN-like repository. Both read the `PACKAGES` files;
+/// r-universe also has an API with the git commit of each package.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CranlikeProtocol {
+    #[default]
+    Cran,
+    RUniverse,
+}
+
 /// A plain CRAN-like repository.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CranlikeRepo {
     pub name: String,
     /// Without a trailing `/`.
     pub url: String,
+    pub protocol: CranlikeProtocol,
 }
 
 impl CranlikeRepo {
@@ -72,6 +82,15 @@ impl CranlikeRepo {
         CranlikeRepo {
             name: name.to_string(),
             url: url.trim_end_matches('/').to_string(),
+            protocol: CranlikeProtocol::Cran,
+        }
+    }
+
+    /// An r-universe repository.
+    pub fn r_universe(name: &str, url: &str) -> CranlikeRepo {
+        CranlikeRepo {
+            protocol: CranlikeProtocol::RUniverse,
+            ..CranlikeRepo::new(name, url)
         }
     }
 
@@ -115,6 +134,28 @@ impl PkgRepo {
             .collect()
     }
 
+    /// `repos` with a single CRAN feed. A solve has one CRAN: if one of
+    /// the feeds is not the default (P3M's) feed, e.g. the own metadata of a
+    /// PPM CRAN repository, it replaces the default one. Otherwise the first
+    /// CRAN feed wins.
+    pub fn one_cran_feed(repos: Vec<PkgRepo>) -> Vec<PkgRepo> {
+        let is_cran = |r: &PkgRepo| matches!(r, PkgRepo::Extended(f) if f.repo == RepoId::Cran);
+        let default_url = MetadataFeed::cran().allpackages_url;
+        let keep = repos
+            .iter()
+            .position(|r| {
+                matches!(r, PkgRepo::Extended(f)
+                    if f.repo == RepoId::Cran && f.allpackages_url != default_url)
+            })
+            .or_else(|| repos.iter().position(is_cran));
+        repos
+            .into_iter()
+            .enumerate()
+            .filter(|(i, r)| !is_cran(r) || Some(*i) == keep)
+            .map(|(_, r)| r)
+            .collect()
+    }
+
     /// The CRAN-like repositories in `repos`, in order.
     pub fn cranlike(repos: &[PkgRepo]) -> Vec<CranlikeRepo> {
         repos
@@ -133,10 +174,12 @@ impl PkgRepo {
 /// packages pinned to it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RepoFilter {
-    /// Package name to the only repository it may come from. `None` if that
-    /// repository is not part of the solve, e.g. Bioconductor for an R
-    /// version without a Bioconductor release: then there are no versions.
-    pub pins: HashMap<String, Option<RepoId>>,
+    /// Package name to the only repositories it may come from: the ones of
+    /// the repository it is pinned to, e.g. several for the root of a
+    /// Bioconductor mirror. Empty if that repository is not part of the
+    /// solve, e.g. Bioconductor for an R version without a Bioconductor
+    /// release: then there are no versions.
+    pub pins: HashMap<String, Vec<RepoId>>,
     /// The repositories that only serve the packages pinned to them.
     pub explicit: HashSet<RepoId>,
 }
@@ -145,21 +188,39 @@ impl RepoFilter {
     /// Whether `package` may come from `repo`.
     pub fn allows(&self, package: &str, repo: &RepoId) -> bool {
         match self.pins.get(package) {
-            Some(pin) => pin.as_ref() == Some(repo),
+            Some(pin) => pin.contains(repo),
             None => !self.explicit.contains(repo),
         }
     }
 }
 
 /// Where a feed's metadata lives.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct MetadataFeed {
     pub repo: RepoId,
     pub allpackages_url: String,
     pub archived_url: String,
     /// Base URL of the per-package binary indices, without a trailing `/`.
     pub binaries_url: String,
+    /// A CRAN-like repository with the same packages, e.g. a CRAN mirror,
+    /// without a trailing `/`. Source packages are downloaded from here
+    /// first, see [`MetadataFeed::with_mirror`].
+    pub mirror: Option<String>,
 }
+
+/// The mirror is not part of a feed's identity: two feeds with the same
+/// metadata are the same repository, wherever their files are downloaded
+/// from.
+impl PartialEq for MetadataFeed {
+    fn eq(&self, other: &MetadataFeed) -> bool {
+        self.repo == other.repo
+            && self.allpackages_url == other.allpackages_url
+            && self.archived_url == other.archived_url
+            && self.binaries_url == other.binaries_url
+    }
+}
+
+impl Eq for MetadataFeed {}
 
 impl MetadataFeed {
     /// CRAN's feed, overridable with `RIG_ALLPACKAGES_URL`,
@@ -180,6 +241,15 @@ impl MetadataFeed {
             binaries_url: env("RIG_BINARIES_URL", "https://ppm.r-pkg.org/binaries")
                 .trim_end_matches('/')
                 .to_string(),
+            mirror: None,
+        }
+    }
+
+    /// This feed, with source packages downloaded from `mirror` first.
+    pub fn with_mirror(self, mirror: &str) -> MetadataFeed {
+        MetadataFeed {
+            mirror: Some(mirror.trim_end_matches('/').to_string()),
+            ..self
         }
     }
 
@@ -224,6 +294,7 @@ impl MetadataFeed {
             allpackages_url: format!("{}/ALLPACKAGES.zst", base),
             archived_url: format!("{}/ARCHIVEDPACKAGES.zst", base),
             binaries_url: format!("{}/binaries", base),
+            mirror: None,
         }
     }
 
@@ -261,6 +332,27 @@ impl MetadataFeed {
         }
         feeds.push(MetadataFeed::cran());
         feeds
+    }
+
+    /// The full URL of a `DownloadURL` in this feed's ALLPACKAGES or binary
+    /// indices, see [`resolve_download_url`].
+    pub fn resolve_url(&self, url: &str) -> String {
+        resolve_download_url(&self.allpackages_url, url)
+    }
+}
+
+/// The full URL of `url`, a `DownloadURL` from the ALLPACKAGES file at
+/// `allpackages_url`, or from a binary index of the same feed. It is either a
+/// full URL, an absolute path on the same server (`/cran/...`), or a path
+/// relative to the ALLPACKAGES file. A `url` that cannot be resolved is kept
+/// as is.
+pub fn resolve_download_url(allpackages_url: &str, url: &str) -> String {
+    if url.is_empty() || reqwest::Url::parse(url).is_ok() {
+        return url.to_string();
+    }
+    match reqwest::Url::parse(allpackages_url).and_then(|base| base.join(url)) {
+        Ok(full) => full.to_string(),
+        Err(_) => url.to_string(),
     }
 }
 
@@ -329,6 +421,56 @@ mod tests {
             feed.binaries_url,
             "https://ppm-bioc.r-pkg.org/3.22/binaries"
         );
+    }
+
+    #[test]
+    fn own_cran_feed_replaces_the_default() {
+        let own = PkgRepo::Extended(MetadataFeed::at(RepoId::Cran, "http://localhost:4242/cran"));
+        let default = PkgRepo::Extended(MetadataFeed::cran());
+        let bioc = PkgRepo::Extended(MetadataFeed::bioc("3.22"));
+        let other = PkgRepo::Cranlike(CranlikeRepo::new("acme", "https://acme.com"));
+
+        let repos = vec![default.clone(), other.clone(), own.clone(), bioc.clone()];
+        assert_eq!(
+            PkgRepo::one_cran_feed(repos),
+            vec![other.clone(), own.clone(), bioc.clone()]
+        );
+
+        let repos = vec![bioc.clone(), default.clone(), default.clone()];
+        assert_eq!(PkgRepo::one_cran_feed(repos), vec![bioc, default]);
+
+        assert_eq!(PkgRepo::one_cran_feed(vec![other.clone()]), vec![other]);
+    }
+
+    #[test]
+    fn relative_ppm_download_urls_resolve() {
+        let feed = MetadataFeed::at(RepoId::Cran, "http://localhost:4242/cran");
+        assert_eq!(
+            feed.resolve_url("2025-08-30/src/contrib/otel_0.2.0.tar.gz"),
+            "http://localhost:4242/cran/2025-08-30/src/contrib/otel_0.2.0.tar.gz"
+        );
+    }
+
+    #[test]
+    fn download_urls_resolve_against_allpackages() {
+        let feed = MetadataFeed::at(RepoId::Cran, "https://example.com/meta/");
+        assert_eq!(
+            feed.resolve_url("https://p3m.dev/cran/2020-01-01/src/contrib/a_1.0.tar.gz"),
+            "https://p3m.dev/cran/2020-01-01/src/contrib/a_1.0.tar.gz"
+        );
+        assert_eq!(
+            feed.resolve_url("src/contrib/a_1.0.tar.gz"),
+            "https://example.com/meta/src/contrib/a_1.0.tar.gz"
+        );
+        assert_eq!(
+            feed.resolve_url("../cran/a_1.0.tar.gz"),
+            "https://example.com/cran/a_1.0.tar.gz"
+        );
+        assert_eq!(
+            feed.resolve_url("/cran/2020-01-01/src/contrib/a_1.0.tar.gz"),
+            "https://example.com/cran/2020-01-01/src/contrib/a_1.0.tar.gz"
+        );
+        assert_eq!(feed.resolve_url(""), "");
     }
 
     #[test]

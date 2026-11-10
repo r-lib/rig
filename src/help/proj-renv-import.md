@@ -21,10 +21,26 @@ After importing, run [`rig proj lock`](proj.qmd#rig-proj-lock) to solve the depe
 ## Sources
 
 renv enumerates required repositories listed in the lock file, so rig attempts
-to do the same, mapping known CRAN and Bioconductor aliases to the built-in
-repositories when possible and writing explicit `[[repository]]` entries
-otherwise. Built-in repositories are disabled if the lock file does not use
-them.
+to do the same. It detects the type of each repository of the lock file, like
+[`rig repos add`](repos.qmd#rig-repos-add) does, and uses the built-in repositories for the ones they
+stand for:
+
+- a public CRAN mirror (e.g. `cloud.r-project.org`), or the CRAN repository
+  of the public Posit Package Manager (PPM, `p3m.dev`), is the built-in CRAN;
+- a public Bioconductor repository of the lock file's Bioconductor release
+  is the built-in Bioconductor;
+- a public PPM snapshot is the built-in CRAN, or the built-in Bioconductor
+  for a snapshot of Bioconductor.
+
+Every other repository, e.g. a private or internal one, gets an explicit
+`[[repository]]` entry. A snapshot of a private PPM is replaced by the same
+PPM repository at `latest`. Use `--keep-ppm-snapshots` to keep all PPM
+snapshots, public and private, as they are. Built-in repositories are
+disabled if the lock file does not use them.
+
+After the import, rig prints the repositories of `rproj.toml`. For each
+repository with a URL it shows the type (e.g. `ppm-snapshot` or `r-universe`)
+and the protocol it will use for it, and how many packages are pinned to it.
 
 A package that renv installed from GitHub, GitLab, Bitbucket or a git URL
 becomes a `git` dependency.

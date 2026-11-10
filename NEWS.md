@@ -1,4 +1,110 @@
-# rig 0.11.1-dev (development version)
+# rig 0.11.2-dev (development version)
+
+* `rig proj renv import` improvements:
+   - import repositories, detect their type,
+   - warns about packages from unsupported sources (e.g. GitHub).
+
+* New `rig audit` command: it checks the packages of a project's lock file
+  and library, or of an R library, for known vulnerabilities and for
+  versions that the repository blocks. `rig audit --fix` upgrades them to
+  the nearest version without known problems. It exits with status 1 if it
+  finds problems, so it can be used in CI. `rig pkg audit` does the same
+  for a library, also in a project. `--exclude-newer` limits the upgrades
+  to versions published by a date.
+
+* rig now reads a package repository according to its type (CRAN mirror,
+  Posit Package Manager, Bioconductor, r-universe, etc.), detected from the
+  server or set with `type` in `rproj.toml` or `rig repos add --type`. For
+  CRAN mirrors rig reads the full history of CRAN, so older versions are
+  available, too.
+
+* `rig proj lock` and `rig pkg install` now record the git commit of the
+  packages of an r-universe repository. If r-universe replaces the package
+  file later, `rig proj sync` builds the package from git, at the locked
+  commit, and it does not reinstall a package of the same commit.
+
+* In admin mode, when `rig proj sync` or `rig run` need to install R, they
+  now run `rig add` in a separate process, and only that process runs with
+  `sudo` (or as administrator on Windows). Before, the whole command ran
+  again with `sudo` after the R installation, so the project library and
+  the package cache were owned by root (#503).
+
+* `rig pkg install` and `rig proj sync` now show why a package failed to
+  install when the error happens outside of `R CMD INSTALL`, e.g. when the
+  library is not writeable. Before, this error was only in the debug
+  output (#504).
+
+* In user mode on Linux and for portable installations in admin mode,
+  `SSL_CERT_FILE` and `CURL_CA_BUNDLE` set in the shell now take precedence
+  over the rig CA bundle in R's `Renviron.site`. Run
+  `rig system update-certs` to fix R versions that are already installed
+  (#501).
+
+* On Linux, rig now points portable R installations at the system CA
+  bundle, e.g. `/etc/ssl/certs/ca-certificates.crt`, so R trusts the same
+  certificates as the rest of the system. It only downloads the Mozilla
+  bundle from curl.se if it cannot find a system bundle. This happens both
+  in `rig add` and `rig system update-certs` (#501).
+
+* `rig system update-certs` now also works in admin mode on Linux. It
+  updates the portable R installations, and runs `sudo` if needed.
+
+* `rig proj sync` no longer fails to install the project's own package
+  sometimes, mostly on Linux. It copied the project's `.rvenv`
+  directory too, while it was installing the dependencies there.
+
+* `rig pkg doctor` now reports packages built for another architecture
+  on Windows too, e.g. x86_64 packages in the library of an aarch64 R.
+
+* `rig pkg install` and `rig proj lock` now choose binary packages for
+  the architecture of the R version, not rig's own. Before, an x86_64
+  build of rig on aarch64 Windows installed x86_64 binaries into the
+  library of an aarch64 R. `rig pkg install` and `rig proj sync` now also
+  reinstall packages that were built for another architecture.
+
+* `rig proj export` now writes exact version requirements as
+  `pkg (== 1.0.0)` in `DESCRIPTION`, because R does not support a single
+  `=`. It also writes strict bounds as `>` and `<`, not `>>` and `<<`.
+
+# rig 0.11.1
+
+* New `rig proj sync --check` option to check that the project
+  environment is in sync with `rproj.lock`. It exits with status 1 if sync
+  would install, update or remove any package, e.g. after packages were
+  installed or removed by hand, and with status 2 on other errors (#495).
+
+* `rig proj lock --check` now exits with status 2 on errors, e.g. if there
+  is no `rproj.toml`, and keeps status 1 for a missing or out of date
+  `rproj.lock`.
+
+* `rig proj sync --dry-run` no longer fills in a missing `.Renviron` or
+  `.rvenvlib`, it only says that sync would. It now fails if there is
+  neither an `rproj.toml` nor an `rproj.lock`, like `rig proj sync` does.
+
+* New `rig add --no-default` option to install an R version without
+  making it the default when no default R version is set yet, and
+  `rig add --without-path` to skip putting rig's quick-link directory on
+  the PATH (the shell startup files on macOS and Linux, the user PATH on
+  Windows). Tools that run rig to install R, like RStudio, can use them to
+  leave the user's default R, quick links, PATH and IDE settings alone.
+
+* `rig list`, `rig add` and other commands no longer fail on macOS in user
+  mode when `~/.local/bin` does not exist yet (#491).
+
+* `rig system clean-registry` on Windows now removes all stale R and
+  Rtools registry entries and "Add/Remove Programs" entries.
+
+* `rig list`, `rig add` and other commands no longer fail with
+  on macOS in user mode when `~/.local/bin` does not exist yet (#491).
+
+* rig on Linux now uses an updated embedded root certificate bundle
+  (webpki-root-certs 1.0.10), which drops the compromised
+  "emSign ECC Root CA - G3" root (see [GHSA-hq85-5cpj-mr62](
+    https://github.com/astral-sh/uv/security/advisories/GHSA-hq85-5cpj-mr62)).
+
+* `rig pkg install` and `rig proj sync` now install git, GitHub and
+  `url::` package sources on Windows again. rig passed `\\?\` paths
+  to `R CMD INSTALL`, which R rejected (#485).
 
 * `rig proj import` and `rig proj lock` now handle `Remotes` and
   `Config/Needs/*` entries for packages with a dot in their name, e.g.

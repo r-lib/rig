@@ -38,9 +38,10 @@ No password prompt this time: everything is written under your home directory.
 In user mode rig always installs a portable R build, one that does not
 depend on your distribution's packages, picked for your libc (glibc or musl).
 Very old glibc versions are not supported; if yours is too old, rig says so
-instead of installing a broken R. rig also downloads a CA certificate bundle
-and points R at it, so HTTPS works even where the system store is missing or
-stale; you can re-run that step with `rig system update-certs`.
+instead of installing a broken R. rig also points R at the system CA
+certificate bundle, or downloads one if the system has none, so HTTPS works
+even where the system store is missing; you can re-run that step with
+`rig system update-certs`.
 
 These portable builds are newer than the distro-specific builds that admin
 mode installs, and they are not as thoroughly tested yet, so you may hit the

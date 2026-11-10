@@ -36,7 +36,7 @@ use crate::windows::get_r_binary;
 #[cfg(target_os = "linux")]
 use crate::linux::get_r_binary;
 
-use crate::built::BuiltCache;
+use crate::built::{r_platform, BuiltCache};
 use crate::cache::get_cache_dir;
 use crate::dcf::{
     DepVersionSpec, OsType, Package, PackageDependencies, RDepType, VersionConstraintType,
@@ -164,6 +164,9 @@ pub fn sc_pkg_install(
     )?;
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
+    let mut policy_notes = crate::proj::PolicyNotes::default();
+    policy_notes.add(&registry, &solution);
+    policy_notes.print();
 
     // A lockfile target is the bridge from the solution to the installer: it
     // already carries the download URLs, the cache-relative file names, the
@@ -184,7 +187,16 @@ pub fn sc_pkg_install(
         debug!("Library {} does not exist yet", lib.path.display());
         vec![]
     };
-    let plan = plan_installs(&lockfile.packages, &installed, reinstall);
+    // Not an error yet if R is missing: a `--dry-run` does not need it.
+    let r_platform = get_r_binary(&rver)
+        .ok()
+        .and_then(|bin| r_platform(&bin.to_string_lossy()));
+    let plan = plan_installs(
+        &lockfile.packages,
+        &installed,
+        reinstall,
+        r_platform.as_deref(),
+    );
 
     if json {
         print_plan_json(&plan)?;
@@ -550,10 +562,15 @@ pub(crate) struct Planned<'a> {
 /// invalidates whatever was compiled against *those*. The coupling is
 /// `LinkingTo` only: an `Imports` dependency being replaced changes nothing
 /// about how its dependents were compiled.
+///
+/// `r_platform` is the `R_PLATFORM` of the R the library is for, if known
+/// (see [`crate::built::r_platform`]): a compiled package built for another
+/// arch cannot be loaded, whatever its provenance says.
 pub(crate) fn plan_installs<'a>(
     solved: &'a [RprojLockPackage],
     installed: &[InstalledPackage],
     reinstall: bool,
+    r_platform: Option<&str>,
 ) -> Vec<Planned<'a>> {
     let by_name: HashMap<&str, &InstalledPackage> =
         installed.iter().map(|p| (p.package.as_str(), p)).collect();
@@ -579,6 +596,7 @@ pub(crate) fn plan_installs<'a>(
                     package,
                     by_name.get(package.package.as_str()).copied(),
                     &solved_hash,
+                    r_platform,
                 ) {
                     Some(reason) => (true, reason),
                     None => (false, "up to date".to_string()),
@@ -647,6 +665,7 @@ fn needs_install(
     solved: &RprojLockPackage,
     installed: Option<&InstalledPackage>,
     solved_hash: &HashMap<&str, Option<&str>>,
+    r_platform: Option<&str>,
 ) -> Option<String> {
     let installed = match installed {
         Some(x) => x,
@@ -655,6 +674,15 @@ fn needs_install(
 
     if installed.version != solved.version {
         return Some(format!("{} is installed", installed.version));
+    }
+
+    // Only compiled packages have a platform. E.g. an x64 package in the
+    // library of an aarch64 R on Windows: same tarball, but unusable.
+    let arch = |p: &str| p.split('-').next().unwrap_or(p).to_string();
+    if let (Some(want), Some(have)) = (r_platform, installed.platform.as_deref()) {
+        if arch(want) != arch(have) {
+            return Some(format!("built for {}", arch(have)));
+        }
     }
 
     // A git/GitHub package has no `RemoteHash` (that is CRAN-tarball-specific)
@@ -686,26 +714,42 @@ fn needs_install(
         };
     }
 
-    let want = solved.metadata.get(REMOTE_HASH_FIELD);
-    match (&installed.hash, want) {
-        // The solved package has no hash, e.g. it is from a CRAN-like
-        // repository without checksums: the version is all we have to go on,
-        // and it matches.
-        (_, None) => {}
-        (None, Some(_)) => return Some("no recorded hash".to_string()),
-        (Some(have), Some(want)) if have != want => {
-            return Some("built from a different tarball".to_string())
+    // A package of an r-universe repository also has the commit it was built
+    // from. The same commit is the same package, even if r-universe rebuilt
+    // it since, or it was built from git, so the file it came from does not
+    // matter. An installed package without a commit is checked by its file.
+    let same_commit = match (solved.metadata.get(REMOTE_SHA_FIELD), &installed.remote_sha) {
+        (Some(want), Some(have)) if want != have => {
+            return Some("a different commit is installed".to_string())
         }
-        (Some(_), Some(_)) => {}
-    }
+        (Some(_), Some(_)) => true,
+        _ => false,
+    };
 
-    // A CRAN-like repository can rebuild a package without changing its
-    // version, e.g. CRAN's Windows binaries, which have no checksums but a
-    // `Built` field. A source package built here is newer than the
-    // repository's build, so it is not affected.
-    if let (Some(want), Some(have)) = (solved.metadata.get(REPO_BUILT_FIELD), &installed.built_at) {
-        if built_key(want) > built_key(have) {
-            return Some("a newer build is available".to_string());
+    if !same_commit {
+        let want = solved.metadata.get(REMOTE_HASH_FIELD);
+        match (&installed.hash, want) {
+            // The solved package has no hash, e.g. it is from a CRAN-like
+            // repository without checksums: the version is all we have to go
+            // on, and it matches.
+            (_, None) => {}
+            (None, Some(_)) => return Some("no recorded hash".to_string()),
+            (Some(have), Some(want)) if have != want => {
+                return Some("built from a different tarball".to_string())
+            }
+            (Some(_), Some(_)) => {}
+        }
+
+        // A CRAN-like repository can rebuild a package without changing its
+        // version, e.g. CRAN's Windows binaries, which have no checksums but
+        // a `Built` field. A source package built here is newer than the
+        // repository's build, so it is not affected.
+        if let (Some(want), Some(have)) =
+            (solved.metadata.get(REPO_BUILT_FIELD), &installed.built_at)
+        {
+            if built_key(want) > built_key(have) {
+                return Some("a newer build is available".to_string());
+            }
         }
     }
 
@@ -849,10 +893,36 @@ mod tests {
         installed: &[InstalledPackage],
         reinstall: bool,
     ) -> HashMap<String, (bool, String)> {
-        plan_installs(solved, installed, reinstall)
+        plan_installs(solved, installed, reinstall, None)
             .into_iter()
             .map(|p| (p.package.package.clone(), (p.install, p.reason)))
             .collect()
+    }
+
+    #[test]
+    fn a_package_built_for_another_arch_is_reinstalled() {
+        let solved = [
+            solved("cli", "3.6.6", Some("aa")),
+            solved("glue", "1.8.1", Some("bb")),
+            solved("rlang", "1.3.0", Some("cc")),
+        ];
+        let mut cli = inst("cli", "3.6.6", Some("aa"), &[]);
+        cli.platform = Some("x86_64-w64-mingw32".to_string());
+        let mut glue = inst("glue", "1.8.1", Some("bb"), &[]);
+        glue.platform = Some("aarch64-w64-mingw32".to_string());
+        // No platform: no compiled code.
+        let rlang = inst("rlang", "1.3.0", Some("cc"), &[]);
+        let installed = [cli, glue, rlang];
+        let out: HashMap<String, (bool, String)> =
+            plan_installs(&solved, &installed, false, Some("aarch64-w64-mingw32"))
+                .into_iter()
+                .map(|p| (p.package.package.clone(), (p.install, p.reason)))
+                .collect();
+        assert_eq!(out["cli"], (true, "built for x86_64".to_string()));
+        assert!(!out["glue"].0);
+        assert!(!out["rlang"].0);
+        // An unknown R platform checks nothing.
+        assert!(!plan(&solved, &installed, false)["cli"].0);
     }
 
     #[test]
@@ -946,6 +1016,55 @@ mod tests {
         let out = plan(&[pkg], &[installed], false);
         assert!(out["mypkg"].0);
         assert_eq!(out["mypkg"].1, "a different file is installed");
+    }
+
+    /// An r-universe package: a hash and the commit it was built from.
+    fn r_universe(hash: &str, sha: &str) -> RprojLockPackage {
+        let mut pkg = solved("cli", "3.6.6.9000", Some(hash));
+        pkg.metadata
+            .insert(REMOTE_SHA_FIELD.to_string(), sha.to_string());
+        pkg.repository = Some("rlib".to_string());
+        pkg
+    }
+
+    fn inst_sha(hash: Option<&str>, sha: Option<&str>) -> InstalledPackage {
+        InstalledPackage::for_test_remote("cli", "3.6.6.9000", hash, vec![], sha)
+    }
+
+    #[test]
+    fn an_r_universe_package_of_the_same_commit_is_left_alone() {
+        // Rebuilt by r-universe since, or installed from git.
+        let out = plan(
+            &[r_universe("new-file", "abc")],
+            &[inst_sha(Some("old-file"), Some("abc"))],
+            false,
+        );
+        assert!(!out["cli"].0, "{}", out["cli"].1);
+        // Installed by R itself, without rig's `RemoteHash`.
+        let out = plan(
+            &[r_universe("aa", "abc")],
+            &[inst_sha(None, Some("abc"))],
+            false,
+        );
+        assert!(!out["cli"].0, "{}", out["cli"].1);
+    }
+
+    #[test]
+    fn an_r_universe_package_of_another_commit_is_reinstalled() {
+        let out = plan(
+            &[r_universe("aa", "abc")],
+            &[inst_sha(Some("aa"), Some("def"))],
+            false,
+        );
+        assert!(out["cli"].0);
+        assert_eq!(out["cli"].1, "a different commit is installed");
+        // Without a commit, the file decides.
+        let out = plan(
+            &[r_universe("aa", "abc")],
+            &[inst_sha(Some("bb"), None)],
+            false,
+        );
+        assert_eq!(out["cli"].1, "built from a different tarball");
     }
 
     #[test]

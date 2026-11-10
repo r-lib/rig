@@ -167,22 +167,23 @@ pub async fn download_file(
     let path = Path::new(&path);
     let resp = crate::auth::get(client, url).send().await;
     let resp = match resp {
-        Ok(resp) => resp.error_for_status(),
+        Ok(resp) => resp,
         Err(err) => {
             OUTPUT.error(&format!("HTTP error at {}: {}", url, err));
             error!("HTTP error at {}: {}", url, err);
             bail!("HTTP error at {}: {}", url, err.to_string())
         }
     };
-    let resp = match resp {
-        Ok(resp) => resp,
-        Err(err) => {
-            let hint = err.status().map(crate::auth::status_hint).unwrap_or("");
-            OUTPUT.error(&format!("HTTP error at {}: {}{}", url, err, hint));
-            error!("HTTP error at {}: {}", url, err);
-            bail!("HTTP error at {}: {}{}", url, err.to_string(), hint)
-        }
-    };
+    if !resp.status().is_success() {
+        let unexpected = UnexpectedStatus {
+            url: url.to_string(),
+            status: resp.status(),
+            body: error_body(resp).await,
+        };
+        OUTPUT.error(&format!("HTTP error at {}: {}", url, unexpected.reason()));
+        error!("HTTP error at {}: {}", url, unexpected.reason());
+        bail!("HTTP error at {}: {}", url, unexpected.reason())
+    }
 
     // If dirname(path) is / then this is None
     let dir = Path::new(&path).parent();
@@ -269,16 +270,56 @@ async fn download_if_newer(
 struct UnexpectedStatus {
     url: String,
     status: StatusCode,
+    /// The start of a short plain text body of the response, e.g. PPM's
+    /// `package 'otel' blocked from being served (version 0.3.0, rule 9)`.
+    body: Option<String>,
+}
+
+impl UnexpectedStatus {
+    /// The status, with what the server said about it. A repository that
+    /// blocks a package answers 403, and that is not about credentials.
+    fn reason(&self) -> String {
+        match &self.body {
+            Some(body) if is_blocked_message(body) => {
+                format!("{}, blocked by the repository: {}", self.status, body)
+            }
+            _ => format!("{}{}", self.status, crate::auth::status_hint(self.status)),
+        }
+    }
+}
+
+/// Whether the body of an error response says that the repository blocks
+/// the file.
+fn is_blocked_message(body: &str) -> bool {
+    body.to_lowercase().contains("blocked")
+}
+
+/// The first line of the body of the error response `resp`, if it is short
+/// plain text.
+async fn error_body(resp: reqwest::Response) -> Option<String> {
+    let is_text = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_none_or(|ct| ct.starts_with("text/plain"));
+    if !is_text || resp.content_length().is_some_and(|len| len > 4096) {
+        return None;
+    }
+    let text = resp.text().await.ok()?;
+    let line = text.lines().next()?.trim();
+    if line.is_empty() || line.len() > 500 {
+        return None;
+    }
+    Some(line.to_string())
 }
 
 impl std::fmt::Display for UnexpectedStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Failed to download {}, status: {}{}",
+            "Failed to download {}, status: {}",
             self.url,
-            self.status,
-            crate::auth::status_hint(self.status)
+            self.reason()
         )
     }
 }
@@ -325,6 +366,7 @@ async fn download_if_newer_quiet(
         status => Err(Box::new(UnexpectedStatus {
             url: url.to_string(),
             status,
+            body: error_body(resp).await,
         })),
     }
 }
@@ -391,11 +433,7 @@ async fn download_first_available(
                     debug!("Cannot download from {}: {}", url, e);
                 }
                 let reason = match e.downcast_ref::<UnexpectedStatus>() {
-                    Some(unexpected) => format!(
-                        "{}{}",
-                        unexpected.status,
-                        crate::auth::status_hint(unexpected.status)
-                    ),
+                    Some(unexpected) => unexpected.reason(),
                     None => e.to_string(),
                 };
                 failures.push(format!("{} ({})", url, reason));
@@ -636,6 +674,11 @@ pub struct UrlProbe {
     pub elapsed_ms: u128,
     /// The `Last-Modified` header, verbatim, if the server sent one.
     pub last_modified: Option<String>,
+    /// The `x-repository-type` header, verbatim, if the server sent one.
+    /// Posit Package Manager sends `RSPM`, r-universe sends `r-universe`.
+    pub repository_type: Option<String>,
+    /// The URL of the response, after redirects, if there was a response.
+    pub final_url: Option<String>,
 }
 
 /// Ask a server about a resource, without downloading it: a `HEAD` request,
@@ -672,12 +715,19 @@ pub async fn probe_url(client: &reqwest::Client, url: &str) -> UrlProbe {
                 .get("last-modified")
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string());
+            let repository_type = resp
+                .headers()
+                .get("x-repository-type")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
             UrlProbe {
                 url: url.to_string(),
                 status: Some(resp.status().as_u16()),
                 error: None,
                 elapsed_ms,
                 last_modified,
+                repository_type,
+                final_url: Some(resp.url().to_string()),
             }
         }
         Err(err) => {
@@ -688,6 +738,8 @@ pub async fn probe_url(client: &reqwest::Client, url: &str) -> UrlProbe {
                 error: Some(probe_error_message(&err)),
                 elapsed_ms,
                 last_modified: None,
+                repository_type: None,
+                final_url: None,
             }
         }
     }
@@ -1042,6 +1094,47 @@ mod tests {
     use super::*;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn test_blocked_download_says_why() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/otel_0.3.0.tar.gz"))
+            .respond_with(ResponseTemplate::new(403).set_body_string(
+                "package 'otel' blocked from being served (version 0.3.0, rule 9)\n",
+            ))
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/private.tar.gz"))
+            .respond_with(ResponseTemplate::new(403).set_body_string("Forbidden"))
+            .mount(&mock_server)
+            .await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let client = reqwest::Client::new();
+        let url = format!("{}/otel_0.3.0.tar.gz", mock_server.uri());
+        let err = download_first_available(&client, &[&url], &dir.path().join("a"), None)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains(
+                "403 Forbidden, blocked by the repository: package 'otel' blocked from \
+                 being served (version 0.3.0, rule 9)"
+            ),
+            "{}",
+            err
+        );
+        assert!(!err.contains("authentication"), "{}", err);
+
+        let url = format!("{}/private.tar.gz", mock_server.uri());
+        let err = download_first_available(&client, &[&url], &dir.path().join("b"), None)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("authentication needed?"), "{}", err);
+    }
 
     #[test]
     fn test_download_multiple_first_available_no_downloads() {

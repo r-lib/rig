@@ -603,10 +603,12 @@ fn check_package(
             );
         }
     }
+    // Only compiled packages have a platform, and R cannot load compiled code
+    // built for another arch, e.g. an x64 DLL into aarch64 R on Windows.
     if let (Some(rplat), Some(plat)) = (&rinfo.platform, &pkg.platform) {
         if arch(rplat) != arch(plat) {
             add(
-                Severity::Warning,
+                Severity::Error,
                 Kind::Platform,
                 None,
                 format!("built for {}, R is {}", plat, rplat),
@@ -1225,7 +1227,7 @@ mod tests {
     }
 
     #[test]
-    fn built_for_another_r_or_arch_is_a_warning() {
+    fn built_for_another_r_is_a_warning_another_arch_an_error() {
         let (_tmp, lib) = library(&[
             (
                 "old",
@@ -1246,11 +1248,40 @@ mod tests {
         assert_eq!(
             summary(&diagnose(&lib, &[], &r44(), &NONE)),
             vec![
-                one("intel", Severity::Warning, Kind::Platform, None),
+                one("intel", Severity::Error, Kind::Platform, None),
                 one("old", Severity::Warning, Kind::BuiltR, None),
             ]
         );
         assert!(diagnose(&lib, &[], &RInfo::default(), &NONE).is_empty());
+    }
+
+    #[test]
+    fn an_x64_package_for_aarch64_windows_r_is_an_error() {
+        let (_tmp, lib) = library(&[
+            (
+                "cli",
+                "Package: cli\nVersion: 3.6.6\n\
+                 Built: R 4.6.1; x86_64-w64-mingw32; 2026-10-28 07:28:01 UTC; windows\n",
+            ),
+            (
+                "glue",
+                "Package: glue\nVersion: 1.8.0\n\
+                 Built: R 4.6.1; ; 2026-10-28 07:28:01 UTC; windows\n",
+            ),
+        ]);
+        let rinfo = RInfo {
+            version: Some("4.6.1".to_string()),
+            platform: Some("aarch64-w64-mingw32".to_string()),
+        };
+        let problems = diagnose(&lib, &[], &rinfo, &NONE);
+        assert_eq!(
+            summary(&problems),
+            vec![one("cli", Severity::Error, Kind::Platform, None)]
+        );
+        assert_eq!(
+            problems[0].details,
+            "built for x86_64-w64-mingw32, R is aarch64-w64-mingw32"
+        );
     }
 
     #[test]

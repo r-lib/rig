@@ -444,6 +444,10 @@ pub struct Package {
     // the `OS_type` field, `unix` or `windows`, for a package that only
     // works on that OS, see [`OsType`].
     pub os_type: Option<String>,
+    // whether the repository blocks this version, and its known
+    // vulnerabilities, from a repository's extended metadata. `None` if
+    // there is nothing to say.
+    pub policy: Option<crate::repos::policy::VersionPolicy>,
 }
 
 /// The two operating system families of the `OS_type` field of a package:
@@ -544,6 +548,7 @@ impl Package {
             repository: None,
             system_requirements: None,
             os_type: None,
+            policy: None,
         }
     }
 
@@ -579,6 +584,7 @@ impl Package {
             .get("SystemRequirements")
             .and_then(normalize_system_requirements);
         let os_type = pkg.get("OS_type").and_then(normalize_os_type);
+        let policy = crate::repos::policy::VersionPolicy::from_fields(|name| pkg.get(name));
 
         Ok(Package {
             name,
@@ -599,6 +605,7 @@ impl Package {
             repository: None,
             system_requirements,
             os_type,
+            policy,
         })
     }
 }
