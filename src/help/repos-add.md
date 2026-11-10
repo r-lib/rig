@@ -31,7 +31,8 @@ source packages from the mirror first. `--no-extend` turns this off, and rig
 only reads the `PACKAGES` files of the mirror. Use `--type` to give the type
 yourself, e.g. if rig cannot reach the server now. The types are `cran`,
 `ppm-cran`, `ppm-bioc`, `ppm-other`, `ppm-snapshot`, `ppm`, `bioc`,
-`extended`, `r-universe` and `cran-like`.
+`extended`, `r-universe` and `cran-like`. See ["Repositories" in `rig proj
+lock --help`](proj.qmd#repositories) for what each type means.
 
 If the repository needs a username and a password, put the username into
 the URL, e.g. `https://alice@cran.acme.com/cran`, but not the password: rig

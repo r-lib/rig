@@ -3331,25 +3331,6 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
-            Command::new("detect")
-                .about(ABOUT_REPOS_DETECT)
-                .long_about(HELP_REPOS_DETECT)
-                .display_order(0)
-                .hide(true)
-                .arg(
-                    Arg::new("url")
-                        .help("URL of the repository, e.g. 'https://cloud.r-project.org'")
-                        .required(true),
-                )
-                .arg(
-                    Arg::new("json")
-                        .help("JSON output")
-                        .long("json")
-                        .num_args(0)
-                        .required(false),
-                ),
-        )
-        .subcommand(
             Command::new("disable")
                 .about(ABOUT_REPOS_DISABLE)
                 .long_about(HELP_REPOS_DISABLE)

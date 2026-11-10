@@ -29,13 +29,11 @@
 use std::collections::HashMap;
 use std::error::Error;
 
-use clap::ArgMatches;
 use futures::future;
 use log::debug;
 use regex::Regex;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use tabular::{Row, Table};
 
 use crate::download::probe_url;
 use crate::utils::{http_client, http_client_builder};
@@ -106,8 +104,7 @@ impl std::str::FromStr for RepoType {
     }
 }
 
-/// The result of the detection, and the shape of the `--json` output of
-/// `rig repos detect`.
+/// The result of the detection.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DetectedRepo {
     /// The URL, without a trailing `/`.
@@ -803,85 +800,6 @@ pub async fn detect_repo_type(url: &str) -> Result<DetectedRepo, Box<dyn Error>>
     } else {
         Ok(classify(&url, &probes))
     }
-}
-
-// ------------------------------------------------------------------------
-// `rig repos detect`
-// ------------------------------------------------------------------------
-
-pub fn sc_repos_detect(
-    args: &ArgMatches,
-    libargs: &ArgMatches,
-    mainargs: &ArgMatches,
-) -> Result<(), Box<dyn Error>> {
-    let url = args.get_one::<String>("url").unwrap();
-    let detected = detect_repo_type(url)?;
-
-    if args.get_flag("json") || libargs.get_flag("json") || mainargs.get_flag("json") {
-        println!("{}", serde_json::to_string_pretty(&detected)?);
-        return Ok(());
-    }
-
-    let mut lines: Vec<(&str, String)> = vec![
-        ("url", detected.url.clone()),
-        ("type", detected.repo_type.as_str().to_string()),
-        ("extensible", detected.extensible.to_string()),
-    ];
-    let opt = [
-        ("metadata", &detected.metadata),
-        ("ppm-base", &detected.ppm_base),
-        ("ppm-repo", &detected.ppm_repo),
-        ("distro", &detected.distro),
-        ("snapshot", &detected.snapshot),
-        ("bioc-version", &detected.bioc_version),
-        ("bioc-subrepo", &detected.bioc_subrepo),
-        ("extended-flavor", &detected.extended_flavor),
-    ];
-    for (key, value) in opt {
-        if let Some(v) = value {
-            lines.push((key, v.clone()));
-        }
-    }
-    if detected.guessed {
-        lines.push(("guessed", "true".to_string()));
-    }
-    for note in &detected.notes {
-        lines.push(("note", note.clone()));
-    }
-    for (key, value) in lines {
-        println!("{}: {}", key, value);
-    }
-
-    if !detected.ppm_repos.is_empty() {
-        println!();
-        let mut tab = Table::new("{:<}  {:<}  {:<}  {:<}  {:<}  {:<}");
-        tab.add_row(
-            Row::new()
-                .with_cell("name")
-                .with_cell("ppm-type")
-                .with_cell("type")
-                .with_cell("extensible")
-                .with_cell("hidden")
-                .with_cell("url"),
-        );
-        for r in &detected.ppm_repos {
-            let mut rtype = r.repo_type.as_str().to_string();
-            if r.guessed {
-                rtype.push_str(" (guess)");
-            }
-            tab.add_row(
-                Row::new()
-                    .with_cell(&r.name)
-                    .with_cell(&r.ppm_type)
-                    .with_cell(rtype)
-                    .with_cell(r.extensible)
-                    .with_cell(r.hidden)
-                    .with_cell(&r.url),
-            );
-        }
-        print!("{}", tab);
-    }
-    Ok(())
 }
 
 #[cfg(test)]
