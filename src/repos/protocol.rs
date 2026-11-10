@@ -43,9 +43,17 @@ pub fn repos_for(
 
     match repo.repo_type {
         RepoType::Cran if extend => vec![PkgRepo::Extended(MetadataFeed::cran().with_mirror(url))],
-        RepoType::PpmCran if extend => vec![PkgRepo::Extended(
-            MetadataFeed::cran().with_mirror(&ppm_source_url(repo)),
-        )],
+        // A PPM CRAN repository may serve its own extended metadata, with
+        // its blocked versions and known vulnerabilities. Then that is the
+        // CRAN feed, instead of P3M's.
+        RepoType::PpmCran if extend => {
+            let feed = repo
+                .metadata
+                .as_deref()
+                .and_then(|m| MetadataFeed::from_metadata_url(m, None))
+                .unwrap_or_else(MetadataFeed::cran);
+            vec![PkgRepo::Extended(feed.with_mirror(&ppm_source_url(repo)))]
+        }
 
         RepoType::PpmBioc | RepoType::Bioc if repo.bioc_subrepo.is_none() => {
             // A URL ending in `packages/<version>` is that version only.
@@ -91,6 +99,7 @@ pub fn repos_for(
             .filter(|r| !r.hidden)
             .flat_map(|r| {
                 let mut sub = DetectedRepo::new(&r.url, r.repo_type);
+                sub.metadata = r.metadata.clone();
                 sub.ppm_base = Some(url.to_string());
                 sub.ppm_repo = Some(r.name.clone());
                 sub.snapshot = Some("latest".to_string());
@@ -159,6 +168,28 @@ mod tests {
         assert_eq!(
             repos_for("acme", &d, false, None),
             vec![cranlike("acme", "https://cran.acme.com")]
+        );
+    }
+
+    #[test]
+    fn test_ppm_cran_own_metadata() {
+        let mut d = detected("http://localhost:4242/cran/latest", RepoType::PpmCran);
+        d.ppm_base = Some("http://localhost:4242".to_string());
+        d.ppm_repo = Some("cran".to_string());
+        d.metadata = Some("http://localhost:4242/cran".to_string());
+        let repos = repos_for("ppm", &d, true, None);
+        let [PkgRepo::Extended(feed)] = repos.as_slice() else {
+            panic!("not one feed: {:?}", repos);
+        };
+        assert_eq!(feed.repo, RepoId::Cran);
+        assert_eq!(
+            feed.allpackages_url,
+            "http://localhost:4242/cran/ALLPACKAGES.zst"
+        );
+        assert_eq!(feed.binaries_url, "http://localhost:4242/cran/binaries");
+        assert_eq!(
+            feed.mirror.as_deref(),
+            Some("http://localhost:4242/cran/latest")
         );
     }
 

@@ -297,7 +297,9 @@ impl ProjRepos {
     /// The repositories of a solve with Bioconductor release
     /// `bioc_version`, see [`ProjRepos::bioc_setting`], in order. If two
     /// entries give the same repository, e.g. a CRAN mirror and the built-in
-    /// CRAN, the first one wins.
+    /// CRAN, the first one wins. A CRAN feed other than P3M's, e.g. the own
+    /// metadata of a PPM CRAN repository, always replaces the built-in one,
+    /// see [`PkgRepo::one_cran_feed`].
     pub fn pkg_repos(&self, bioc_version: Option<&str>) -> Vec<PkgRepo> {
         let mut out: Vec<PkgRepo> = vec![];
         for repo in self.enabled().flat_map(|r| self.repos_of(r, bioc_version)) {
@@ -305,7 +307,7 @@ impl ProjRepos {
                 out.push(repo);
             }
         }
-        out
+        PkgRepo::one_cran_feed(out)
     }
 
     /// The pins and the explicit repositories of a solve with Bioconductor

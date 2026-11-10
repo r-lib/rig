@@ -43,6 +43,12 @@ your own CRAN-like repository, is read from its `PACKAGES` files, so only its
 current packages are available. `rig repos add --no-extend` makes rig read a
 CRAN mirror from its `PACKAGES` files, too.
 
+A CRAN repository of Posit Package Manager may serve its own full package
+history. Then rig reads that instead of <https://ppm.r-pkg.org>. It also
+says which versions the repository blocks, and their known
+vulnerabilities. rig never installs a blocked version, and it warns about a
+version with known vulnerabilities. See [`rig audit`](audit.qmd).
+
 For a package of an r-universe, rig also looks up the git commit it was built
 from. If r-universe replaced the package file since rig read its `PACKAGES`
 file, rig builds the package from git, at that commit.

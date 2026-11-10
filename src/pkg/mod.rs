@@ -168,6 +168,7 @@ pub(crate) fn pkg_repos(
             if !over.is_some_and(|o| o.is_empty_base()) {
                 repos.extend(PkgRepo::from_feeds(bioc.feeds(rver, cutoff)));
             }
+            let repos = PkgRepo::one_cran_feed(repos);
             if repos.is_empty() {
                 OUTPUT.warn(&format!(
                     "No package repositories are configured for R {}.",
@@ -200,6 +201,7 @@ pub(crate) fn pkg_repos(
             repos.push(repo);
         }
     }
+    let repos = PkgRepo::one_cran_feed(repos);
     if repos.is_empty() {
         OUTPUT.warn(&format!(
             "No package repositories are configured for R {}.",

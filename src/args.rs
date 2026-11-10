@@ -3609,7 +3609,54 @@ pub fn rig_app() -> Command {
                 .value_parser(clap::builder::NonEmptyStringValueParser::new()),
         );
 
+    let cmd_audit = Command::new("audit")
+        .about(ABOUT_AUDIT)
+        .long_about(HELP_AUDIT)
+        .display_order(0)
+        .arg(
+            Arg::new("library")
+                .help(
+                    "Library name or path to check, instead of the project or the default library",
+                )
+                .long("library")
+                .short('l')
+                .num_args(1)
+                .required(false),
+        )
+        .arg(
+            Arg::new("r-version")
+                .help("R version whose library to check, instead of the project or the default")
+                .long("r-version")
+                .short('r')
+                .num_args(1)
+                .required(false),
+        )
+        .args(pkg_repos_args())
+        .arg(
+            Arg::new("fix")
+                .help("Upgrade the affected packages to the nearest version without known problems")
+                .long("fix")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
+            Arg::new("dry-run")
+                .help("With --fix, show what would be upgraded, without changing anything")
+                .long("dry-run")
+                .num_args(0)
+                .requires("fix")
+                .required(false),
+        )
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .num_args(0)
+                .required(false),
+        );
+
     rig = rig
+        .subcommand(cmd_audit)
         .subcommand(cmd_default)
         .subcommand(cmd_list)
         .subcommand(cmd_add)

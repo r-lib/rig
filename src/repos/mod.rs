@@ -42,6 +42,7 @@ mod repos_status;
 use repos_status::sc_repos_status;
 pub mod cranlike_metadata;
 pub mod feed;
+pub mod policy;
 pub use cranlike_metadata::DbSourcePackageLoader;
 pub mod binaries;
 mod setup;

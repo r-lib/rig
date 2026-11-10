@@ -104,6 +104,33 @@ Neither command starts R. `rig pkg remove` refuses to remove a base package
 work without them. On the other hand it does not check whether another
 installed package still needs the one being removed.
 
+## Vulnerabilities and blocked packages
+
+A CRAN repository of Posit Package Manager can block package versions, e.g.
+because of their license or a known vulnerability, and it can report the
+known vulnerabilities of each version. If the repository serves its own
+package history, rig reads this information from there:
+
+- `rig pkg install` and `rig proj lock` never pick a blocked version, and
+  they tell you if a newer version is blocked.
+- They warn if they pick a version with known vulnerabilities.
+- If a download is refused because the package is blocked, the error says
+  so.
+
+`rig audit` checks the packages you already have:
+
+```sh
+rig audit                  # in a project: rproj.lock and the project library
+rig audit --library mylib  # a library of the default R version
+rig audit --fix --dry-run  # show the upgrades that would fix the problems
+rig audit --fix            # upgrade to the nearest versions without problems
+```
+
+It exits with status 1 if it finds vulnerable or blocked packages, so you
+can run it in CI. The default package history at <https://ppm.r-pkg.org>
+has no vulnerability or block information, and `rig audit` warns if none of
+your repositories has it. See the [`rig audit` reference](reference/audit.qmd).
+
 ## Choosing a library
 
 By default `rig pkg install`, `rig pkg list` and `rig pkg remove` all

@@ -90,7 +90,12 @@ type = "cran"
   the mirror first, and from Posit Package Manager if the mirror does not
   have it. A binary package is always downloaded from Posit Package Manager.
   `extend = false` turns this off, and rig only reads the `PACKAGES` files of
-  the repository.
+  the repository. A CRAN repository of Posit Package Manager may serve its
+  own full package history, and then rig reads that instead of
+  <https://ppm.r-pkg.org>. It also says which versions the repository blocks,
+  and their known vulnerabilities. rig never locks a blocked version, and it
+  warns about a version with known vulnerabilities, see
+  [`rig audit`](audit.qmd).
 * An r-universe (`r-universe`). rig reads its `PACKAGES` files, and records
   the git commit of each package in `rproj.lock`, from the r-universe API.
   r-universe replaces the files of a package when its git repository

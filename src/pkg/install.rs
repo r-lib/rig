@@ -164,6 +164,9 @@ pub fn sc_pkg_install(
     )?;
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
+    let mut policy_notes = crate::proj::PolicyNotes::default();
+    policy_notes.add(&registry, &solution);
+    policy_notes.print();
 
     // A lockfile target is the bridge from the solution to the installer: it
     // already carries the download URLs, the cache-relative file names, the

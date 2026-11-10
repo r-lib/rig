@@ -42,6 +42,7 @@ use linux::*;
 use resolve::*;
 
 mod alias;
+mod audit;
 mod auth;
 mod built;
 mod cache;
@@ -315,6 +316,7 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
     let mut retval: i32 = 0;
     match args.subcommand() {
         Some(("add", sub)) => sc_add_cmd(sub, args)?,
+        Some(("audit", sub)) => retval = audit::sc_audit(sub, args)?,
         Some(("default", sub)) => sc_default(sub, args)?,
         Some(("list", sub)) => sc_list(sub, args)?,
         Some(("proj", sub)) => sc_proj(sub, args)?,

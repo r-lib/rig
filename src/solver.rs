@@ -28,6 +28,14 @@ pub trait PackageVersionLoader: Send {
     fn os_type_hidden(&self, _package: &str) -> Option<String> {
         None
     }
+
+    /// The versions of `package` that [`Self::load_versions`] left out
+    /// because their repository blocks them, with the reason, see
+    /// [`crate::repos::policy::VersionPolicy::block_reason`]. For the
+    /// messages about them.
+    fn blocked_hidden(&self, _package: &str) -> Vec<(RPackageVersion, String)> {
+        vec![]
+    }
 }
 
 /// Which artifact of a package version gets installed.
@@ -521,6 +529,12 @@ pub struct RPackageRegistry {
     // lockfile, like `system_requirements`, so that `rig proj sync` can skip
     // the packages of a source-only lock that do not work on its OS.
     os_type: RefCell<HashMap<(RPackageName, RPackageVersion), String>>,
+    // The known vulnerabilities of every package version that has any,
+    // from its repository's extended metadata. Never read by the solver
+    // itself: a vulnerable version is not avoided, the callers warn about
+    // it after the solve.
+    vulnerabilities:
+        RefCell<HashMap<(RPackageName, RPackageVersion), Vec<crate::repos::policy::Vulnerability>>>,
     // How many newest binaries win. Can be None.
     prefer_binary: Option<usize>,
     // Passed over newer version that does not have a binary.
@@ -871,6 +885,67 @@ impl RPackageRegistry {
         ))
     }
 
+    /// The known vulnerabilities of `pkg` `version`, if it has any.
+    pub fn vulnerabilities(
+        &self,
+        pkg: &RPackageName,
+        version: &RPackageVersion,
+    ) -> Option<Vec<crate::repos::policy::Vulnerability>> {
+        self.vulnerabilities
+            .borrow()
+            .get(&(pkg.clone(), version.clone()))
+            .cloned()
+    }
+
+    /// The versions of `pkg` that the solve does not see because their
+    /// repository blocks them, with the reason.
+    pub fn blocked_versions(&self, pkg: &RPackageName) -> Vec<(RPackageVersion, String)> {
+        match self.loader.as_ref() {
+            Some(loader) => {
+                self.ensure_loaded(pkg);
+                loader.blocked_hidden(pkg)
+            }
+            None => vec![],
+        }
+    }
+
+    /// The message about the blocked versions of `pkg`, the ones in `range`
+    /// if that is given.
+    fn blocked_hint(
+        &self,
+        pkg: &RPackageName,
+        range: Option<&RPackageVersionRanges>,
+    ) -> Option<String> {
+        let blocked: Vec<(RPackageVersion, String)> = self
+            .blocked_versions(pkg)
+            .into_iter()
+            .filter(|(v, _)| {
+                range.is_none_or(|r| {
+                    r.contains(&RegistryPackageVersion {
+                        name: pkg.clone(),
+                        version: v.clone(),
+                        artifact: Artifact::Source,
+                    })
+                })
+            })
+            .collect();
+        match blocked.as_slice() {
+            [] => None,
+            [(v, reason)] => Some(format!(
+                "{} {} is blocked by the repository ({}).",
+                pkg, v, reason
+            )),
+            more => Some(format!(
+                "These versions of {} are blocked by the repository: {}.",
+                pkg,
+                more.iter()
+                    .map(|(v, reason)| format!("{} ({})", v, reason))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+        }
+    }
+
     /// Record the `OS_type` of `pkg` `version`.
     pub fn set_os_type(&self, pkg: &RPackageName, version: &RPackageVersion, os_type: String) {
         self.os_type
@@ -998,6 +1073,13 @@ impl RPackageRegistry {
                         }
                         if let Some(os_type) = &package.os_type {
                             self.set_os_type(pkg, &package.version, os_type.clone());
+                        }
+                        if let Some(policy) = package.policy.as_ref().filter(|p| p.is_vulnerable())
+                        {
+                            self.vulnerabilities.borrow_mut().insert(
+                                (pkg.clone(), package.version.clone()),
+                                policy.vulnerabilities.clone(),
+                            );
                         }
                         self.add_package_version(pkg.clone(), src, ranges.clone());
                         for bin in artifacts.binaries.iter().filter(|b| {
@@ -1316,6 +1398,9 @@ pub fn format_solver_error(err: PubGrubError<RPackageRegistry>, reg: &RPackageRe
             if let Some(hint) = reg.os_type_hint(&package) {
                 return format!("  {}", hint);
             }
+            if let Some(hint) = reg.blocked_hint(&package, None) {
+                return format!("  {}", hint);
+            }
             if let Some(repo) = reg.pinned.get(&package) {
                 return format!(
                     "  Package {} is not available in {}, the repository it is pinned to.",
@@ -1351,6 +1436,10 @@ pub fn format_solver_error(err: PubGrubError<RPackageRegistry>, reg: &RPackageRe
             hinted.insert(pkg);
             hints.push(hint);
             continue;
+        }
+        if let Some(hint) = reg.blocked_hint(pkg, Some(range)) {
+            hinted.insert(pkg);
+            hints.push(hint);
         }
         let Some((below, above)) = reg.nearest_versions(pkg, range) else {
             continue;
