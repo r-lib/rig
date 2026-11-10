@@ -578,10 +578,9 @@ fn git_host(host: &str, default_api: &str) -> String {
         .strip_suffix("/api/v3")
         .or_else(|| rest.strip_suffix("/2.0"))
         .unwrap_or(rest);
-    let rest = if rest.eq_ignore_ascii_case(default_api) {
-        rest.strip_prefix("api.").unwrap_or(rest)
-    } else {
-        rest
+    let rest = match default_api.strip_prefix("api.") {
+        Some(web) if rest.eq_ignore_ascii_case(default_api) => web,
+        _ => rest,
     };
     format!("{}://{}", scheme, rest)
 }
@@ -2332,6 +2331,26 @@ mod tests {
                 "{}",
                 host
             );
+        }
+    }
+
+    #[test]
+    fn the_default_api_host_is_case_insensitive() {
+        for (source, host, git) in [
+            ("GitHub", "API.GitHub.com", "https://github.com/o/r.git"),
+            (
+                "Bitbucket",
+                "API.BITBUCKET.ORG/2.0",
+                "https://bitbucket.org/o/r.git",
+            ),
+        ] {
+            let t = git_dep(&format!(
+                r#"{{"Package": "r", "Version": "0.1.0", "Source": "{}", "RemoteHost": "{}",
+                    "RemoteUsername": "o", "RemoteRepo": "r"}}"#,
+                source, host
+            ))
+            .unwrap();
+            assert_eq!(t.git.as_deref(), Some(git), "{}", host);
         }
     }
 
