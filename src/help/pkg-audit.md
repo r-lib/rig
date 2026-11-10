@@ -20,10 +20,10 @@ Unlike `rig audit`, it always checks a library, also in a project. To check
 a project's lock file and library, use [`rig audit`](audit.qmd).
 
 Packages installed from GitHub, git, a URL or a local directory are not in
-any repository, so they are not checked. Only a repository that serves its
-own extended metadata, e.g. a CRAN repository of Posit Package Manager,
-reports vulnerabilities and blocked versions, see
-[`rig audit`](audit.qmd#where-the-data-comes-from).
+any repository, so they are not checked. The CRAN package history at
+<https://ppm.r-pkg.org> reports known vulnerabilities. A CRAN repository of
+Posit Package Manager that serves its own extended metadata may also report
+blocked versions, see [`rig audit`](audit.qmd#where-the-data-comes-from).
 
 `rig pkg audit` does not check whether the packages work together, use
 [`rig pkg doctor`](#rig-pkg-doctor) for that.
@@ -50,7 +50,6 @@ the date to `rig pkg install`. Without it, `rig pkg audit` uses the
 `exclude-newer` [config](config.qmd) entry, if set, the same way as `rig pkg
 install`. If no version without known problems is published by the cutoff,
 the package is not upgraded.
-
 
 ## Exit status
 

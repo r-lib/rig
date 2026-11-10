@@ -28,16 +28,14 @@ any repository, so they are not checked.
 
 ## Where the data comes from
 
-Only a repository that serves its own extended metadata reports
-vulnerabilities and blocked versions, e.g. a CRAN repository of Posit
-Package Manager. rig uses that metadata, instead of
-<https://ppm.r-pkg.org>, if the repository has it. The metadata is updated
-once a day. If none of the repositories reports this information, `rig audit`
-says so, because then it cannot find any problems.
+Only a repositories that serve their own extended metadata with
+vulnerabilities and blocked versions, and repositories that rig can expand
+(see [`rig proj lock`](proj.qmd#repositories)) are supported.
+<https://ppm.r-pkg.org>, if the repository has it.
 
-Independently of `rig audit`, rig never picks a blocked version when it
-installs or locks packages, and it warns if it picks a version with known
-vulnerabilities.
+Independently of `rig audit`, rig never picks a package version blocked
+by PPM, version when it installs or locks packages, and it warns if it
+picks a version with known vulnerabilities.
 
 ## Fixing problems
 
@@ -54,7 +52,6 @@ uses the same cutoff as these commands: in a project the `exclude-newer`
 setting of `rproj.toml`, otherwise the `exclude-newer`
 [config](config.qmd) entry, if set. If no version without known problems is
 published by the cutoff, the package is not upgraded.
-
 
 ## Exit status
 

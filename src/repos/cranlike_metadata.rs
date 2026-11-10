@@ -801,7 +801,47 @@ pub struct AuditVersion {
     pub published: Option<String>,
 }
 
+/// A package version with a policy, see
+/// [`DbSourcePackageLoader::policy_versions`].
+pub struct PolicyVersion {
+    pub package: String,
+    pub version: String,
+    pub policy: VersionPolicy,
+}
+
 impl DbSourcePackageLoader {
+    /// Every package version with a policy, i.e. known vulnerabilities or
+    /// a block, in the repositories of this loader. For the summary of
+    /// `rig audit`.
+    pub fn policy_versions(&self) -> Result<Vec<PolicyVersion>, Box<dyn Error>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT name, version, repo_id, policy FROM packages WHERE policy IS NOT NULL",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+        let mut out = vec![];
+        for row in rows {
+            let (name, version, repo_id, policy) = row?;
+            if self.repo_of(repo_id).is_none() {
+                continue;
+            }
+            if let Ok(policy) = serde_json::from_str::<VersionPolicy>(&policy) {
+                out.push(PolicyVersion {
+                    package: name,
+                    version,
+                    policy,
+                });
+            }
+        }
+        Ok(out)
+    }
+
     /// Every version of `package` in the repositories of this loader, from
     /// every repository, with the blocked ones, and without any of the
     /// filters of [`PackageVersionLoader::load_versions`]. For `rig audit`.
@@ -840,15 +880,6 @@ impl DbSourcePackageLoader {
         out.sort_by(|a, b| a.version.cmp(&b.version));
         Ok(out)
     }
-}
-
-/// Whether any of `repos` reports the policy of its repository, i.e.
-/// blocked versions and known vulnerabilities. Only a repository's own
-/// extended metadata can, the default P3M feeds do not.
-pub fn repos_report_policy(repos: &[PkgRepo]) -> bool {
-    PkgRepo::feeds(repos)
-        .iter()
-        .any(|feed| !is_append_only(&feed.allpackages_url))
 }
 
 /// Whether `package` is archived in the extended feed `feed`, from the

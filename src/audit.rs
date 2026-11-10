@@ -35,7 +35,7 @@ use crate::pkg::list::{read_installed, resolve_library};
 use crate::proj::{
     proj_lock_root, proj_read_solve_roots, read_existing_lock, resolve_lock_options, BASE_PKGS,
 };
-use crate::repos::cranlike_metadata::{archived_package_in, repos_report_policy, AuditVersion};
+use crate::repos::cranlike_metadata::{archived_package_in, AuditVersion, PolicyVersion};
 use crate::repos::feed::{BiocSetting, PkgRepo, RepoId};
 use crate::repos::{interpret_pkg_repos_args, DbSourcePackageLoader};
 use crate::rproj::RPROJ_MANIFEST_FILE;
@@ -83,12 +83,66 @@ struct Report {
     findings: Vec<Finding>,
     /// The packages that are not in any repository, e.g. GitHub packages.
     not_checked: Vec<String>,
-    /// Whether any of the repositories reports vulnerabilities and blocked
-    /// versions at all.
-    has_policy_data: bool,
+    /// What the repositories know about, in total.
+    known: Known,
     /// The `--exclude-newer` cutoff day of the fixes, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     exclude_newer: Option<String>,
+}
+
+/// The known problems in the repositories, for all packages, not only the
+/// checked ones.
+#[derive(Debug, Default, Serialize, PartialEq)]
+struct Known {
+    /// The number of different vulnerabilities, by id.
+    vulnerabilities: usize,
+    /// The number of package versions with known vulnerabilities.
+    vulnerable_versions: usize,
+    /// The number of blocked package versions.
+    blocked_versions: usize,
+}
+
+impl Known {
+    /// Count the problems of `versions`. A version may be in several
+    /// repositories, it is counted once.
+    fn count(versions: &[PolicyVersion]) -> Known {
+        let mut ids: BTreeSet<&str> = BTreeSet::new();
+        let mut vulnerable: BTreeSet<(&str, &str)> = BTreeSet::new();
+        let mut blocked: BTreeSet<(&str, &str)> = BTreeSet::new();
+        for v in versions {
+            let key = (v.package.as_str(), v.version.as_str());
+            for vuln in &v.policy.vulnerabilities {
+                ids.insert(&vuln.id);
+            }
+            if v.policy.is_vulnerable() {
+                vulnerable.insert(key);
+            }
+            if v.policy.is_blocked() {
+                blocked.insert(key);
+            }
+        }
+        Known {
+            vulnerabilities: ids.len(),
+            vulnerable_versions: vulnerable.len(),
+            blocked_versions: blocked.len(),
+        }
+    }
+}
+
+/// E.g. `The repositories know about 57 vulnerabilities in 115 package
+/// versions, and 0 blocked package versions.`
+fn known_summary(k: &Known) -> String {
+    let n = |n: usize, one: &str, many: &str| format!("{} {}", n, if n == 1 { one } else { many });
+    format!(
+        "The repositories know about {} in {}, and {}.",
+        n(k.vulnerabilities, "vulnerability", "vulnerabilities"),
+        n(k.vulnerable_versions, "package version", "package versions"),
+        n(
+            k.blocked_versions,
+            "blocked package version",
+            "blocked package versions"
+        ),
+    )
 }
 
 /// What to check: the subjects, and the repositories of each.
@@ -150,6 +204,7 @@ fn audit_main(
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
+        OUTPUT.info(&known_summary(&report.known));
         let fix_cmd = if library_only {
             "rig pkg audit --fix"
         } else {
@@ -398,7 +453,11 @@ fn run_audit(scope: &Scope) -> Result<Report, Box<dyn Error>> {
         .iter()
         .map(|r| DbSourcePackageLoader::new_for_repos(r))
         .collect::<Result<_, _>>()?;
-    let has_policy_data = scope.repos.iter().any(|r| repos_report_policy(r));
+    let mut policy_versions = vec![];
+    for loader in &loaders {
+        policy_versions.extend(loader.policy_versions()?);
+    }
+    let known = Known::count(&policy_versions);
 
     // One finding per package version and issue, with all its places.
     let mut findings: BTreeMap<(String, String, &'static str), Finding> = BTreeMap::new();
@@ -440,7 +499,7 @@ fn run_audit(scope: &Scope) -> Result<Report, Box<dyn Error>> {
     Ok(Report {
         findings: findings.into_values().collect(),
         not_checked: not_checked.into_iter().collect(),
-        has_policy_data,
+        known,
         exclude_newer: scope.cutoff.clone(),
     })
 }
@@ -562,13 +621,6 @@ fn nearest_good_version(
 /// `fix_cmd` adds a line with the number of problems found, and the hint
 /// to run it, e.g. `rig audit --fix`.
 fn print_report(report: &Report, fix_cmd: Option<&str>) {
-    if !report.has_policy_data {
-        OUTPUT.warn(
-            "None of the repositories reports vulnerabilities or blocked versions, \
-             the results are incomplete. A Posit Package Manager repository with \
-             its own metadata does.",
-        );
-    }
     if !report.findings.is_empty() {
         let mut tab = Table::new("{:<}  {:<}  {:<}  {:<}  {:<}  {:<}");
         tab.add_row(
@@ -861,6 +913,45 @@ mod tests {
         assert!(found.is_empty());
 
         assert!(check_version("jsonlite", &v("0.1"), None, &rows, None, None).is_none());
+    }
+
+    #[test]
+    fn known_problems_are_counted_once() {
+        let p = |package: &str, version: &str, policy: Option<VersionPolicy>| PolicyVersion {
+            package: package.to_string(),
+            version: version.to_string(),
+            policy: policy.unwrap(),
+        };
+        let mut both = vulnerable("RSEC-2023-3").unwrap();
+        both.vulnerabilities.push(Vulnerability {
+            id: "RSEC-2023-4".to_string(),
+            score: None,
+        });
+        let versions = vec![
+            p("jsonlite", "1.7.1", vulnerable("RSEC-2023-3")),
+            // The same version in another repository.
+            p("jsonlite", "1.7.1", vulnerable("RSEC-2023-3")),
+            p("jsonlite", "1.7.2", Some(both)),
+            p("png", "0.1-3", vulnerable("RSEC-2026-1")),
+            p("otel", "0.3.0", blocked()),
+        ];
+        assert_eq!(
+            Known::count(&versions),
+            Known {
+                vulnerabilities: 3,
+                vulnerable_versions: 3,
+                blocked_versions: 1,
+            }
+        );
+        assert_eq!(
+            known_summary(&Known {
+                vulnerabilities: 1,
+                vulnerable_versions: 2,
+                blocked_versions: 0,
+            }),
+            "The repositories know about 1 vulnerability in 2 package versions, \
+             and 0 blocked package versions."
+        );
     }
 
     #[test]

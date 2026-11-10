@@ -86,7 +86,8 @@ type = "cran"
   mirror (`bioc`) have the same packages as the built-in CRAN and
   Bioconductor repositories. rig reads the full package history of these
   from <https://ppm.r-pkg.org> and <https://ppm-bioc.r-pkg.org>, so older
-  versions are available, too. A source package of CRAN is downloaded from
+  versions are available, too. The CRAN history also has the known
+  vulnerabilities of each version. A source package of CRAN is downloaded from
   the mirror first, and from Posit Package Manager if the mirror does not
   have it. A binary package is always downloaded from Posit Package Manager.
   `extend = false` turns this off, and rig only reads the `PACKAGES` files of
