@@ -314,7 +314,7 @@ struct REnvLockfileBioconductor {
     Version: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 #[allow(non_snake_case)]
 struct REnvLockfilePackage {
     Package: String,
@@ -340,6 +340,9 @@ struct REnvLockfilePackage {
     RemoteRepos: Option<String>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
+    RemoteType: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     RemoteHost: Option<String>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -362,6 +365,63 @@ struct REnvLockfilePackage {
 }
 
 impl REnvLockfilePackage {
+    /// The package as installed from the GitHub, git, URL or local source
+    /// that the solver fetched it from, in renv's `Source` and `Remote*`
+    /// fields.
+    fn with_remote(self, git: &GitSourceInfo) -> REnvLockfilePackage {
+        let opt = |s: &Option<String>| s.clone().filter(|s| !s.is_empty());
+        let sha = Some(git.sha.clone()).filter(|s| !s.is_empty());
+        let subdir = opt(&git.subdir);
+        match git.remote_type {
+            "github" => {
+                let host = git.host.as_deref().unwrap_or("github.com");
+                let api = if host.eq_ignore_ascii_case("github.com") {
+                    "api.github.com".to_string()
+                } else {
+                    format!("{}/api/v3", host)
+                };
+                // `repo` is `owner/repo`, renv has the two parts separately.
+                let repo = git
+                    .repo
+                    .as_deref()
+                    .map(|r| r.rsplit('/').next().unwrap_or(r).to_string());
+                REnvLockfilePackage {
+                    Source: "GitHub".to_string(),
+                    RemoteType: Some("github".to_string()),
+                    RemoteHost: Some(api),
+                    RemoteUsername: opt(&git.username),
+                    RemoteRepo: repo,
+                    RemoteRef: Some(opt(&git.ref_).unwrap_or_else(|| "HEAD".to_string())),
+                    RemoteSha: sha,
+                    RemoteSubdir: subdir,
+                    ..self
+                }
+            }
+            "url" => REnvLockfilePackage {
+                Source: "URL".to_string(),
+                RemoteType: Some("url".to_string()),
+                RemoteUrl: Some(git.url.clone()),
+                RemoteSubdir: subdir,
+                ..self
+            },
+            "local" => REnvLockfilePackage {
+                Source: "Local".to_string(),
+                RemoteType: Some("local".to_string()),
+                RemoteUrl: Some(git.url.clone()),
+                ..self
+            },
+            _ => REnvLockfilePackage {
+                Source: "git".to_string(),
+                RemoteType: Some("git".to_string()),
+                RemoteUrl: Some(git.url.clone()),
+                RemoteRef: opt(&git.ref_),
+                RemoteSha: sha,
+                RemoteSubdir: subdir,
+                ..self
+            },
+        }
+    }
+
     /// The `git` remote a GitHub, GitLab, Bitbucket or git package was
     /// installed from, if any.
     fn git_dep_table(&self) -> Option<DepTable> {
@@ -451,26 +511,21 @@ impl REnvLockfile {
                 continue;
             }
             let deps = registry.get_dependency_summary(k, v).unwrap();
-            pkgs.insert(
-                k.to_string(),
-                REnvLockfilePackage {
-                    Package: k.to_string(),
-                    Version: v.version.to_string(),
+            let pkg = REnvLockfilePackage {
+                Package: k.to_string(),
+                Version: v.version.to_string(),
+                Depends: Some(deps),
+                ..Default::default()
+            };
+            let pkg = match registry.git_source(k, v) {
+                Some(git) => pkg.with_remote(&git),
+                None => REnvLockfilePackage {
                     Source: "Repository".to_string(),
                     Repository: Some("CRAN".to_string()),
-                    Depends: Some(deps),
-                    Imports: None,
-                    LinkingTo: None,
-                    RemoteRepos: None,
-                    RemoteHost: None,
-                    RemoteUsername: None,
-                    RemoteRepo: None,
-                    RemoteUrl: None,
-                    RemoteRef: None,
-                    RemoteSha: None,
-                    RemoteSubdir: None,
+                    ..pkg
                 },
-            );
+            };
+            pkgs.insert(k.to_string(), pkg);
         }
         REnvLockfile {
             Bioconductor: None,
@@ -2180,6 +2235,95 @@ mod tests {
         .unwrap();
         assert_eq!(t.git.as_deref(), Some("https://git.example.com/team/p.git"));
         assert_eq!(t.rev.as_deref(), Some("abc123"));
+    }
+
+    fn exported(info: GitSourceInfo) -> REnvLockfilePackage {
+        let pkg = REnvLockfilePackage {
+            Package: "p".to_string(),
+            Version: "1.0.0".to_string(),
+            ..Default::default()
+        }
+        .with_remote(&info);
+        // What `renv.lock` has, read back.
+        serde_json::from_str(&serde_json::to_string(&pkg).unwrap()).unwrap()
+    }
+
+    fn git_info(remote_type: &'static str, url: &str) -> GitSourceInfo {
+        GitSourceInfo {
+            remote_type,
+            url: url.to_string(),
+            host: None,
+            repo: None,
+            username: None,
+            subdir: None,
+            ref_: None,
+            sha: "abc123".to_string(),
+            binary: false,
+        }
+    }
+
+    #[test]
+    fn github_packages_are_exported_from_github() {
+        let pkg = exported(GitSourceInfo {
+            host: Some("github.com".to_string()),
+            repo: Some("o/p".to_string()),
+            username: Some("o".to_string()),
+            subdir: Some("pkg".to_string()),
+            ref_: Some("main".to_string()),
+            ..git_info("github", "https://github.com/o/p.git")
+        });
+        assert_eq!(pkg.Source, "GitHub");
+        assert_eq!(pkg.Repository, None);
+        assert_eq!(pkg.RemoteType.as_deref(), Some("github"));
+        assert_eq!(pkg.RemoteHost.as_deref(), Some("api.github.com"));
+        assert_eq!(pkg.RemoteUsername.as_deref(), Some("o"));
+        assert_eq!(pkg.RemoteRepo.as_deref(), Some("p"));
+        assert_eq!(pkg.RemoteRef.as_deref(), Some("main"));
+        assert_eq!(pkg.RemoteSha.as_deref(), Some("abc123"));
+        // And it is imported back as the same git dependency.
+        let t = pkg.git_dep_table().unwrap();
+        assert_eq!(t.git.as_deref(), Some("https://github.com/o/p.git"));
+        assert_eq!(t.rev.as_deref(), Some("abc123"));
+        assert_eq!(t.subdir.as_deref(), Some("pkg"));
+    }
+
+    #[test]
+    fn a_github_package_without_a_ref_is_from_the_default_branch() {
+        let pkg = exported(GitSourceInfo {
+            host: Some("github.com".to_string()),
+            repo: Some("o/p".to_string()),
+            username: Some("o".to_string()),
+            ..git_info("github", "https://github.com/o/p.git")
+        });
+        assert_eq!(pkg.RemoteRef.as_deref(), Some("HEAD"));
+    }
+
+    #[test]
+    fn git_url_and_local_packages_are_exported_from_their_source() {
+        let pkg = exported(git_info("git", "https://git.example.com/p.git"));
+        assert_eq!(pkg.Source, "git");
+        assert_eq!(
+            pkg.RemoteUrl.as_deref(),
+            Some("https://git.example.com/p.git")
+        );
+        let t = pkg.git_dep_table().unwrap();
+        assert_eq!(t.git.as_deref(), Some("https://git.example.com/p.git"));
+        assert_eq!(t.rev.as_deref(), Some("abc123"));
+
+        let pkg = exported(git_info("url", "https://example.com/p_1.0.0.tar.gz"));
+        assert_eq!(pkg.Source, "URL");
+        assert_eq!(
+            pkg.RemoteUrl.as_deref(),
+            Some("https://example.com/p_1.0.0.tar.gz")
+        );
+        assert_eq!(pkg.RemoteSha, None);
+
+        let pkg = exported(GitSourceInfo {
+            sha: String::new(),
+            ..git_info("local", "/tmp/p")
+        });
+        assert_eq!(pkg.Source, "Local");
+        assert_eq!(pkg.RemoteUrl.as_deref(), Some("/tmp/p"));
     }
 
     // The records below are from renv's own test suite.
