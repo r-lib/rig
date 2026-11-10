@@ -711,26 +711,42 @@ fn needs_install(
         };
     }
 
-    let want = solved.metadata.get(REMOTE_HASH_FIELD);
-    match (&installed.hash, want) {
-        // The solved package has no hash, e.g. it is from a CRAN-like
-        // repository without checksums: the version is all we have to go on,
-        // and it matches.
-        (_, None) => {}
-        (None, Some(_)) => return Some("no recorded hash".to_string()),
-        (Some(have), Some(want)) if have != want => {
-            return Some("built from a different tarball".to_string())
+    // A package of an r-universe repository also has the commit it was built
+    // from. The same commit is the same package, even if r-universe rebuilt
+    // it since, or it was built from git, so the file it came from does not
+    // matter. An installed package without a commit is checked by its file.
+    let same_commit = match (solved.metadata.get(REMOTE_SHA_FIELD), &installed.remote_sha) {
+        (Some(want), Some(have)) if want != have => {
+            return Some("a different commit is installed".to_string())
         }
-        (Some(_), Some(_)) => {}
-    }
+        (Some(_), Some(_)) => true,
+        _ => false,
+    };
 
-    // A CRAN-like repository can rebuild a package without changing its
-    // version, e.g. CRAN's Windows binaries, which have no checksums but a
-    // `Built` field. A source package built here is newer than the
-    // repository's build, so it is not affected.
-    if let (Some(want), Some(have)) = (solved.metadata.get(REPO_BUILT_FIELD), &installed.built_at) {
-        if built_key(want) > built_key(have) {
-            return Some("a newer build is available".to_string());
+    if !same_commit {
+        let want = solved.metadata.get(REMOTE_HASH_FIELD);
+        match (&installed.hash, want) {
+            // The solved package has no hash, e.g. it is from a CRAN-like
+            // repository without checksums: the version is all we have to go
+            // on, and it matches.
+            (_, None) => {}
+            (None, Some(_)) => return Some("no recorded hash".to_string()),
+            (Some(have), Some(want)) if have != want => {
+                return Some("built from a different tarball".to_string())
+            }
+            (Some(_), Some(_)) => {}
+        }
+
+        // A CRAN-like repository can rebuild a package without changing its
+        // version, e.g. CRAN's Windows binaries, which have no checksums but
+        // a `Built` field. A source package built here is newer than the
+        // repository's build, so it is not affected.
+        if let (Some(want), Some(have)) =
+            (solved.metadata.get(REPO_BUILT_FIELD), &installed.built_at)
+        {
+            if built_key(want) > built_key(have) {
+                return Some("a newer build is available".to_string());
+            }
         }
     }
 
@@ -997,6 +1013,55 @@ mod tests {
         let out = plan(&[pkg], &[installed], false);
         assert!(out["mypkg"].0);
         assert_eq!(out["mypkg"].1, "a different file is installed");
+    }
+
+    /// An r-universe package: a hash and the commit it was built from.
+    fn r_universe(hash: &str, sha: &str) -> RprojLockPackage {
+        let mut pkg = solved("cli", "3.6.6.9000", Some(hash));
+        pkg.metadata
+            .insert(REMOTE_SHA_FIELD.to_string(), sha.to_string());
+        pkg.repository = Some("rlib".to_string());
+        pkg
+    }
+
+    fn inst_sha(hash: Option<&str>, sha: Option<&str>) -> InstalledPackage {
+        InstalledPackage::for_test_remote("cli", "3.6.6.9000", hash, vec![], sha)
+    }
+
+    #[test]
+    fn an_r_universe_package_of_the_same_commit_is_left_alone() {
+        // Rebuilt by r-universe since, or installed from git.
+        let out = plan(
+            &[r_universe("new-file", "abc")],
+            &[inst_sha(Some("old-file"), Some("abc"))],
+            false,
+        );
+        assert!(!out["cli"].0, "{}", out["cli"].1);
+        // Installed by R itself, without rig's `RemoteHash`.
+        let out = plan(
+            &[r_universe("aa", "abc")],
+            &[inst_sha(None, Some("abc"))],
+            false,
+        );
+        assert!(!out["cli"].0, "{}", out["cli"].1);
+    }
+
+    #[test]
+    fn an_r_universe_package_of_another_commit_is_reinstalled() {
+        let out = plan(
+            &[r_universe("aa", "abc")],
+            &[inst_sha(Some("aa"), Some("def"))],
+            false,
+        );
+        assert!(out["cli"].0);
+        assert_eq!(out["cli"].1, "a different commit is installed");
+        // Without a commit, the file decides.
+        let out = plan(
+            &[r_universe("aa", "abc")],
+            &[inst_sha(Some("bb"), None)],
+            false,
+        );
+        assert_eq!(out["cli"].1, "built from a different tarball");
     }
 
     #[test]

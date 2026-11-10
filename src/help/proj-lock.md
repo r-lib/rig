@@ -62,7 +62,7 @@ installations, or the ones you set up with `rig repos`: a project only uses
 the repositories in its `rproj.toml`, so it locks the same way on every
 machine.
 
-Add a CRAN-like repository with a `[[repository]]` entry:
+Add a repository with a `[[repository]]` entry:
 
 ```toml
 [[repository]]
@@ -70,8 +70,45 @@ name = "rlib"
 url = "https://r-lib.r-universe.dev"
 ```
 
-rig only sees the package versions in the `PACKAGES` files of a CRAN-like
-repository, usually the current version of each package.
+How rig reads a repository depends on its type. rig finds out the type from
+the server the first time it locks, and records it in `rproj.lock`, so it does
+not ask again while the URL stays the same. `type` sets the type instead:
+
+```toml
+[[repository]]
+name = "internal"
+url = "https://cran.example.com"
+type = "cran"
+```
+
+* A CRAN mirror (`cran`), the CRAN and Bioconductor repositories of Posit
+  Package Manager (`ppm-cran`, `ppm-bioc`), and the root of a Bioconductor
+  mirror (`bioc`) have the same packages as the built-in CRAN and
+  Bioconductor repositories. rig reads the full package history of these
+  from <https://ppm.r-pkg.org> and <https://ppm-bioc.r-pkg.org>, so older
+  versions are available, too. A source package of CRAN is downloaded from
+  the mirror first, and from Posit Package Manager if the mirror does not
+  have it. A binary package is always downloaded from Posit Package Manager.
+  `extend = false` turns this off, and rig only reads the `PACKAGES` files of
+  the repository.
+* An r-universe (`r-universe`). rig reads its `PACKAGES` files, and records
+  the git commit of each package in `rproj.lock`, from the r-universe API.
+  r-universe replaces the files of a package when its git repository
+  changes. If the locked file is gone, [`rig proj sync`](#rig-proj-sync) builds the package
+  from git, at the locked commit.
+* The root of a Posit Package Manager server (`ppm`) is all of its R
+  repositories, each according to its own type.
+* Anything else: a Posit Package Manager snapshot (`ppm-snapshot`), another
+  Posit Package Manager repository (`ppm-other`), a single Bioconductor
+  repository, e.g. `https://bioconductor.org/packages/3.22/bioc` (`bioc`),
+  or another CRAN-like repository (`cran-like`). rig only sees the package
+  versions in the `PACKAGES` files, usually the current version of each
+  package.
+
+`extend = false` works for the built-in `cran` and `bioc` entries, too. CRAN
+is then the `PACKAGES` files of <https://cloud.r-project.org>, and
+Bioconductor the repositories of the Bioconductor mirror: `BioCsoft`,
+`BioCann`, `BioCexp`, `BioCworkflows` and `BioCbooks`.
 
 The order of the entries is the order of precedence: if two repositories
 have the same version of a package, the first one wins. The built-in
@@ -125,8 +162,10 @@ rig proj lock --without-repos=cran,bioc --with-repos https://cran.example.com
 
 `rproj.lock` records the repositories that are on in its `[tool.rig]` table, in
 order of precedence, with the URL of the extended metadata for CRAN and
-Bioconductor, and `repository = "<name>"` for each package of a CRAN-like
-repository. A lock solved with other repositories is solved again, and so
+Bioconductor, the type of the others, and `repository = "<name>"` for each
+package of a repository that is read from its `PACKAGES` files. A package
+from the full history of CRAN has no `repository`, also if it came from a
+CRAN mirror of the project. A lock solved with other repositories is solved again, and so
 is a lock with a package from another repository than its pin says. Both
 keep the pinned versions where they fit, see "Sticky lock files" below.
 

@@ -56,12 +56,22 @@ impl fmt::Display for RepoId {
     }
 }
 
+/// How rig talks to a CRAN-like repository. Both read the `PACKAGES` files;
+/// r-universe also has an API with the git commit of each package.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CranlikeProtocol {
+    #[default]
+    Cran,
+    RUniverse,
+}
+
 /// A plain CRAN-like repository.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CranlikeRepo {
     pub name: String,
     /// Without a trailing `/`.
     pub url: String,
+    pub protocol: CranlikeProtocol,
 }
 
 impl CranlikeRepo {
@@ -72,6 +82,15 @@ impl CranlikeRepo {
         CranlikeRepo {
             name: name.to_string(),
             url: url.trim_end_matches('/').to_string(),
+            protocol: CranlikeProtocol::Cran,
+        }
+    }
+
+    /// An r-universe repository.
+    pub fn r_universe(name: &str, url: &str) -> CranlikeRepo {
+        CranlikeRepo {
+            protocol: CranlikeProtocol::RUniverse,
+            ..CranlikeRepo::new(name, url)
         }
     }
 
@@ -133,10 +152,12 @@ impl PkgRepo {
 /// packages pinned to it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RepoFilter {
-    /// Package name to the only repository it may come from. `None` if that
-    /// repository is not part of the solve, e.g. Bioconductor for an R
-    /// version without a Bioconductor release: then there are no versions.
-    pub pins: HashMap<String, Option<RepoId>>,
+    /// Package name to the only repositories it may come from: the ones of
+    /// the repository it is pinned to, e.g. several for the root of a
+    /// Bioconductor mirror. Empty if that repository is not part of the
+    /// solve, e.g. Bioconductor for an R version without a Bioconductor
+    /// release: then there are no versions.
+    pub pins: HashMap<String, Vec<RepoId>>,
     /// The repositories that only serve the packages pinned to them.
     pub explicit: HashSet<RepoId>,
 }
@@ -145,21 +166,39 @@ impl RepoFilter {
     /// Whether `package` may come from `repo`.
     pub fn allows(&self, package: &str, repo: &RepoId) -> bool {
         match self.pins.get(package) {
-            Some(pin) => pin.as_ref() == Some(repo),
+            Some(pin) => pin.contains(repo),
             None => !self.explicit.contains(repo),
         }
     }
 }
 
 /// Where a feed's metadata lives.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct MetadataFeed {
     pub repo: RepoId,
     pub allpackages_url: String,
     pub archived_url: String,
     /// Base URL of the per-package binary indices, without a trailing `/`.
     pub binaries_url: String,
+    /// A CRAN-like repository with the same packages, e.g. a CRAN mirror,
+    /// without a trailing `/`. Source packages are downloaded from here
+    /// first, see [`MetadataFeed::with_mirror`].
+    pub mirror: Option<String>,
 }
+
+/// The mirror is not part of a feed's identity: two feeds with the same
+/// metadata are the same repository, wherever their files are downloaded
+/// from.
+impl PartialEq for MetadataFeed {
+    fn eq(&self, other: &MetadataFeed) -> bool {
+        self.repo == other.repo
+            && self.allpackages_url == other.allpackages_url
+            && self.archived_url == other.archived_url
+            && self.binaries_url == other.binaries_url
+    }
+}
+
+impl Eq for MetadataFeed {}
 
 impl MetadataFeed {
     /// CRAN's feed, overridable with `RIG_ALLPACKAGES_URL`,
@@ -180,6 +219,15 @@ impl MetadataFeed {
             binaries_url: env("RIG_BINARIES_URL", "https://ppm.r-pkg.org/binaries")
                 .trim_end_matches('/')
                 .to_string(),
+            mirror: None,
+        }
+    }
+
+    /// This feed, with source packages downloaded from `mirror` first.
+    pub fn with_mirror(self, mirror: &str) -> MetadataFeed {
+        MetadataFeed {
+            mirror: Some(mirror.trim_end_matches('/').to_string()),
+            ..self
         }
     }
 
@@ -224,6 +272,7 @@ impl MetadataFeed {
             allpackages_url: format!("{}/ALLPACKAGES.zst", base),
             archived_url: format!("{}/ARCHIVEDPACKAGES.zst", base),
             binaries_url: format!("{}/binaries", base),
+            mirror: None,
         }
     }
 

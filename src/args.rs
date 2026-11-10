@@ -24,6 +24,20 @@ std::include!("help-generated.in");
 
 // Accepted values of `--pak-version`. "rc" is deprecated: it is the same as
 // "stable" now, so we still accept it, but do not advertise it in the help.
+/// The repository types, see `RepoType` in `src/repos/detect.rs`.
+pub const REPO_TYPES: [&str; 10] = [
+    "cran",
+    "ppm-cran",
+    "ppm-bioc",
+    "ppm-other",
+    "ppm-snapshot",
+    "ppm",
+    "bioc",
+    "extended",
+    "r-universe",
+    "cran-like",
+];
+
 fn pak_version_values() -> clap::builder::PossibleValuesParser {
     clap::builder::PossibleValuesParser::new([
         clap::builder::PossibleValue::new("stable"),
@@ -3265,6 +3279,21 @@ pub fn rig_app() -> Command {
                         .help("Longer description of the repository")
                         .long("description")
                         .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("type")
+                        .help("Type of the repository, detected if not given")
+                        .long("type")
+                        .num_args(1)
+                        .value_parser(REPO_TYPES)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-extend")
+                        .help("Do not use extended metadata for the repository")
+                        .long("no-extend")
+                        .num_args(0)
                         .required(false),
                 )
                 .arg(

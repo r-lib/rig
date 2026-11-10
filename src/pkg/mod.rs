@@ -4,6 +4,7 @@
 //! (`crate::repos::cranlike_metadata`) and, for full DESCRIPTION files of
 //! arbitrary versions, from P3M's sync manifests ([`manifest`]).
 
+use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::io::IsTerminal;
@@ -23,9 +24,12 @@ use crate::dcf::{Package, RDepType, RPackageVersion};
 use crate::output::OUTPUT;
 use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::{self, ArchivedPackage};
+use crate::repos::detect::{DetectedRepo, RepoType};
 use crate::repos::feed::{BiocSetting, CranlikeRepo, MetadataFeed, PkgRepo, RepoId};
+use crate::repos::get_repos_config;
 use crate::repos::interpret_repos_args::ReposSetupArgs;
-use crate::repos::repo_metadata_urls;
+use crate::repos::protocol::repos_for;
+use crate::repos::repo_types::resolve_repo;
 use crate::repos::{
     configured_repos, interpret_pkg_repos_args, repos_with_setup, resolve_bioc_vars, PkgReposArgs,
 };
@@ -142,10 +146,10 @@ pub(crate) fn pkg_repos(
             }
         },
     };
-    // Repositories given by URL are plain CRAN-like ones, even if their name
-    // is the name of a repository with extended metadata.
+    // Repositories given by URL have a detected type, even if their name is
+    // the name of a configured repository.
     let url_repos = over.map_or(vec![], |o| {
-        repos_from_entries(&o.urls, &Default::default(), true, None)
+        repos_from_entries(&o.urls, &Default::default(), true, None, &resolve_repo)
     });
     let entries: Vec<(String, String)> = match configured {
         Some(configured) => configured.into_iter().map(|r| (r.name, r.url)).collect(),
@@ -174,7 +178,7 @@ pub(crate) fn pkg_repos(
         }
     };
 
-    let metadata = repo_metadata_urls().unwrap_or_else(|e| {
+    let settings = repo_settings().unwrap_or_else(|e| {
         log::debug!("Cannot read the repository configuration: {}", e);
         Default::default()
     });
@@ -185,7 +189,13 @@ pub(crate) fn pkg_repos(
         None
     };
     let mut repos = url_repos;
-    for repo in repos_from_entries(&entries, &metadata, bioc.enabled, bioc_version.as_deref()) {
+    for repo in repos_from_entries(
+        &entries,
+        &settings,
+        bioc.enabled,
+        bioc_version.as_deref(),
+        &resolve_repo,
+    ) {
         if !repos.iter().any(|r| same_repo(r, &repo)) {
             repos.push(repo);
         }
@@ -204,42 +214,80 @@ fn is_bioc_entry(name: &str, url: &str) -> bool {
     name.to_lowercase().starts_with("bioc") || url.contains("bioconductor.org/packages")
 }
 
+/// What the rig configuration says about a repository, by its name in the
+/// `repositories` file, see [`repo_settings`].
+#[derive(Debug, Clone, Default)]
+pub(crate) struct RepoSettings {
+    /// The base URL of the extended metadata, see
+    /// [`crate::repos::config::RepoEntry::metadata`].
+    metadata: Option<String>,
+    pub(crate) repo_type: Option<RepoType>,
+    extend: Option<bool>,
+}
+
+/// The settings of the built-in and custom repositories, by lowercase name.
+pub(crate) fn repo_settings() -> Result<HashMap<String, RepoSettings>, Box<dyn Error>> {
+    let mut settings: HashMap<String, RepoSettings> = HashMap::new();
+    for entry in get_repos_config()?.iter().flat_map(|r| r.repos.iter()) {
+        settings
+            .entry(entry.name.to_lowercase())
+            .or_insert_with(|| RepoSettings {
+                metadata: entry.metadata.clone(),
+                repo_type: entry.repo_type,
+                extend: entry.extend,
+            });
+    }
+    Ok(settings)
+}
+
 /// The repositories of the `(name, url)` entries of a `repositories` file,
 /// in the same order.
 ///
-/// An entry whose name has extended metadata in `metadata` (by lowercase
-/// name, e.g. P3M and BioCsoft) is that feed. Every other entry is a plain
-/// CRAN-like repository, including CRAN itself; R's `@CRAN@` placeholder is
-/// the CRAN cloud mirror. Bioconductor entries are dropped if `bioc_enabled`
-/// is false. A Bioconductor feed needs `bioc_version`, without it the entry
-/// is a CRAN-like repository, too. Repeated feeds and URLs are dropped.
+/// An entry with extended metadata in `settings` (by lowercase name, e.g.
+/// P3M and BioCsoft) is that feed. Every other entry is used according to its
+/// type, see [`repos_for`]: the type in `settings`, or the one `resolve`
+/// detects. R's `@CRAN@` placeholder is the CRAN cloud mirror. Bioconductor
+/// entries are dropped if `bioc_enabled` is false. A Bioconductor feed needs
+/// `bioc_version`, without it the entry is a CRAN-like repository. Repeated
+/// feeds and URLs are dropped.
 fn repos_from_entries(
     entries: &[(String, String)],
-    metadata: &std::collections::HashMap<String, String>,
+    settings: &HashMap<String, RepoSettings>,
     bioc_enabled: bool,
     bioc_version: Option<&str>,
+    resolve: &dyn Fn(&str, Option<RepoType>) -> DetectedRepo,
 ) -> Vec<PkgRepo> {
     let mut out: Vec<PkgRepo> = vec![];
     for (name, url) in entries {
         if !bioc_enabled && is_bioc_entry(name, url) {
             continue;
         }
-        let feed = metadata
+        let setting = settings
             .get(&name.to_lowercase())
+            .cloned()
+            .unwrap_or_default();
+        let extend = setting.extend.unwrap_or(true);
+        let feed = setting
+            .metadata
+            .as_deref()
+            .filter(|_| extend)
             .and_then(|m| MetadataFeed::from_metadata_url(m, bioc_version));
-        let repo = match feed {
-            Some(feed) => PkgRepo::Extended(feed),
+        let repos = match feed {
+            Some(feed) => vec![PkgRepo::Extended(feed)],
             None => {
                 let url = if url == "@CRAN@" {
                     "https://cloud.r-project.org"
                 } else {
                     url.as_str()
                 };
-                PkgRepo::Cranlike(CranlikeRepo::new(name, url))
+                let detected = resolve(url, setting.repo_type);
+                repos_for(name, &detected, extend, bioc_version)
             }
         };
-        if !out.iter().any(|r| same_repo(r, &repo)) {
-            out.push(repo);
+        for repo in repos {
+            if !out.iter().any(|r| same_repo(r, &repo)) {
+                out.push(repo);
+            }
         }
     }
     out
@@ -931,14 +979,31 @@ mod tests {
             .collect()
     }
 
-    fn metadata() -> std::collections::HashMap<String, String> {
-        [
-            ("p3m", "https://ppm.r-pkg.org"),
-            ("biocsoft", "https://ppm-bioc.r-pkg.org/%v"),
-        ]
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect()
+    /// Like the built-in repositories.
+    fn settings() -> HashMap<String, RepoSettings> {
+        let setting = |metadata: Option<&str>, rtype: RepoType| RepoSettings {
+            metadata: metadata.map(|m| m.to_string()),
+            repo_type: Some(rtype),
+            extend: None,
+        };
+        HashMap::from([
+            (
+                "p3m".to_string(),
+                setting(Some("https://ppm.r-pkg.org"), RepoType::PpmCran),
+            ),
+            (
+                "biocsoft".to_string(),
+                setting(Some("https://ppm-bioc.r-pkg.org/%v"), RepoType::Bioc),
+            ),
+            ("biocann".to_string(), setting(None, RepoType::Bioc)),
+            ("biocexp".to_string(), setting(None, RepoType::Bioc)),
+            ("cran".to_string(), setting(None, RepoType::Cran)),
+        ])
+    }
+
+    /// No detection: a repository without a type is CRAN-like.
+    fn no_detect(url: &str, rtype: Option<RepoType>) -> DetectedRepo {
+        crate::repos::detect::describe(url, rtype.unwrap_or(RepoType::CranLike))
     }
 
     #[test]
@@ -955,9 +1020,10 @@ mod tests {
                 ("acme", "https://cran.acme.com/"),
                 ("acme2", "https://cran.acme.com"),
             ]),
-            &metadata(),
+            &settings(),
             true,
             Some("3.22"),
+            &no_detect,
         );
         assert_eq!(
             repos,
@@ -967,11 +1033,53 @@ mod tests {
                     "BioCann",
                     "https://bioconductor.org/packages/3.22/data/annotation"
                 )),
+                // P3M, and CRAN, which is the same feed.
                 PkgRepo::Extended(MetadataFeed::cran()),
-                PkgRepo::Cranlike(CranlikeRepo::new("CRAN", "https://cloud.r-project.org")),
                 PkgRepo::Cranlike(CranlikeRepo::new("acme", "https://cran.acme.com")),
             ]
         );
+    }
+
+    #[test]
+    fn entries_follow_their_type() {
+        let mut settings = settings();
+        settings.insert(
+            "rlib".to_string(),
+            RepoSettings {
+                repo_type: Some(RepoType::RUniverse),
+                ..Default::default()
+            },
+        );
+        // `extend = false` turns off the metadata of a built-in feed, too.
+        settings.get_mut("p3m").unwrap().extend = Some(false);
+        let repos = repos_from_entries(
+            &entries(&[
+                ("rlib", "https://r-lib.r-universe.dev"),
+                ("P3M", "https://packagemanager.posit.co/cran/latest"),
+                ("CRAN", "@CRAN@"),
+            ]),
+            &settings,
+            true,
+            None,
+            &no_detect,
+        );
+        assert_eq!(repos.len(), 3);
+        assert!(matches!(&repos[0], PkgRepo::Cranlike(r)
+            if r.protocol == crate::repos::feed::CranlikeProtocol::RUniverse));
+        assert_eq!(
+            repos[1],
+            PkgRepo::Cranlike(CranlikeRepo::new(
+                "P3M",
+                "https://packagemanager.posit.co/cran/latest"
+            ))
+        );
+        match &repos[2] {
+            PkgRepo::Extended(feed) => {
+                assert_eq!(feed, &MetadataFeed::cran());
+                assert_eq!(feed.mirror.as_deref(), Some("https://cloud.r-project.org"));
+            }
+            other => panic!("{:?}", other),
+        }
     }
 
     #[test]
@@ -984,10 +1092,10 @@ mod tests {
                 "https://bioconductor.org/packages/3.22/data/experiment",
             ),
         ]);
-        let repos = repos_from_entries(&es, &metadata(), false, None);
+        let repos = repos_from_entries(&es, &settings(), false, None, &no_detect);
         assert_eq!(repos, vec![PkgRepo::Extended(MetadataFeed::cran())]);
         // No Bioconductor version: BioCsoft is a plain CRAN-like repository.
-        let repos = repos_from_entries(&es, &metadata(), true, None);
+        let repos = repos_from_entries(&es, &settings(), true, None, &no_detect);
         assert_eq!(repos.len(), 3);
         assert!(matches!(&repos[1], PkgRepo::Cranlike(r) if r.name == "BioCsoft"));
     }
@@ -1002,9 +1110,10 @@ mod tests {
                     "https://packagemanager.posit.co/cran/__linux__/noble/latest",
                 ),
             ]),
-            &metadata(),
+            &settings(),
             true,
             None,
+            &no_detect,
         );
         assert_eq!(repos, vec![PkgRepo::Extended(MetadataFeed::cran())]);
     }

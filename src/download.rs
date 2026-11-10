@@ -636,6 +636,11 @@ pub struct UrlProbe {
     pub elapsed_ms: u128,
     /// The `Last-Modified` header, verbatim, if the server sent one.
     pub last_modified: Option<String>,
+    /// The `x-repository-type` header, verbatim, if the server sent one.
+    /// Posit Package Manager sends `RSPM`, r-universe sends `r-universe`.
+    pub repository_type: Option<String>,
+    /// The URL of the response, after redirects, if there was a response.
+    pub final_url: Option<String>,
 }
 
 /// Ask a server about a resource, without downloading it: a `HEAD` request,
@@ -672,12 +677,19 @@ pub async fn probe_url(client: &reqwest::Client, url: &str) -> UrlProbe {
                 .get("last-modified")
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string());
+            let repository_type = resp
+                .headers()
+                .get("x-repository-type")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
             UrlProbe {
                 url: url.to_string(),
                 status: Some(resp.status().as_u16()),
                 error: None,
                 elapsed_ms,
                 last_modified,
+                repository_type,
+                final_url: Some(resp.url().to_string()),
             }
         }
         Err(err) => {
@@ -688,6 +700,8 @@ pub async fn probe_url(client: &reqwest::Client, url: &str) -> UrlProbe {
                 error: Some(probe_error_message(&err)),
                 elapsed_ms,
                 last_modified: None,
+                repository_type: None,
+                final_url: None,
             }
         }
     }

@@ -390,7 +390,7 @@ fn percent_decode(s: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::process::Command;
 
@@ -415,7 +415,7 @@ mod tests {
     /// A local bare repo with one commit on `main` (with `DESCRIPTION` and a
     /// `pkg/` subdirectory) and a tag `v1`, used as a `file://` stand-in for
     /// a remote host -- no live network needed.
-    fn bare_fixture() -> tempfile::TempDir {
+    pub(crate) fn bare_fixture() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         let work = dir.path().join("work");
         std::fs::create_dir_all(&work).unwrap();

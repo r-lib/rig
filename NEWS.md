@@ -1,5 +1,16 @@
 # rig 0.11.2-dev (development version)
 
+* rig now reads a package repository according to its type (CRAN mirror,
+  Posit Package Manager, Bioconductor, r-universe, etc.), detected from the
+  server or set with `type` in `rproj.toml` or `rig repos add --type`. For
+  CRAN mirrors rig reads the full history of CRAN, so older versions are
+  available, too.
+
+* `rig proj lock` and `rig pkg install` now record the git commit of the
+  packages of an r-universe repository. If r-universe replaces the package
+  file later, `rig proj sync` builds the package from git, at the locked
+  commit, and it does not reinstall a package of the same commit.
+
 * In admin mode, when `rig proj sync` or `rig run` need to install R, they
   now run `rig add` in a separate process, and only that process runs with
   `sudo` (or as administrator on Windows). Before, the whole command ran
