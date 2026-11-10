@@ -4,6 +4,18 @@
 # `root`/`venv`/`lib`/`libname`/`activated` locals rather than recomputing
 # them, and calls `restore_r_libs_user()` / `warn_unsynced()`, defined there.
 
+# Always use `/` as the path separator. The shim package of a project set up
+# by an older rig computes `root` with `normalizePath()` without `winslash`,
+# i.e. with `\` on Windows, and then `file.path()` adds a `/`, giving mixed
+# separators. That also broke the `activated` check, so redo that as well.
+root <- normalizePath(root, winslash = "/", mustWork = FALSE)
+venv <- file.path(root, ".rvenv")
+lib <- file.path(venv, "lib")
+activated <- identical(
+  normalizePath(Sys.getenv("RVENV"), winslash = "/", mustWork = FALSE),
+  venv
+)
+
 # Reads `.rvenv/rvenv.cfg`, written by `rig proj sync`, as a named list of
 # its `key = value` lines. `NULL` if the project has never been synced by a
 # rig new enough to write the file.
@@ -53,7 +65,7 @@ if (!is.null(cfg[["r-minor"]]) && !identical(cfg[["r-minor"]], running)) {
   restore_r_libs_user(libname, lib)
   Sys.unsetenv("R_DEFAULT_PACKAGES")
   warned <- identical(
-    normalizePath(Sys.getenv("RVENV_UNSYNCED"), mustWork = FALSE),
+    normalizePath(Sys.getenv("RVENV_UNSYNCED"), winslash = "/", mustWork = FALSE),
     venv
   )
   Sys.setenv(RVENV_UNSYNCED = venv)

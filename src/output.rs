@@ -178,3 +178,20 @@ impl std::fmt::Display for ReportedError {
 }
 
 impl std::error::Error for ReportedError {}
+
+/// An error that makes rig exit with `status` instead of 1, e.g. `rig proj
+/// sync --check` exits with 1 if the environment is out of date, and with 2
+/// on any other error. `Display` is the wrapped error's message.
+#[derive(Debug)]
+pub struct ExitStatusError {
+    pub status: i32,
+    pub error: Box<dyn std::error::Error>,
+}
+
+impl std::fmt::Display for ExitStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.error)
+    }
+}
+
+impl std::error::Error for ExitStatusError {}

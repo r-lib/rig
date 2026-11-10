@@ -5,9 +5,12 @@ use clap::ArgMatches;
 use tabular::*;
 
 use crate::download::probe_urls_;
+use crate::pkg::repo_settings;
 use crate::platform::{detect_platform, platform_to_pkg_type};
 use crate::repos::configured::configured_repos;
 use crate::repos::cranlike_metadata::{cranlike_urls, minor_r_version, package_type_to_path};
+use crate::repos::detect::RepoType;
+use crate::repos::repo_types::resolve_repo;
 use crate::repositories::RepoFileEntry;
 
 /// One row of `rig repos status`, and the shape of its `--json` output.
@@ -17,8 +20,11 @@ struct RepoStatus {
     description: String,
     url: String,
     default: bool,
+    /// The type of the repository, from the rig configuration, or detected.
+    #[serde(rename = "type")]
+    repo_type: RepoType,
     /// Package types the R installation's `repositories` file declares.
-    types: Vec<&'static str>,
+    platforms: Vec<&'static str>,
     /// The repository serves prebuilt Linux binaries as source packages.
     linux_binaries: bool,
     /// The `PACKAGES` index that was probed.
@@ -77,6 +83,7 @@ pub fn sc_repos_status(
         .map(|r| cranlike_urls(&r.url, &path)[0].clone())
         .collect();
     let mut probes = probe_urls_(&urls);
+    let repo_types = repo_types(&cfg.repos)?;
 
     // A repository that has no index for this platform is not broken, it just
     // has source packages only; report those from the source index.
@@ -126,7 +133,8 @@ pub fn sc_repos_status(
                 .cloned()
                 .unwrap_or_else(|| repo.url.clone()),
             default: repo.default,
-            types: declared_types(repo),
+            repo_type: repo_types[i],
+            platforms: declared_platforms(repo),
             linux_binaries: serves_linux_binaries(&repo.url),
             probed_url: probe.url.clone(),
             pkg_type: if source_only[i] {
@@ -151,19 +159,53 @@ pub fn sc_repos_status(
     Ok(())
 }
 
+/// The type of each repository: the one the rig configuration declares for
+/// a repository of that name, the same way `rig pkg` looks it up, or the
+/// detected one. Detection results are cached, and the repositories that
+/// need it are detected in parallel.
+fn repo_types(repos: &[RepoFileEntry]) -> Result<Vec<RepoType>, Box<dyn Error>> {
+    let settings = repo_settings()?;
+    let types = std::thread::scope(|scope| {
+        let handles: Vec<_> = repos
+            .iter()
+            .map(|repo| {
+                let declared = settings
+                    .get(&repo.name.to_lowercase())
+                    .and_then(|s| s.repo_type);
+                scope.spawn(move || match declared {
+                    Some(rtype) if rtype != RepoType::Ppm => rtype,
+                    _ => {
+                        let url = if repo.url == "@CRAN@" {
+                            "https://cloud.r-project.org"
+                        } else {
+                            repo.url.as_str()
+                        };
+                        resolve_repo(url, declared).repo_type
+                    }
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|h| h.join().unwrap_or(RepoType::CranLike))
+            .collect()
+    });
+    Ok(types)
+}
+
 /// The package types the `repositories` file declares for a repository.
-fn declared_types(entry: &RepoFileEntry) -> Vec<&'static str> {
-    let mut types = vec![];
+fn declared_platforms(entry: &RepoFileEntry) -> Vec<&'static str> {
+    let mut platforms = vec![];
     if entry.source {
-        types.push("source");
+        platforms.push("source");
     }
     if entry.win_binary {
-        types.push("win.binary");
+        platforms.push("win.binary");
     }
     if entry.mac_binary {
-        types.push("mac.binary");
+        platforms.push("mac.binary");
     }
-    types
+    platforms
 }
 
 /// The architecture an R installation was built for, if its name says so.
@@ -193,11 +235,11 @@ fn serves_linux_binaries(url: &str) -> bool {
     url.contains("/__linux__/") || url.contains("manylinux")
 }
 
-/// The `types` cell: the declared types, shortened, with a marker for a
-/// repository whose source packages are Linux binaries.
-fn types_cell(row: &RepoStatus) -> String {
+/// The `platforms` cell: the declared package types, shortened, with a
+/// marker for a repository whose source packages are Linux binaries.
+fn platforms_cell(row: &RepoStatus) -> String {
     let mut cell = row
-        .types
+        .platforms
         .iter()
         .map(|t| match *t {
             "win.binary" => "win",
@@ -315,17 +357,26 @@ fn print_status(rows: &[RepoStatus], rver: &str, numver: &str, path: &str) {
     println!();
 
     // -- Table -------------------------------------------------------------
-    let mut tab: Table = Table::new("{:<}   {:>}   {:<}   {:<}   {:<}   {:<}");
-    tab.add_row(row!("name", "ping", "status", "types", "updated", "url"));
+    let mut tab: Table = Table::new("{:<}   {:<}   {:>}   {:<}   {:<}   {:<}   {:<}");
+    tab.add_row(row!(
+        "name",
+        "type",
+        "ping",
+        "status",
+        "platforms",
+        "updated",
+        "url"
+    ));
     tab.add_heading(
-        "-----------------------------------------------------------------------------",
+        "-------------------------------------------------------------------------------------------",
     );
     for row in rows {
         tab.add_row(row!(
             &row.name,
+            row.repo_type.as_str(),
             format_ping(row.ping_ms),
             status_cell(row),
-            types_cell(row),
+            platforms_cell(row),
             format_modified(row.last_modified.as_deref()),
             &row.url
         ));
@@ -339,8 +390,9 @@ fn print_status(rows: &[RepoStatus], rver: &str, numver: &str, path: &str) {
         let mut hints = vec![
             "`ping` is the time the repository took to answer for the index above.".to_string(),
         ];
-        hints
-            .push("`types` is what the R installation's `repositories` file declares.".to_string());
+        hints.push(
+            "`platforms` is what the R installation's `repositories` file declares.".to_string(),
+        );
         if rows.iter().any(|r| r.source_only) {
             hints.push(
                 "`source only`: this repository has no index for this platform and R version."
@@ -386,7 +438,8 @@ mod tests {
             description: "CRAN".to_string(),
             url: "https://cloud.r-project.org".to_string(),
             default: true,
-            types: vec!["source", "win.binary", "mac.binary"],
+            repo_type: RepoType::Cran,
+            platforms: vec!["source", "win.binary", "mac.binary"],
             linux_binaries: false,
             probed_url: "https://cloud.r-project.org/src/contrib/PACKAGES.gz".to_string(),
             pkg_type: "source".to_string(),
@@ -399,33 +452,36 @@ mod tests {
     }
 
     #[test]
-    fn declared_types_covers_every_combination() {
+    fn declared_platforms_covers_every_combination() {
         assert_eq!(
-            declared_types(&entry(true, true, true)),
+            declared_platforms(&entry(true, true, true)),
             vec!["source", "win.binary", "mac.binary"]
         );
         assert_eq!(
-            declared_types(&entry(true, false, true)),
+            declared_platforms(&entry(true, false, true)),
             vec!["source", "mac.binary"]
         );
         assert_eq!(
-            declared_types(&entry(true, true, false)),
+            declared_platforms(&entry(true, true, false)),
             vec!["source", "win.binary"]
         );
-        assert_eq!(declared_types(&entry(true, false, false)), vec!["source"]);
         assert_eq!(
-            declared_types(&entry(false, true, true)),
+            declared_platforms(&entry(true, false, false)),
+            vec!["source"]
+        );
+        assert_eq!(
+            declared_platforms(&entry(false, true, true)),
             vec!["win.binary", "mac.binary"]
         );
         assert_eq!(
-            declared_types(&entry(false, false, true)),
+            declared_platforms(&entry(false, false, true)),
             vec!["mac.binary"]
         );
         assert_eq!(
-            declared_types(&entry(false, true, false)),
+            declared_platforms(&entry(false, true, false)),
             vec!["win.binary"]
         );
-        assert!(declared_types(&entry(false, false, false)).is_empty());
+        assert!(declared_platforms(&entry(false, false, false)).is_empty());
     }
 
     #[test]
@@ -449,14 +505,14 @@ mod tests {
     }
 
     #[test]
-    fn types_cell_shortens_and_marks() {
+    fn platforms_cell_shortens_and_marks() {
         let mut r = row(Some(200), None, false);
-        assert_eq!(types_cell(&r), "source, win, mac");
+        assert_eq!(platforms_cell(&r), "source, win, mac");
         r.linux_binaries = true;
-        assert_eq!(types_cell(&r), "source, win, mac*");
+        assert_eq!(platforms_cell(&r), "source, win, mac*");
         r.linux_binaries = false;
-        r.types = vec![];
-        assert_eq!(types_cell(&r), "-");
+        r.platforms = vec![];
+        assert_eq!(platforms_cell(&r), "-");
     }
 
     #[test]

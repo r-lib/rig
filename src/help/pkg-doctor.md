@@ -5,7 +5,8 @@ Find problems with the packages in a library
 Check the packages installed in an R package library, and report the ones
 that may not work: missing dependencies, dependencies that are too old, and
 packages compiled against another version of a `LinkingTo` dependency than
-the one installed now. This command does not start R.
+the one installed now. This command does not start R. It does not check
+for known vulnerabilities, use [`rig pkg audit`](#rig-pkg-audit) for that.
 
 Example output:
 ```
@@ -50,14 +51,14 @@ Errors:
   of a `LinkingTo` dependency than the one installed now. rig can only tell
   this for packages it installed itself, because [`rig pkg install`](#rig-pkg-install) records
   what a package was compiled against.
+* `platform`: the package has compiled code built for another architecture,
+  e.g. `x86_64` instead of `aarch64`. R cannot load it.
 
 Warnings:
 
 * `stale`: only with `--stale`, see below.
 * `built-r`: the package was built for another R minor version, e.g. for R
   4.3.x in an R 4.4.x library.
-* `platform`: the package was built for another architecture, e.g. `x86_64`
-  instead of `aarch64`.
 * `name`: the `Package` field of the `DESCRIPTION` file does not match the
   directory the package is installed in.
 * `lock`: a `00LOCK*` directory, left behind by an interrupted installation.
