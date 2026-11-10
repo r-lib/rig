@@ -796,6 +796,9 @@ pub struct AuditVersion {
     /// installed package.
     pub sha256sum: Option<String>,
     pub policy: Option<VersionPolicy>,
+    /// The day the version was published, `YYYY-MM-DD`, see
+    /// [`snapshot_date`], if known.
+    pub published: Option<String>,
 }
 
 impl DbSourcePackageLoader {
@@ -804,7 +807,7 @@ impl DbSourcePackageLoader {
     /// filters of [`PackageVersionLoader::load_versions`]. For `rig audit`.
     pub fn audit_versions(&self, package: &str) -> Result<Vec<AuditVersion>, Box<dyn Error>> {
         let mut stmt = self.conn.prepare_cached(
-            "SELECT version, sha256sum, repo_id, policy FROM packages WHERE name = ?1",
+            "SELECT version, sha256sum, repo_id, policy, download_url FROM packages WHERE name = ?1",
         )?;
         let rows = stmt.query_map(params![package], |row| {
             Ok((
@@ -812,11 +815,12 @@ impl DbSourcePackageLoader {
                 row.get::<_, Option<String>>(1)?,
                 row.get::<_, i64>(2)?,
                 row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
             ))
         })?;
         let mut out = vec![];
         for row in rows {
-            let (ver, sha256sum, repo_id, policy) = row?;
+            let (ver, sha256sum, repo_id, policy, download_url) = row?;
             if self.repo_of(repo_id).is_none() {
                 continue;
             }
@@ -827,6 +831,10 @@ impl DbSourcePackageLoader {
                 version,
                 sha256sum,
                 policy: policy.and_then(|p| serde_json::from_str(&p).ok()),
+                published: download_url
+                    .as_deref()
+                    .and_then(snapshot_date)
+                    .map(|d| d.to_string()),
             });
         }
         out.sort_by(|a, b| a.version.cmp(&b.version));

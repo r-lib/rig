@@ -48,6 +48,14 @@ for that. In a project it runs [`rig proj lock`](proj.qmd#rig-proj-lock)
 Otherwise it runs [`rig pkg install`](pkg.qmd#rig-pkg-install) for the
 library. `--fix --dry-run` shows the upgrades without making them.
 
+`--exclude-newer` only upgrades to versions published by a date, and passes
+the date to `rig proj lock` or `rig pkg install`. Without it, `rig audit`
+uses the same cutoff as these commands: in a project the `exclude-newer`
+setting of `rproj.toml`, otherwise the `exclude-newer`
+[config](config.qmd) entry, if set. If no version without known problems is
+published by the cutoff, the package is not upgraded.
+
+
 ## Exit status
 
 `rig audit` exits with status 1 if it finds vulnerable or blocked packages,

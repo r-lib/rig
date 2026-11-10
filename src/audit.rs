@@ -29,9 +29,12 @@ use serde::Serialize;
 use tabular::{Row, Table};
 
 use crate::dcf::{PackageDependencies, RPackageVersion, VersionConstraintType};
+use crate::exclude_newer::{config_exclude_newer, exclude_newer_arg};
 use crate::output::OUTPUT;
 use crate::pkg::list::{read_installed, resolve_library};
-use crate::proj::{proj_lock_root, proj_read_solve_roots, read_existing_lock, BASE_PKGS};
+use crate::proj::{
+    proj_lock_root, proj_read_solve_roots, read_existing_lock, resolve_lock_options, BASE_PKGS,
+};
 use crate::repos::cranlike_metadata::{archived_package_in, repos_report_policy, AuditVersion};
 use crate::repos::feed::{BiocSetting, PkgRepo, RepoId};
 use crate::repos::{interpret_pkg_repos_args, DbSourcePackageLoader};
@@ -83,6 +86,9 @@ struct Report {
     /// Whether any of the repositories reports vulnerabilities and blocked
     /// versions at all.
     has_policy_data: bool,
+    /// The `--exclude-newer` cutoff day of the fixes, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exclude_newer: Option<String>,
 }
 
 /// What to check: the subjects, and the repositories of each.
@@ -91,14 +97,22 @@ struct Scope {
     repos: Vec<Vec<PkgRepo>>,
     /// How to fix the problems found.
     fixer: Fixer,
+    /// The `--exclude-newer` cutoff day, `YYYY-MM-DD`: a fix only picks a
+    /// version published by then. The same cutoff that `rig proj lock` or
+    /// `rig pkg install` uses.
+    cutoff: Option<String>,
 }
 
 enum Fixer {
     /// A project at this root, with the dependencies of its manifest, or
     /// of every member of a workspace.
+    /// `exclude_newer` is the `--exclude-newer` value for `rig proj lock`,
+    /// if it was given. Without it `rig proj lock` uses the manifest's
+    /// setting, or the user's.
     Project {
         root: PathBuf,
         deps: PackageDependencies,
+        exclude_newer: Option<String>,
     },
     /// A library, with the `--library` and `--r-version` values for
     /// `rig pkg install`.
@@ -127,6 +141,11 @@ fn audit_main(
     let dry_run = args.get_flag("dry-run");
 
     let scope = audit_scope(args, library_only)?;
+    if let Some(cutoff) = &scope.cutoff {
+        let msg = format!("Only upgrading to package versions published by {}", cutoff);
+        info!("{}", msg);
+        OUTPUT.info(&msg);
+    }
     let report = run_audit(&scope)?;
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -166,8 +185,12 @@ fn audit_main(
                 }
             }
             None => OUTPUT.warn(&format!(
-                "No version of {} without known problems, cannot fix it.",
-                f.package
+                "No version of {} without known problems{}, cannot fix it.",
+                f.package,
+                match &scope.cutoff {
+                    Some(cutoff) => format!(" published by {}", cutoff),
+                    None => String::new(),
+                }
             )),
         }
     }
@@ -188,7 +211,14 @@ fn audit_main(
     if fixes.is_empty() {
         return Ok(1);
     }
-    run_fix(&scope.fixer, &fixes, &repos_argv(args), dry_run, mainargs)?;
+    run_fix(
+        &scope.fixer,
+        &fixes,
+        &repos_argv(args),
+        scope.cutoff.as_deref(),
+        dry_run,
+        mainargs,
+    )?;
     if dry_run {
         return Ok(1);
     }
@@ -240,6 +270,17 @@ fn project_scope(args: &ArgMatches) -> Result<Scope, Box<dyn Error>> {
         solve.repos.resolve_types(&[]);
         OUTPUT.warn("The project has no lock file, only checking its library.");
     }
+    // The cutoff `rig proj lock` will use: `--exclude-newer`, or the
+    // manifest's or the user's setting, a span resolved the way the lock
+    // resolved it.
+    let exclude_newer = exclude_newer_arg(args)?;
+    let cutoff = resolve_lock_options(
+        exclude_newer.as_ref().or(solve.exclude_newer.as_ref()),
+        solve.prefer_binary,
+        &solve.repos,
+        lock.as_ref().map(|l| &l.tool.rig),
+    )?
+    .exclude_newer;
 
     // The repositories of each Bioconductor release of the lock.
     let mut repos: Vec<Vec<PkgRepo>> = vec![];
@@ -286,7 +327,9 @@ fn project_scope(args: &ArgMatches) -> Result<Scope, Box<dyn Error>> {
         fixer: Fixer::Project {
             root,
             deps: solve.merged,
+            exclude_newer: args.get_one::<String>("exclude-newer").cloned(),
         },
+        cutoff,
     })
 }
 
@@ -296,8 +339,19 @@ fn library_scope(args: &ArgMatches) -> Result<Scope, Box<dyn Error>> {
         Some(rver) => rver.clone(),
         None => crate::library::library_rver(args)?,
     };
+    // The cutoff `rig pkg install` will use.
+    let cutoff =
+        match exclude_newer_arg(args)?.map_or_else(config_exclude_newer, |s| Ok(Some(s)))? {
+            Some(spec) => Some(spec.cutoff()?),
+            None => None,
+        };
     let over = interpret_pkg_repos_args(args)?;
-    let repos = crate::pkg::pkg_repos(&rver, &BiocSetting::default(), None, over.as_ref())?;
+    let repos = crate::pkg::pkg_repos(
+        &rver,
+        &BiocSetting::default(),
+        cutoff.as_deref(),
+        over.as_ref(),
+    )?;
     let place = match &lib.name {
         Some(name) => format!("library {} (R {})", name, rver),
         None => format!("library {}", lib.path.display()),
@@ -310,6 +364,7 @@ fn library_scope(args: &ArgMatches) -> Result<Scope, Box<dyn Error>> {
             library: lib.path.clone(),
             rversion: args.get_one::<String>("r-version").cloned(),
         },
+        cutoff,
     })
 }
 
@@ -363,6 +418,7 @@ fn run_audit(scope: &Scope) -> Result<Report, Box<dyn Error>> {
             subject.hash.as_deref(),
             &rows,
             archived,
+            scope.cutoff.as_deref(),
         );
         let Some(found) = found else {
             not_checked.insert(format!("{} {}", subject.package, subject.version));
@@ -385,6 +441,7 @@ fn run_audit(scope: &Scope) -> Result<Report, Box<dyn Error>> {
         findings: findings.into_values().collect(),
         not_checked: not_checked.into_iter().collect(),
         has_policy_data,
+        exclude_newer: scope.cutoff.clone(),
     })
 }
 
@@ -404,13 +461,15 @@ fn archived_date(repos: &[PkgRepo], package: &str) -> Result<Option<String>, Box
 /// The problems of `package` `version`, given all versions of the package
 /// in the repositories, `rows`. `None` if no repository has the version.
 /// A `hash`, the `RemoteHash` of the package, picks the matching records,
-/// if there are several for the version.
+/// if there are several for the version. A fix is only a version published
+/// by `cutoff`, if given.
 fn check_version(
     package: &str,
     version: &RPackageVersion,
     hash: Option<&str>,
     rows: &[AuditVersion],
     archived: Option<String>,
+    cutoff: Option<&str>,
 ) -> Option<Vec<Finding>> {
     let mut matching: Vec<&AuditVersion> = rows.iter().filter(|r| r.version == *version).collect();
     if matching.is_empty() {
@@ -435,7 +494,7 @@ fn check_version(
         fixed_in,
         places: vec![],
     };
-    let fixed_in = nearest_good_version(version, rows).map(|v| v.to_string());
+    let fixed_in = nearest_good_version(version, rows, cutoff).map(|v| v.to_string());
 
     let mut out = vec![];
     let mut vulns: Vec<String> = vec![];
@@ -468,13 +527,22 @@ fn check_version(
 }
 
 /// The nearest version after `version` that a repository serves and that
-/// has no known vulnerabilities.
+/// has no known vulnerabilities, and that is published by `cutoff`, if
+/// given. Like the solver, it keeps the versions without a publish date.
 fn nearest_good_version(
     version: &RPackageVersion,
     rows: &[AuditVersion],
+    cutoff: Option<&str>,
 ) -> Option<RPackageVersion> {
+    let published_by = |r: &AuditVersion| match (cutoff, r.published.as_deref()) {
+        (Some(cutoff), Some(date)) => date <= cutoff,
+        _ => true,
+    };
     let mut by_version: BTreeMap<&RPackageVersion, Vec<&AuditVersion>> = BTreeMap::new();
-    for row in rows.iter().filter(|r| r.version > *version) {
+    for row in rows
+        .iter()
+        .filter(|r| r.version > *version && published_by(r))
+    {
         by_version.entry(&row.version).or_default().push(row);
     }
     by_version
@@ -645,6 +713,7 @@ fn run_fix(
     fixer: &Fixer,
     fixes: &BTreeMap<String, Fix>,
     repos: &[String],
+    cutoff: Option<&str>,
     dry_run: bool,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
@@ -667,7 +736,11 @@ fn run_fix(
         ));
     }
     match fixer {
-        Fixer::Project { root, .. } => {
+        Fixer::Project {
+            root,
+            exclude_newer,
+            ..
+        } => {
             if dry_run {
                 OUTPUT.info(&format!(
                     "Dry run, not updating the project at {}",
@@ -677,6 +750,10 @@ fn run_fix(
             }
             let mut argv = vec!["rig".to_string(), "proj".to_string(), "lock".to_string()];
             argv.extend(repos.iter().cloned());
+            if let Some(exclude_newer) = exclude_newer {
+                argv.push("--exclude-newer".to_string());
+                argv.push(exclude_newer.clone());
+            }
             for spec in &specs {
                 argv.push("--upgrade-package".to_string());
                 argv.push(spec.clone());
@@ -700,6 +777,12 @@ fn run_fix(
             }
             if dry_run {
                 argv.push("--dry-run".to_string());
+            }
+            // The day the audit used, also if it comes from the user's
+            // setting, or a span.
+            if let Some(cutoff) = cutoff {
+                argv.push("--exclude-newer".to_string());
+                argv.push(cutoff.to_string());
             }
             argv.extend(repos.iter().cloned());
             argv.extend(specs);
@@ -733,6 +816,7 @@ mod tests {
             version: RPackageVersion::from_str(version).unwrap(),
             sha256sum: None,
             policy,
+            published: None,
         }
     }
 
@@ -767,16 +851,39 @@ mod tests {
             row("1.8", None),
             row("1.9", None),
         ];
-        let found = check_version("jsonlite", &v("1.5"), None, &rows, None).unwrap();
+        let found = check_version("jsonlite", &v("1.5"), None, &rows, None, None).unwrap();
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].issue, "vulnerable");
         assert_eq!(found[0].details, "RSEC-2023-3");
         assert_eq!(found[0].fixed_in.as_deref(), Some("1.8"));
 
-        let found = check_version("jsonlite", &v("1.8"), None, &rows, None).unwrap();
+        let found = check_version("jsonlite", &v("1.8"), None, &rows, None, None).unwrap();
         assert!(found.is_empty());
 
-        assert!(check_version("jsonlite", &v("0.1"), None, &rows, None).is_none());
+        assert!(check_version("jsonlite", &v("0.1"), None, &rows, None, None).is_none());
+    }
+
+    #[test]
+    fn the_fix_is_published_by_the_cutoff() {
+        let published = |version: &str, policy, date: Option<&str>| AuditVersion {
+            published: date.map(|d| d.to_string()),
+            ..row(version, policy)
+        };
+        let rows = vec![
+            published("1.5", vulnerable("RSEC-2023-3"), Some("2020-01-01")),
+            published("1.6", vulnerable("RSEC-2023-3"), Some("2021-01-01")),
+            published("1.8", None, Some("2023-01-01")),
+            published("1.9", None, None),
+        ];
+        let fixed_in = |cutoff| {
+            check_version("jsonlite", &v("1.5"), None, &rows, None, cutoff).unwrap()[0]
+                .fixed_in
+                .clone()
+        };
+        assert_eq!(fixed_in(None).as_deref(), Some("1.8"));
+        assert_eq!(fixed_in(Some("2023-01-01")).as_deref(), Some("1.8"));
+        // 1.8 is too new, 1.9 has no publish date, so it is kept.
+        assert_eq!(fixed_in(Some("2022-01-01")).as_deref(), Some("1.9"));
     }
 
     #[test]
@@ -788,6 +895,7 @@ mod tests {
             None,
             &rows,
             Some("2026-01-01".to_string()),
+            None,
         )
         .unwrap();
         let issues: Vec<&str> = found.iter().map(|f| f.issue).collect();
@@ -801,7 +909,7 @@ mod tests {
     #[test]
     fn a_version_that_another_repository_serves_is_not_blocked() {
         let rows = vec![row("0.3.0", blocked()), row("0.3.0", None)];
-        let found = check_version("otel", &v("0.3.0"), None, &rows, None).unwrap();
+        let found = check_version("otel", &v("0.3.0"), None, &rows, None, None).unwrap();
         assert!(found.is_empty());
     }
 
@@ -826,11 +934,11 @@ mod tests {
         let mut b = row("1.0", None);
         b.sha256sum = Some("bbb".to_string());
         let rows = vec![a, b];
-        let found = check_version("p", &v("1.0"), Some("bbb"), &rows, None).unwrap();
+        let found = check_version("p", &v("1.0"), Some("bbb"), &rows, None, None).unwrap();
         assert!(found.is_empty());
-        let found = check_version("p", &v("1.0"), Some("aaa"), &rows, None).unwrap();
+        let found = check_version("p", &v("1.0"), Some("aaa"), &rows, None, None).unwrap();
         assert_eq!(found[0].issue, "vulnerable");
-        let found = check_version("p", &v("1.0"), None, &rows, None).unwrap();
+        let found = check_version("p", &v("1.0"), None, &rows, None, None).unwrap();
         assert_eq!(found[0].issue, "vulnerable");
     }
 }

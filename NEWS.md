@@ -5,7 +5,8 @@
   versions that the repository blocks. `rig audit --fix` upgrades them to
   the nearest version without known problems. It exits with status 1 if it
   finds problems, so it can be used in CI. `rig pkg audit` does the same
-  for a library, also in a project.
+  for a library, also in a project. `--exclude-newer` limits the upgrades
+  to versions published by a date.
 
 * rig now reads a package repository according to its type (CRAN mirror,
   Posit Package Manager, Bioconductor, r-universe, etc.), detected from the

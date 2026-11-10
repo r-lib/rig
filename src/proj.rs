@@ -2240,7 +2240,7 @@ pub(crate) fn read_existing_lock(root: &Path) -> Option<RprojLock> {
 /// resolved it to, as long as the span itself is unchanged. Otherwise the
 /// cutoff would move every day and the lock would never be reused. `--upgrade`
 /// ignores the existing lock, so it resolves the span afresh.
-fn resolve_lock_options(
+pub(crate) fn resolve_lock_options(
     exclude_newer: Option<&ExcludeNewerSpec>,
     prefer_binary: Option<usize>,
     repos: &ProjRepos,

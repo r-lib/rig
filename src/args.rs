@@ -148,6 +148,11 @@ fn audit_args(library_help: &'static str, rversion_help: &'static str) -> Vec<Ar
     ];
     args.extend(pkg_repos_args());
     args.extend([
+        exclude_newer_arg().help(
+            "With --fix, only upgrade to package versions published by this\n\
+            date. A date (2025-06-01), an RFC 3339 timestamp, or a span back\n\
+            from today (7 days, 2 weeks, P1M). Not before 2017-10-10.",
+        ),
         Arg::new("fix")
             .help("Upgrade the affected packages to the nearest version without known problems")
             .long("fix")

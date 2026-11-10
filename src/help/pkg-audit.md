@@ -45,6 +45,13 @@ version without known problems, with
 need an upgrade for that. `--fix --dry-run` shows the upgrades without
 making them.
 
+`--exclude-newer` only upgrades to versions published by a date, and passes
+the date to `rig pkg install`. Without it, `rig pkg audit` uses the
+`exclude-newer` [config](config.qmd) entry, if set, the same way as `rig pkg
+install`. If no version without known problems is published by the cutoff,
+the package is not upgraded.
+
+
 ## Exit status
 
 `rig pkg audit` exits with status 1 if it finds vulnerable or blocked
