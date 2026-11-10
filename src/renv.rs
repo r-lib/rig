@@ -459,6 +459,16 @@ impl REnvLockfilePackage {
         })
     }
 
+    /// Whether the package was installed from GitHub, GitLab, Bitbucket or
+    /// a git URL, even if the lock file lacks the fields to import it.
+    fn is_git_source(&self) -> bool {
+        let kind = self.Source.trim().to_ascii_lowercase();
+        matches!(
+            kind.as_str(),
+            "github" | "gitlab" | "bitbucket" | "git" | "xgit" | "git2r"
+        )
+    }
+
     /// The `RemoteUrl` of a package installed from a git URL, as opposed to
     /// GitHub, GitLab or Bitbucket.
     fn git_remote_url(&self) -> Option<&str> {
@@ -1022,6 +1032,10 @@ struct ImportReport {
     /// The packages from a source that rig cannot import, e.g. a URL or a
     /// local file, in order. They are imported as plain version requirements.
     other_sources: Vec<String>,
+    /// The packages from GitHub, GitLab, Bitbucket or a git URL whose lock
+    /// file entry does not say where, in order. They are imported as plain
+    /// version requirements.
+    incomplete_git: Vec<String>,
     /// The packages from a `git://github.com/` URL, in order. They are
     /// imported from the `https://` URL instead.
     github_git_urls: Vec<String>,
@@ -1042,6 +1056,17 @@ fn import_warnings(report: &ImportReport, input: &str) -> Vec<String> {
             report.other_sources.len(),
             input,
             report.other_sources.join(", ")
+        ));
+    }
+
+    if !report.incomplete_git.is_empty() {
+        warnings.push(format!(
+            "{} package(s) in {} come from GitHub, GitLab, Bitbucket or git, but the \
+             lock file does not say where (it needs `RemoteUsername` and `RemoteRepo`, \
+             or `RemoteUrl`); they were imported as ordinary version requirements: {}",
+            report.incomplete_git.len(),
+            input,
+            report.incomplete_git.join(", ")
         ));
     }
 
@@ -1155,6 +1180,9 @@ fn apply_lockfile(
                 set_repository(manifest, name, None);
             }
             Placement::Unresolved => report.unresolved.push(name.clone()),
+            Placement::OtherSource if pkg.is_git_source() => {
+                report.incomplete_git.push(name.clone())
+            }
             Placement::OtherSource => report.other_sources.push(name.clone()),
             Placement::Keep => {}
         }
@@ -2169,6 +2197,36 @@ mod tests {
                     .to_string()
             ]
         );
+    }
+
+    #[test]
+    fn git_packages_without_a_location_are_reported() {
+        let (m, report) = import_report(&lock(
+            &[cran()],
+            &[
+                r#""gh": {"Package": "gh", "Version": "1.0.0", "Source": "GitHub",
+                       "RemoteUsername": "o"}"#
+                    .to_string(),
+                r#""g": {"Package": "g", "Version": "2.0.0", "Source": "git"}"#.to_string(),
+                r#""loc": {"Package": "loc", "Version": "1.0.0", "Source": "Local",
+                       "RemoteUrl": "/tmp/loc"}"#
+                    .to_string(),
+            ],
+        ));
+        assert_eq!(report.incomplete_git, ["g", "gh"]);
+        assert_eq!(report.other_sources, ["loc"]);
+        assert_eq!(
+            m.dependencies.get("gh"),
+            Some(&Dependency::Version("^1.0.0".to_string()))
+        );
+        let warnings = import_warnings(&report, "renv.lock");
+        assert_eq!(warnings.len(), 2);
+        assert!(
+            warnings[1].starts_with("2 package(s) in renv.lock come from GitHub, GitLab"),
+            "{}",
+            warnings[1]
+        );
+        assert!(warnings[1].ends_with(": g, gh"), "{}", warnings[1]);
     }
 
     #[test]
