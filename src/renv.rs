@@ -440,7 +440,10 @@ impl REnvLockfilePackage {
             "github" => host_repo("https://github.com", "api.github.com")?,
             "gitlab" => host_repo("https://gitlab.com", "")?,
             "bitbucket" => host_repo("https://bitbucket.org", "api.bitbucket.org")?,
-            "git" | "xgit" | "git2r" => non_empty(&self.RemoteUrl)?.to_string(),
+            "git" | "xgit" | "git2r" => {
+                let url = self.git_remote_url()?;
+                github_https_url(url).unwrap_or_else(|| url.to_string())
+            }
             _ => return None,
         };
         // `HEAD` is renv's spelling of "the default branch".
@@ -453,6 +456,17 @@ impl REnvLockfilePackage {
             subdir: non_empty(&self.RemoteSubdir).map(str::to_string),
             ..Default::default()
         })
+    }
+
+    /// The `RemoteUrl` of a package installed from a git URL, as opposed to
+    /// GitHub, GitLab or Bitbucket.
+    fn git_remote_url(&self) -> Option<&str> {
+        let kind = self.Source.trim().to_ascii_lowercase();
+        if matches!(kind.as_str(), "git" | "xgit" | "git2r") {
+            non_empty(&self.RemoteUrl)
+        } else {
+            None
+        }
     }
 
     /// Whether the package was installed from a package repository, as
@@ -570,6 +584,17 @@ fn git_host(host: &str, default_api: &str) -> String {
         rest
     };
     format!("{}://{}", scheme, rest)
+}
+
+/// The `https://` URL of a `git://github.com/` URL. GitHub does not serve
+/// the git protocol any more. `None` for any other URL.
+fn github_https_url(url: &str) -> Option<String> {
+    let prefix = "git://github.com/";
+    if has_scheme(url, &[prefix]) {
+        Some(format!("https://github.com/{}", &url[prefix.len()..]))
+    } else {
+        None
+    }
 }
 
 fn non_empty(s: &Option<String>) -> Option<&str> {
@@ -997,6 +1022,12 @@ struct ImportReport {
     /// The packages from a source that rig cannot import, e.g. a URL or a
     /// local file, in order. They are imported as plain version requirements.
     other_sources: Vec<String>,
+    /// The packages from a `git://github.com/` URL, in order. They are
+    /// imported from the `https://` URL instead.
+    github_git_urls: Vec<String>,
+    /// The packages from a git URL that is not an `http://` or `https://`
+    /// URL, e.g. an SSH URL, in order. They are imported with that URL.
+    other_git_urls: Vec<String>,
 }
 
 /// The warnings about the packages of the lock file `input` that the import
@@ -1011,6 +1042,26 @@ fn import_warnings(report: &ImportReport, input: &str) -> Vec<String> {
             report.other_sources.len(),
             input,
             report.other_sources.join(", ")
+        ));
+    }
+
+    if !report.github_git_urls.is_empty() {
+        warnings.push(format!(
+            "{} package(s) in {} come from a git:// URL of GitHub, which GitHub \
+             does not serve any more; they were imported from the https:// URL: {}",
+            report.github_git_urls.len(),
+            input,
+            report.github_git_urls.join(", ")
+        ));
+    }
+
+    if !report.other_git_urls.is_empty() {
+        warnings.push(format!(
+            "{} package(s) in {} come from a git URL that is not an http:// or \
+             https:// URL, and may need manual adjustment: {}",
+            report.other_git_urls.len(),
+            input,
+            report.other_git_urls.join(", ")
         ));
     }
 
@@ -1078,6 +1129,13 @@ fn apply_lockfile(
     packages.sort_by(|a, b| a.0.cmp(b.0));
     for (name, pkg) in packages {
         if let Some(table) = pkg.git_dep_table() {
+            if let Some(url) = pkg.git_remote_url() {
+                if github_https_url(url).is_some() {
+                    report.github_git_urls.push(name.clone());
+                } else if !is_http_url(url) {
+                    report.other_git_urls.push(name.clone());
+                }
+            }
             set_git_source(manifest, name, &table);
             continue;
         }
@@ -2113,6 +2171,48 @@ mod tests {
         );
     }
 
+    #[test]
+    fn git_urls_that_are_not_http_urls_are_reported() {
+        let (m, report) = import_report(&lock(
+            &[cran()],
+            &[
+                r#""ssh": {"Package": "ssh", "Version": "1.0.0", "Source": "git",
+                       "RemoteUrl": "git@git.example.com:team/ssh.git", "RemoteSha": "abc"}"#
+                    .to_string(),
+                r#""gh": {"Package": "gh", "Version": "1.0.0", "Source": "git",
+                       "RemoteUrl": "git://github.com/o/gh.git", "RemoteSha": "abc"}"#
+                    .to_string(),
+                r#""web": {"Package": "web", "Version": "1.0.0", "Source": "git",
+                       "RemoteUrl": "https://git.example.com/web.git", "RemoteSha": "abc"}"#
+                    .to_string(),
+            ],
+        ));
+        assert_eq!(report.github_git_urls, ["gh"]);
+        assert_eq!(report.other_git_urls, ["ssh"]);
+        // The SSH URL is kept as it is.
+        assert!(matches!(
+            m.dependencies.get("ssh"),
+            Some(Dependency::Detailed(t))
+                if t.git.as_deref() == Some("git@git.example.com:team/ssh.git")
+        ));
+        assert!(matches!(
+            m.dependencies.get("gh"),
+            Some(Dependency::Detailed(t))
+                if t.git.as_deref() == Some("https://github.com/o/gh.git")
+        ));
+        assert_eq!(
+            import_warnings(&report, "renv.lock"),
+            vec![
+                "1 package(s) in renv.lock come from a git:// URL of GitHub, which GitHub \
+                  does not serve any more; they were imported from the https:// URL: gh"
+                    .to_string(),
+                "1 package(s) in renv.lock come from a git URL that is not an http:// or \
+                  https:// URL, and may need manual adjustment: ssh"
+                    .to_string(),
+            ]
+        );
+    }
+
     // A Linux binary URL only works on one distribution.
     #[test]
     fn linux_binary_urls_are_imported_as_source_urls() {
@@ -2425,7 +2525,7 @@ mod tests {
     }
 
     #[test]
-    fn git_urls_of_any_scheme_are_kept() {
+    fn git_urls_of_github_are_https_urls() {
         let t = git_dep(
             r#"{"Package": "skeleton", "Version": "1.0.1", "Source": "git",
                 "RemoteUrl": "git://github.com/kevinushey/skeleton.git",
@@ -2433,7 +2533,7 @@ mod tests {
         );
         assert_eq!(
             t.unwrap().git.as_deref(),
-            Some("git://github.com/kevinushey/skeleton.git")
+            Some("https://github.com/kevinushey/skeleton.git")
         );
         // Older lock files have no commit, only the ref.
         let t = git_dep(
