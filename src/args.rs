@@ -2382,6 +2382,16 @@ pub fn rig_app() -> Command {
                         .action(clap::ArgAction::SetTrue),
                 )
                 .arg(
+                    Arg::new("keep-ppm-snapshots")
+                        .help(
+                            "Keep Posit Package Manager snapshots as they are, instead\n\
+                            of using the built-in CRAN and Bioconductor repositories\n\
+                            for public snapshots and `latest` for private ones.",
+                        )
+                        .long("keep-ppm-snapshots")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
                     Arg::new("force")
                         .help("Overwrite existing project files")
                         .long("force")

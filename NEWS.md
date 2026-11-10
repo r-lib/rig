@@ -1,5 +1,9 @@
 # rig 0.11.2-dev (development version)
 
+* `rig proj renv import` improvements:
+   - import repositories, detect their type,
+   - warns about packages from unsupported sources (e.g. GitHub).
+
 * New `rig audit` command: it checks the packages of a project's lock file
   and library, or of an R library, for known vulnerabilities and for
   versions that the repository blocks. `rig audit --fix` upgrades them to
