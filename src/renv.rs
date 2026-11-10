@@ -1078,12 +1078,7 @@ fn apply_lockfile(
     packages.sort_by(|a, b| a.0.cmp(b.0));
     for (name, pkg) in packages {
         if let Some(table) = pkg.git_dep_table() {
-            manifest.add_remote_dependency(name, table, false);
-            // The locked commit replaces any version requirement of the
-            // manifest, which it may not satisfy.
-            if let Some(Dependency::Detailed(t)) = manifest.dependencies.get_mut(name) {
-                t.version = None;
-            }
+            set_git_source(manifest, name, &table);
             continue;
         }
         manifest.add_dependency(name, &format!("^{}", pkg.Version), false);
@@ -1189,6 +1184,42 @@ fn apply_lockfile(
         }
     }
     Ok(report)
+}
+
+/// Make `git` the source of the dependency `name`: add it to
+/// `[dependencies]`, and replace the entry of every other table that lists
+/// it, so that the package has one source. Each entry keeps its `attach`,
+/// `enhances` and `vignette-builder` flags, but not its version requirement
+/// or repository pin: the locked commit replaces them, and it may not
+/// satisfy them.
+fn set_git_source(manifest: &mut Rproj, name: &str, git: &DepTable) {
+    let entry = |old: Option<&Dependency>| {
+        let table = match old {
+            Some(Dependency::Detailed(old)) => DepTable {
+                attach: old.attach,
+                enhances: old.enhances,
+                vignette_builder: old.vignette_builder,
+                ..git.clone()
+            },
+            _ => git.clone(),
+        };
+        Dependency::Detailed(Box::new(table))
+    };
+    let new = entry(manifest.dependencies.get(name));
+    manifest.dependencies.insert(name.to_string(), new);
+    let others = std::iter::once(&mut manifest.linking_dependencies)
+        .chain(
+            manifest
+                .dependency_groups
+                .values_mut()
+                .map(|g| &mut g.dependencies),
+        )
+        .chain(manifest.optional_dependencies.values_mut());
+    for table in others {
+        if let Some(dep) = table.get_mut(name) {
+            *dep = entry(Some(dep));
+        }
+    }
 }
 
 /// Pin the dependency `name` to the repository `repo`, or remove its pin if
@@ -2946,6 +2977,65 @@ mod tests {
                 ..Default::default()
             })))
         );
+    }
+
+    // Every table that lists the package gets the git source, so that the
+    // manifest has one source for it.
+    #[test]
+    fn a_git_package_replaces_its_entries_in_other_tables() {
+        let mut manifest = Rproj::minimal("proj");
+        manifest
+            .repository
+            .push(Repository::at_url("internal", INTERNAL_URL));
+        manifest
+            .dependency_groups
+            .entry("dev".to_string())
+            .or_default()
+            .dependencies
+            .insert(
+                "ts".to_string(),
+                Dependency::Detailed(Box::new(DepTable {
+                    version: Some("^2.0.0".to_string()),
+                    repository: Some("internal".to_string()),
+                    vignette_builder: Some(true),
+                    ..Default::default()
+                })),
+            );
+        manifest
+            .linking_dependencies
+            .insert("ts".to_string(), Dependency::Version("^2.0.0".to_string()));
+        merge(
+            &mut manifest,
+            &lock(
+                &[cran()],
+                &[
+                    r#""ts": {"Package": "ts", "Version": "0.1.0", "Source": "GitHub",
+                       "RemoteUsername": "o", "RemoteRepo": "ts", "RemoteSha": "3f2a"}"#
+                        .to_string(),
+                ],
+            ),
+        );
+        let git = DepTable {
+            git: Some("https://github.com/o/ts.git".to_string()),
+            rev: Some("3f2a".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            manifest.dependencies.get("ts"),
+            Some(&Dependency::Detailed(Box::new(git.clone())))
+        );
+        assert_eq!(
+            manifest.linking_dependencies.get("ts"),
+            Some(&Dependency::Detailed(Box::new(git.clone())))
+        );
+        assert_eq!(
+            manifest.dependency_groups["dev"].dependencies.get("ts"),
+            Some(&Dependency::Detailed(Box::new(DepTable {
+                vignette_builder: Some(true),
+                ..git
+            })))
+        );
+        assert!(manifest.repository_pins().unwrap().is_empty());
     }
 
     // An existing entry for a private Bioconductor serves the Bioconductor
