@@ -154,12 +154,17 @@ ENVS = -e REDHAT_ORG_RHEL7=$(REDHAT_ORG) \
        -e REDHAT_ACTIVATION_KEY_RHEL9=$(REDHAT_ACTIVATION_KEY_RHEL9) \
        -e REDHAT_ACTIVATION_KEY_RHEL10=$(REDHAT_ACTIVATION_KEY_RHEL10)
 
+# Public DNS servers for the test containers. The GitHub runners' own DNS
+# sometimes cannot resolve archive.ubuntu.com and security.ubuntu.com, and
+# then no Ubuntu container can install R. Set DOCKER_DNS= to use the host's.
+DOCKER_DNS ?= --dns 8.8.8.8 --dns 1.1.1.1
+
 define GEN_TESTS
 linux-test-$(variant):
 	mkdir -p tests/results
 	rm -f tests/results/`echo $(variant) | tr / -`.fail \
 	      tests/results/`echo $(variant) | tr / -`.success
-	docker run -t --rm $(DOCKER_ARCH) --privileged \
+	docker run -t --rm $(DOCKER_ARCH) $(DOCKER_DNS) --privileged \
 		-v $(PWD):/work $(ENVS) `echo $(variant) | tr - :` \
 		bash -c /work/tests/test-linux-docker.sh && \
 	touch tests/results/`echo $(variant) | tr / -`.success || \
