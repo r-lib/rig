@@ -2392,12 +2392,9 @@ pub fn rig_app() -> Command {
                         .action(clap::ArgAction::SetTrue),
                 )
                 .arg(
-                    Arg::new("exact-versions")
-                        .help(
-                            "Require exactly the locked package versions, instead of\n\
-                            compatible ones",
-                        )
-                        .long("exact-versions")
+                    Arg::new("no-lock-versions")
+                        .help("Do not create rproj.lock with the package versions of renv.lock")
+                        .long("no-lock-versions")
                         .action(clap::ArgAction::SetTrue),
                 )
                 .arg(

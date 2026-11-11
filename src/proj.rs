@@ -206,6 +206,18 @@ pub fn init_rvenv_for_manifest(
     manifest_path: &Path,
 ) -> Result<(), Box<dyn Error>> {
     let rver = resolve_project_r_version(args)?;
+    init_rvenv_files(root, manifest_path)?;
+    OUTPUT.info(&format!(
+        "Project set up for R {}. Next: run `rig proj lock` and `rig proj sync`.",
+        rver
+    ));
+    Ok(())
+}
+
+/// Write the tracked part of the `.rvenv` layout for a freshly written
+/// manifest, and report every file the project now has, see
+/// [`init_rvenv_for_manifest`].
+pub fn init_rvenv_files(root: &Path, manifest_path: &Path) -> Result<(), Box<dyn Error>> {
     let mut created = vec![manifest_path.to_path_buf()];
     created.extend(rvenv_init(root)?);
     for path in &created {
@@ -213,10 +225,6 @@ pub fn init_rvenv_for_manifest(
         OUTPUT.success(&format!("Created {}", name));
         info!("Created {}", name);
     }
-    OUTPUT.info(&format!(
-        "Project set up for R {}. Next: run `rig proj lock` and `rig proj sync`.",
-        rver
-    ));
     Ok(())
 }
 
@@ -2217,7 +2225,7 @@ fn record_r_universe_remotes(reg: &RPackageRegistry, solution: &RegistrySolution
 /// release is latest -- exactly the remote round trip being skipped, so it
 /// can't be part of the key up front. [`existing_release_refs`] gives that
 /// case its own sticky mechanism, keyed on URL and subdirectory alone.
-type GitSourceKey = (String, Option<String>, Option<String>);
+pub(crate) type GitSourceKey = (String, Option<String>, Option<String>);
 
 /// Read and parse the `rproj.lock` at `root`, if there is one and it's the
 /// current lock format -- `None` for a first `rig proj lock`, or one
@@ -3334,6 +3342,15 @@ struct ProjLockOptions {
     /// name and an extra version requirement for this solve only, `"*"` if
     /// none was given, see [`parse_upgrade_packages`].
     upgrade_packages: Vec<(String, String)>,
+    /// Version requirements that every target has to satisfy, in addition
+    /// to the manifest's, as package name and requirement. Like
+    /// `upgrade_packages`, they force a new solve, but they are not
+    /// upgrades: the other packages keep their versions. `rig proj renv
+    /// import` uses them to lock the versions of `renv.lock`.
+    locked_versions: Vec<(String, String)>,
+    /// Commits to lock git dependencies at, instead of resolving their ref
+    /// against the remote. They win over the commits of the existing lock.
+    locked_git_shas: HashMap<GitSourceKey, String>,
     /// Solve for this machine only, instead of the default platform set.
     /// Used for the environments of scripts with inline metadata, which only
     /// ever run where they are created.
@@ -3379,6 +3396,7 @@ fn sc_proj_lock(
         host_only: false,
         lockfile_label: None,
         repos: interpret_pkg_repos_args(args)?,
+        ..Default::default()
     };
     if let Some(script) = args.get_one::<String>("script") {
         return proj_lock_script(Path::new(script), opts, args);
@@ -3526,6 +3544,27 @@ pub(crate) fn proj_lock_keep_targets(
         upgrade,
         upgrade_packages,
         lockfile_label: Some(lockfile_label.to_string()),
+        ..Default::default()
+    };
+    proj_lock(root, &opts, args)
+}
+
+/// Lock the project in `root` for R `r_version` and the default platform
+/// set, at exactly the package versions of `locked_versions` (package name
+/// and requirement) and the git commits of `locked_git_shas`. This is how
+/// `rig proj renv import` writes `rproj.lock` with the versions of
+/// `renv.lock`. Fails if they do not resolve.
+pub(crate) fn proj_lock_locked_versions(
+    root: &Path,
+    r_version: &str,
+    locked_versions: Vec<(String, String)>,
+    locked_git_shas: HashMap<GitSourceKey, String>,
+    args: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let opts = ProjLockOptions {
+        r_versions: vec![r_version.to_string()],
+        locked_versions,
+        locked_git_shas,
         ..Default::default()
     };
     proj_lock(root, &opts, args)
@@ -4417,13 +4456,14 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         .iter()
         .map(|(n, _)| n.clone())
         .collect();
-    let (known_shas, known_releases) = match &existing_lock {
+    let (mut known_shas, known_releases) = match &existing_lock {
         Some(lock) => (
             existing_git_shas(lock, &upgrade_names),
             existing_release_refs(lock, &upgrade_names),
         ),
         None => (HashMap::new(), HashMap::new()),
     };
+    known_shas.extend(opts.locked_git_shas.clone());
     let git_sources = resolve_git_sources(&solve.git_deps, &known_shas, &known_releases)?;
 
     // For a package project (see `solve.self_alias`): the project's own
@@ -4463,7 +4503,12 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     for st in &solve_targets {
         let existing = existing_lock
             .as_ref()
-            .filter(|_| options_match && opts.upgrade_packages.is_empty())
+            .filter(|_| {
+                options_match
+                    && opts.upgrade_packages.is_empty()
+                    && opts.locked_versions.is_empty()
+                    && opts.locked_git_shas.is_empty()
+            })
             .and_then(|lock| {
                 existing_lock_satisfies(
                     lock,
@@ -4561,11 +4606,20 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // existing lock pins for it, where they fit, so e.g. adding a dependency
     // does not upgrade everything else. Only `--upgrade` (and `--no-cache`),
     // which ignore the existing lock, solve from scratch.
-    let overrides = upgrade_overrides(&opts.upgrade_packages)?;
+    let overrides: Vec<(String, String)> = opts
+        .upgrade_packages
+        .iter()
+        .chain(&opts.locked_versions)
+        .cloned()
+        .collect();
+    let overrides = upgrade_overrides(&overrides)?;
+    // A locked version wins over the version of the existing lock.
+    let mut pref_skip = upgrade_names.clone();
+    pref_skip.extend(opts.locked_versions.iter().map(|(n, _)| n.clone()));
     let pins_of = |st: &SolveTarget| SolvePins {
         preferred: existing_lock
             .as_ref()
-            .map(|lock| lock_target_preferences(lock, &st.rver, &st.platform_key, &upgrade_names))
+            .map(|lock| lock_target_preferences(lock, &st.rver, &st.platform_key, &pref_skip))
             .unwrap_or_default(),
         overrides: overrides.clone(),
     };

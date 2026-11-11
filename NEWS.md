@@ -1,14 +1,14 @@
 # rig 0.11.2-dev (development version)
 
 * `rig proj renv import` improvements:
-   - import repositories, detect their type,
-   - warn about packages from unsupported sources (e.g. URL or local file),
+   - create both `rproj.toml` and `rproj.lock`, with the lock file having
+     the same package versions as `renv.lock`, use `--no-lock-versions` to
+     skip creating `rproj.lock`;
+   - set `r-versions` in `rproj.toml` to the R version of `renv.lock`;
+   - import repositories, detect their type;
+   - warn about packages from unsupported sources (e.g. URL or local file);
    - import packages that renv installed from GitHub, GitLab, Bitbucket or
      git as `git` dependencies.
-
-* `rig proj renv import --exact-versions` imports exactly the package and R
-  versions of an `renv.lock`, which improves compatibility with existing renv
-  projects at the expense of rig's more advanced resolution functionality.
 
 * New `rig audit` command: it checks the packages of a project's lock file
   and library, or of an R library, for known vulnerabilities and for
