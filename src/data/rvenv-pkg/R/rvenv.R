@@ -35,7 +35,7 @@
   # throughout this file, is `<root>/.rvenv`, the machine-specific
   # environment `rig proj sync` builds -- the same path the RVENV
   # environment variable holds when a wrapper script started R.
-  root <- normalizePath(dirname(libname), mustWork = FALSE)
+  root <- normalizePath(dirname(libname), winslash = "/", mustWork = FALSE)
   venv <- file.path(root, ".rvenv")
   lib <- file.path(venv, "lib")
 
@@ -48,7 +48,7 @@
   # idempotent -- re-reading the user's .Renviron and warning about an
   # unsynced project -- are skipped.
   activated <- identical(
-    normalizePath(Sys.getenv("RVENV"), mustWork = FALSE),
+    normalizePath(Sys.getenv("RVENV"), winslash = "/", mustWork = FALSE),
     venv
   )
 
@@ -74,7 +74,7 @@
     # not set in this code path -- nothing was activated -- so the "did a
     # parent already do this?" flag is a separate variable here.
     warned <- identical(
-      normalizePath(Sys.getenv("RVENV_UNSYNCED"), mustWork = FALSE),
+      normalizePath(Sys.getenv("RVENV_UNSYNCED"), winslash = "/", mustWork = FALSE),
       venv
     )
     Sys.setenv(RVENV_UNSYNCED = venv)
@@ -131,11 +131,11 @@ restore_r_libs_user <- function(libname, lib) {
   # one can be what R_LIBS_USER points at now (`.Renviron`, or a `rig proj`
   # wrapper), and `RVENV_R_LIBS_USER` can hold the latter too, recorded by
   # `.Renviron` in a child of a session that was activated by a wrapper.
-  reject <- normalizePath(c(libname, lib), mustWork = FALSE)
+  reject <- normalizePath(c(libname, lib), winslash = "/", mustWork = FALSE)
   keep <- function(x) {
     x <- unlist(strsplit(x, sep, fixed = TRUE))
     x <- x[nzchar(x) & x != "NULL"]
-    x[!normalizePath(x, mustWork = FALSE) %in% reject]
+    x[!normalizePath(x, winslash = "/", mustWork = FALSE) %in% reject]
   }
 
   user <- paste(keep(Sys.getenv("R_LIBS_USER")), collapse = sep)

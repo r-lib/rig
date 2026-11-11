@@ -92,7 +92,7 @@ impl ResolvedLibrary {
 /// so a library name is never shadowed by an unrelated directory of the same
 /// name in the current directory. Prefix a relative path with `./` (or use an
 /// absolute path) to bypass the library name lookup.
-pub(super) fn resolve_library(args: &ArgMatches) -> Result<ResolvedLibrary, Box<dyn Error>> {
+pub(crate) fn resolve_library(args: &ArgMatches) -> Result<ResolvedLibrary, Box<dyn Error>> {
     let lib = args.get_one::<String>("library").map(|x| x.as_str());
     // A path needs no R version, so this also works with none installed.
     let rver = match lib {

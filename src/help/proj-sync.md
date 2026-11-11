@@ -19,6 +19,12 @@ changed since. Pass `--locked` to fail instead if `rproj.lock` is missing or
 out of date, see "Checking the lock file" in [`rig proj lock`](#rig-proj-lock). This is
 useful in CI. `--locked` reads `rproj.toml`, so it does not work with `--frozen`.
 
+A package of an r-universe repository is downloaded from r-universe, and rig
+checks its sha256. If the file is gone, or r-universe built the package again
+since the lock, rig builds the package from git, at the commit `rproj.lock`
+records, see "Repositories" in [`rig proj lock`](#rig-proj-lock). This needs `git`, and the
+tools to build the package from source.
+
 `--with-repos` (`--index`) and `--without-repos` (`--no-index`) lock again first,
 with the project's repositories changed, see "Repositories" in [`rig proj
 lock`](#rig-proj-lock). They do not work with `--frozen`.
@@ -52,6 +58,23 @@ to leave those packages alone instead.
 
 Pass `--dry-run` to print what sync would install, remove or write, without
 touching the R installation, the project library or `.rvenv`.
+
+Pass `--check` to check that the project environment is in sync with
+`rproj.lock`, without changing anything. It prints the same report as
+`--dry-run`, and then exits with status 1 if sync would install, update or
+remove a package, refresh `.rvenv`, or create `rproj.lock`. It exits with
+status 0 if the environment is in sync, and with status 2 on any other
+error, e.g. if there is no project in the current directory. Unlike [`rig proj status`](#rig-proj-status), it looks at the
+packages that are actually in the project library, so it also notices
+packages that were installed or removed by hand. This is useful in CI, or
+to check that a project's installation is still intact:
+
+```sh
+rig proj sync --frozen --check
+```
+
+`--check` does not work with `--exclude-newer`, `--with-repos` or
+`--without-repos`, which would lock again first.
 
 `--exclude-newer` runs [`rig proj lock`](#rig-proj-lock) with the same option first, even if
 there is an `rproj.lock` already, to ignore CRAN package versions published

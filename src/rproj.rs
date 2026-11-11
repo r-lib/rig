@@ -39,6 +39,7 @@ use crate::install::{
 use crate::pkgsource::lock::LockSource;
 use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::minor_r_version;
+use crate::repos::detect::RepoType;
 use crate::repos::feed::RepoId;
 use crate::rvenv::RPROJ_LOCK_FILE;
 use crate::solver::{RPackageRegistry, RegistrySolution};
@@ -655,6 +656,14 @@ pub struct DepTable {
     pub vignette_builder: Option<bool>,
 }
 
+impl DepTable {
+    /// Whether the package comes from git, a URL or a local path, instead of
+    /// a package repository.
+    pub fn has_other_source(&self) -> bool {
+        self.git.is_some() || self.url.is_some() || self.path.is_some()
+    }
+}
+
 /// A `[dependency-groups.<name>]` entry: package specs plus an optional
 /// `include-groups` list that pulls in other groups.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
@@ -678,12 +687,18 @@ pub struct Group {
 /// one off with `enabled = false`, pins Bioconductor's `version`, or puts the
 /// built-in repository at its place in the order. `explicit = true` makes a
 /// repository serve only the dependencies pinned to it with
-/// `{ repository = "<name>" }`. See [`Rproj::check_repositories`].
+/// `{ repository = "<name>" }`. `type` gives the type of a repository with a
+/// `url`, it is detected if not given, and `extend = false` turns off the
+/// extended metadata of a repository. See [`Rproj::check_repositories`].
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub struct Repository {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
+    pub repo_type: Option<RepoType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extend: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -716,6 +731,14 @@ impl Repository {
         }
     }
 
+    /// The entry of a built-in repository, turned off.
+    pub fn disabled(name: &str) -> Repository {
+        Repository {
+            enabled: Some(false),
+            ..Repository::builtin(name)
+        }
+    }
+
     /// Whether this is the built-in Bioconductor entry.
     pub fn is_bioc(&self) -> bool {
         self.name.eq_ignore_ascii_case(BIOC_REPOSITORY_NAME)
@@ -739,6 +762,12 @@ impl Repository {
     /// Whether the repository only serves the dependencies pinned to it.
     pub fn is_explicit(&self) -> bool {
         self.explicit.unwrap_or(false)
+    }
+
+    /// Whether the extended metadata of the repository is used, if it has
+    /// one.
+    pub fn is_extended(&self) -> bool {
+        self.extend.unwrap_or(true)
     }
 }
 
@@ -965,6 +994,12 @@ impl Rproj {
                         repo.name
                     );
                 }
+                if repo.repo_type.is_some() {
+                    bail!(
+                        "`[[repository]]` `{}` is a built-in repository, it cannot have a `type`",
+                        repo.name
+                    );
+                }
                 if repo.is_cran() && repo.version.is_some() {
                     bail!(
                         "`[[repository]]` `{}` cannot have a `version`, only the `{}` entry can",
@@ -1002,7 +1037,7 @@ impl Rproj {
             if table.repository.is_none() {
                 continue;
             }
-            if table.git.is_some() || table.url.is_some() || table.path.is_some() {
+            if table.has_other_source() {
                 bail!(
                     "Dependency `{}` has both a `repository` and a git, URL or local source",
                     pkg
@@ -1128,6 +1163,18 @@ impl Rproj {
             bail!("{}", must);
         }
         Ok(Some(versions))
+    }
+
+    /// Set `r-versions` in `[tool.rig]`, see [`Rproj::r_versions`].
+    pub fn set_r_versions(&mut self, versions: &[String]) {
+        let list = versions
+            .iter()
+            .map(|v| toml::Value::String(v.clone()))
+            .collect();
+        self.tool
+            .entry("rig".to_string())
+            .or_default()
+            .insert("r-versions".to_string(), toml::Value::Array(list));
     }
 
     /// The `prefer-binary` setting of `[tool.rig]`, as the number of newest
@@ -1590,7 +1637,7 @@ impl Rproj {
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {
-                    if t.git.is_some() || t.url.is_some() || t.path.is_some() {
+                    if t.has_other_source() {
                         let mut t = (**t).clone();
                         if let Some(path) = &t.path {
                             let path = Path::new(path);
@@ -1666,7 +1713,7 @@ impl Rproj {
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {
-                    if t.git.is_some() || t.url.is_some() || t.path.is_some() {
+                    if t.has_other_source() {
                         out.push((name.clone(), (**t).clone()));
                     }
                 }
@@ -2304,9 +2351,28 @@ fn format_dep_entry(dep: &DepVersionSpec) -> (String, bool) {
     match dep.constraints.first() {
         None => (dep.name.clone(), false),
         Some(c) => (
-            format!("{} ({} {})", dep.name, c.constraint_type, c.version),
+            format!(
+                "{} ({} {})",
+                dep.name,
+                description_operator(&c.constraint_type),
+                c.version
+            ),
             dep.constraints.len() > 1,
         ),
+    }
+}
+
+/// The operator R accepts in a DESCRIPTION dependency entry. This differs
+/// from [`VersionConstraintType`]'s `Display` (used for `rproj.toml`) for
+/// equality, which R spells `==` (a single `=` is not supported), and for
+/// strict comparisons, which R spells `>`/`<`, not `>>`/`<<`.
+fn description_operator(op: &VersionConstraintType) -> &'static str {
+    match op {
+        VersionConstraintType::GreaterOrEqual => ">=",
+        VersionConstraintType::LessOrEqual => "<=",
+        VersionConstraintType::Equal => "==",
+        VersionConstraintType::Greater => ">",
+        VersionConstraintType::Less => "<",
     }
 }
 
@@ -2321,7 +2387,7 @@ fn format_group_entry(name: &str, dep: &Dependency) -> Result<(String, bool), Bo
         if let Some(ref_) = &table.ref_ {
             return Ok((ref_.clone(), false));
         }
-        if table.git.is_some() || table.url.is_some() || table.path.is_some() {
+        if table.has_other_source() {
             return Ok((dep_table_to_pak_ref(name, table), false));
         }
     }
@@ -2877,6 +2943,14 @@ pub struct LockRepository {
     /// with `%v` for the Bioconductor version. Absent for the others.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<String>,
+    /// The type of a repository with a `url`, declared or detected when the
+    /// lock file was made. Locking again uses this instead of detecting the
+    /// type again, as long as the URL is the same.
+    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
+    pub repo_type: Option<RepoType>,
+    /// `false` if the extended metadata of the repository is turned off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extend: Option<bool>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub explicit: bool,
 }
@@ -3163,16 +3237,55 @@ impl RprojLockTarget {
             // that has been superseded has moved into the archive.
             let filename = format!("{}_{}.tar.gz", k, v.version);
             let repository = registry.artifact_repository(k, v);
-            let sources = match registry.artifact_url(k, v) {
-                Some(url) => vec![url],
-                None => vec![
-                    format!("https://cloud.r-project.org/src/contrib/{}", filename),
-                    format!(
-                        "https://cloud.r-project.org/src/contrib/Archive/{}/{}",
-                        k, filename
-                    ),
-                ],
+            let in_cran_layout = |base: &str| {
+                vec![
+                    format!("{}/src/contrib/{}", base, filename),
+                    format!("{}/src/contrib/Archive/{}/{}", base, k, filename),
+                ]
             };
+            let mut sources = match registry.artifact_url(k, v) {
+                Some(url) => vec![url],
+                None => in_cran_layout("https://cloud.r-project.org"),
+            };
+            // The cache file is named after the feed's URL, wherever the
+            // file is downloaded from.
+            let primary_url = sources[0].clone();
+            // A source package of a feed with a mirror, e.g. CRAN's feed for
+            // a CRAN mirror, comes from the mirror first, and from the feed's
+            // URL if the mirror does not have it. A binary package always
+            // comes from the feed's URL.
+            if let Some(mirror) = repository
+                .as_ref()
+                .filter(|_| !binary)
+                .and_then(|r| registry.mirror(r))
+            {
+                let mut mirrored = in_cran_layout(mirror);
+                mirrored.retain(|u| !sources.contains(u));
+                mirrored.append(&mut sources);
+                sources = mirrored;
+            }
+            // A package of an r-universe repository: the commit it was built
+            // from, and that commit as the last source, so that it can be
+            // built from git once r-universe replaces the file. There is no
+            // `RemoteType`, which would make it a git package.
+            if let Some(remote) = registry.r_universe_remote(k, v) {
+                metadata.insert(REMOTE_SHA_FIELD.to_string(), remote.sha.clone());
+                metadata.insert(REMOTE_URL_FIELD.to_string(), remote.url.clone());
+                if let Some(subdir) = &remote.subdir {
+                    metadata.insert(REMOTE_SUBDIR_FIELD.to_string(), subdir.clone());
+                }
+                if let Some(ref_) = &remote.ref_ {
+                    metadata.insert(REMOTE_REF_FIELD.to_string(), ref_.clone());
+                }
+                sources.push(
+                    LockSource::Git {
+                        url: remote.url,
+                        commit: remote.sha,
+                        subdir: remote.subdir,
+                    }
+                    .to_string(),
+                );
+            }
             // The cache file name has to tell two builds of one version apart,
             // and the repository path does not: several binaries share it.
             // A package of a CRAN-like repository without checksums has no
@@ -3181,7 +3294,7 @@ impl RprojLockTarget {
             let cranlike_url = repository
                 .as_ref()
                 .filter(|r| r.is_cranlike())
-                .map(|_| sources[0].as_str());
+                .map(|_| primary_url.as_str());
             let key = artifact_cache_key(
                 metadata
                     .get(REMOTE_HASH_FIELD)
@@ -3193,7 +3306,7 @@ impl RprojLockTarget {
                     None
                 },
             );
-            let target = target_path(&sources[0], &format!("src/{}", filename), key.as_deref());
+            let target = target_path(&primary_url, &format!("src/{}", filename), key.as_deref());
             let system_requirements = registry
                 .system_requirements(k, &v.version)
                 .filter(|_| lock_needs_system_requirements(platform.as_deref(), binary));
@@ -4819,6 +4932,30 @@ foo = "bar"
     }
 
     #[test]
+    fn to_description_writes_r_comparison_operators() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.insert(
+            "cli".to_string(),
+            Dependency::Version("= 3.6.0".to_string()),
+        );
+        m.dependencies.insert(
+            "dplyr".to_string(),
+            Dependency::Version("== 1.1.0".to_string()),
+        );
+        m.dependencies.insert(
+            "rlang".to_string(),
+            Dependency::Version("> 1.0".to_string()),
+        );
+        m.add_dependency("testthat", "= 3.0", true);
+
+        let (desc, dropped) = m.to_description().unwrap();
+        assert!(dropped.is_empty());
+        assert!(desc
+            .contains("Imports:\n    cli (== 3.6.0),\n    dplyr (== 1.1.0),\n    rlang (> 1.0)\n"));
+        assert!(desc.contains("Suggests:\n    testthat (== 3.0)\n"));
+    }
+
+    #[test]
     fn to_description_omits_absent_optional_fields() {
         let m = Rproj::minimal("bare");
         let (desc, dropped) = m.to_description().unwrap();
@@ -4982,6 +5119,15 @@ foo = "bar"
         assert!(read("[\"\"]").is_err());
         assert!(read("[]").is_err());
         assert!(Rproj::minimal("p").r_versions().unwrap().is_none());
+    }
+
+    #[test]
+    fn r_versions_can_be_set() {
+        let mut m = Rproj::minimal("p");
+        m.set_r_versions(&["4.4.1".to_string()]);
+        assert_eq!(m.r_versions().unwrap(), Some(vec!["4.4.1".to_string()]));
+        let m: Rproj = toml::from_str(&toml::to_string_pretty(&m).unwrap()).unwrap();
+        assert_eq!(m.r_versions().unwrap(), Some(vec!["4.4.1".to_string()]));
     }
 
     /// A version 5 lockfile names platforms by their P3M target, and is read
@@ -5593,6 +5739,26 @@ foo = "bar"
         let url_version =
             parse("[[repository]]\nname = \"other\"\nurl = \"https://x\"\nversion = \"1\"\n");
         assert!(url_version.check_repositories().is_err());
+
+        // `type` and `extend`.
+        let typed = parse(
+            "[[repository]]\nname = \"rlib\"\nurl = \"https://x\"\ntype = \"r-universe\"\n\n\
+             [[repository]]\nname = \"cran\"\nextend = false\n",
+        );
+        assert!(typed.check_repositories().is_ok());
+        assert_eq!(typed.repository[0].repo_type, Some(RepoType::RUniverse));
+        assert!(typed.repository[0].is_extended());
+        assert!(!typed.repository[1].is_extended());
+        let text = toml::to_string_pretty(&typed).unwrap();
+        assert!(text.contains("type = \"r-universe\""), "{}", text);
+        assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), typed);
+        let builtin_type = parse("[[repository]]\nname = \"cran\"\ntype = \"cran\"\n");
+        assert!(builtin_type.check_repositories().is_err());
+        let bad_type = toml::from_str::<Rproj>(
+            "[project]\nname = \"p\"\nversion = \"1.0.0\"\n\
+             [[repository]]\nname = \"x\"\nurl = \"https://x\"\ntype = \"nope\"\n",
+        );
+        assert!(bad_type.is_err());
 
         // Round trip keeps the entry and its place.
         let both = parse(

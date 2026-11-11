@@ -8,7 +8,7 @@ members = ["xtask"]
 
 [package]
 name = "rig"
-version = "0.11.1-dev"
+version = "0.11.2-dev"
 edition = "2021"
 authors = ["Gábor Csárdi <csardi.gabor@gmail.com>"]
 license = "MIT"
@@ -155,7 +155,9 @@ winreg = "0.10"
 # Compiled-in Mozilla root CA bundle (like curl's cacert.pem), added as extra
 # roots on Linux so rig works in minimal containers without a system CA store.
 [target.'cfg(target_os = "linux")'.dependencies]
-webpki-root-certs = "1"
+webpki-root-certs = "1.0.10"
+# find the system CA bundle, to point the portable R builds at it
+openssl-probe = "0.2.1"
 # system credential store via a pure-Rust Secret Service client (zbus), so the
 # static musl build works
 keyring = { version = "3.6", features = ["async-secret-service", "crypto-rust", "async-io"] }

@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::dcf::*;
 use crate::repos::feed::RepoId;
+use crate::repos::r_universe::RUniverseRemote;
 
 type RPackageName = String;
 
@@ -26,6 +27,14 @@ pub trait PackageVersionLoader: Send {
     /// For the message about the missing package.
     fn os_type_hidden(&self, _package: &str) -> Option<String> {
         None
+    }
+
+    /// The versions of `package` that [`Self::load_versions`] left out
+    /// because their repository blocks them, with the reason, see
+    /// [`crate::repos::policy::VersionPolicy::block_reason`]. For the
+    /// messages about them.
+    fn blocked_hidden(&self, _package: &str) -> Vec<(RPackageVersion, String)> {
+        vec![]
     }
 }
 
@@ -500,6 +509,17 @@ pub struct RPackageRegistry {
     repos_description: Option<String>,
     // Package to the repository it is pinned to, for the same message.
     pinned: HashMap<RPackageName, String>,
+    // The mirror of every feed of the solve that has one, e.g. a CRAN
+    // mirror for CRAN's feed, see `MetadataFeed::mirror`. Never read by the
+    // solver itself, only by the lockfile writer, which downloads source
+    // packages from the mirror first.
+    mirrors: HashMap<RepoId, String>,
+    // The r-universe repositories of the solve, see `with_r_universes`.
+    r_universes: HashSet<RepoId>,
+    // Where every artifact of an r-universe repository was built from, see
+    // `set_r_universe_remote`. Never read by the solver itself, only by the
+    // lockfile writer.
+    r_universe_remotes: RefCell<HashMap<(RPackageName, RegistryPackageVersion), RUniverseRemote>>,
     // The `SystemRequirements` of every package version we know one for, by
     // version rather than by artifact: the source and binary builds of a
     // version share it. Never read by the solver itself, only by the lockfile
@@ -509,6 +529,12 @@ pub struct RPackageRegistry {
     // lockfile, like `system_requirements`, so that `rig proj sync` can skip
     // the packages of a source-only lock that do not work on its OS.
     os_type: RefCell<HashMap<(RPackageName, RPackageVersion), String>>,
+    // The known vulnerabilities of every package version that has any,
+    // from its repository's extended metadata. Never read by the solver
+    // itself: a vulnerable version is not avoided, the callers warn about
+    // it after the solve.
+    vulnerabilities:
+        RefCell<HashMap<(RPackageName, RPackageVersion), Vec<crate::repos::policy::Vulnerability>>>,
     // How many newest binaries win. Can be None.
     prefer_binary: Option<usize>,
     // Passed over newer version that does not have a binary.
@@ -672,6 +698,54 @@ impl RPackageRegistry {
             .cloned()
     }
 
+    /// Record the mirrors of the feeds of the solve, see [`Self::mirror`].
+    pub fn with_mirrors(mut self, mirrors: HashMap<RepoId, String>) -> Self {
+        self.mirrors = mirrors;
+        self
+    }
+
+    /// Record the r-universe repositories of the solve, see
+    /// [`Self::is_r_universe`].
+    pub fn with_r_universes(mut self, repos: HashSet<RepoId>) -> Self {
+        self.r_universes = repos;
+        self
+    }
+
+    /// Whether `repo` is an r-universe repository.
+    pub fn is_r_universe(&self, repo: &RepoId) -> bool {
+        self.r_universes.contains(repo)
+    }
+
+    /// Record where an artifact of an r-universe repository was built from.
+    pub fn set_r_universe_remote(
+        &self,
+        package: &RPackageName,
+        version: &RegistryPackageVersion,
+        remote: RUniverseRemote,
+    ) {
+        self.r_universe_remotes
+            .borrow_mut()
+            .insert((package.clone(), version.clone()), remote);
+    }
+
+    /// Where an artifact of an r-universe repository was built from, if
+    /// known.
+    pub fn r_universe_remote(
+        &self,
+        package: &RPackageName,
+        version: &RegistryPackageVersion,
+    ) -> Option<RUniverseRemote> {
+        self.r_universe_remotes
+            .borrow()
+            .get(&(package.clone(), version.clone()))
+            .cloned()
+    }
+
+    /// The mirror of the feed `repo`, without a trailing `/`, if it has one.
+    pub fn mirror(&self, repo: &RepoId) -> Option<&str> {
+        self.mirrors.get(repo).map(|m| m.as_str())
+    }
+
     /// The repository of a resolved artifact, when it came from one.
     pub fn artifact_repository(
         &self,
@@ -811,6 +885,67 @@ impl RPackageRegistry {
         ))
     }
 
+    /// The known vulnerabilities of `pkg` `version`, if it has any.
+    pub fn vulnerabilities(
+        &self,
+        pkg: &RPackageName,
+        version: &RPackageVersion,
+    ) -> Option<Vec<crate::repos::policy::Vulnerability>> {
+        self.vulnerabilities
+            .borrow()
+            .get(&(pkg.clone(), version.clone()))
+            .cloned()
+    }
+
+    /// The versions of `pkg` that the solve does not see because their
+    /// repository blocks them, with the reason.
+    pub fn blocked_versions(&self, pkg: &RPackageName) -> Vec<(RPackageVersion, String)> {
+        match self.loader.as_ref() {
+            Some(loader) => {
+                self.ensure_loaded(pkg);
+                loader.blocked_hidden(pkg)
+            }
+            None => vec![],
+        }
+    }
+
+    /// The message about the blocked versions of `pkg`, the ones in `range`
+    /// if that is given.
+    fn blocked_hint(
+        &self,
+        pkg: &RPackageName,
+        range: Option<&RPackageVersionRanges>,
+    ) -> Option<String> {
+        let blocked: Vec<(RPackageVersion, String)> = self
+            .blocked_versions(pkg)
+            .into_iter()
+            .filter(|(v, _)| {
+                range.is_none_or(|r| {
+                    r.contains(&RegistryPackageVersion {
+                        name: pkg.clone(),
+                        version: v.clone(),
+                        artifact: Artifact::Source,
+                    })
+                })
+            })
+            .collect();
+        match blocked.as_slice() {
+            [] => None,
+            [(v, reason)] => Some(format!(
+                "{} {} is blocked by the repository ({}).",
+                pkg, v, reason
+            )),
+            more => Some(format!(
+                "These versions of {} are blocked by the repository: {}.",
+                pkg,
+                more.iter()
+                    .map(|(v, reason)| format!("{} ({})", v, reason))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+        }
+    }
+
     /// Record the `OS_type` of `pkg` `version`.
     pub fn set_os_type(&self, pkg: &RPackageName, version: &RPackageVersion, os_type: String) {
         self.os_type
@@ -938,6 +1073,13 @@ impl RPackageRegistry {
                         }
                         if let Some(os_type) = &package.os_type {
                             self.set_os_type(pkg, &package.version, os_type.clone());
+                        }
+                        if let Some(policy) = package.policy.as_ref().filter(|p| p.is_vulnerable())
+                        {
+                            self.vulnerabilities.borrow_mut().insert(
+                                (pkg.clone(), package.version.clone()),
+                                policy.vulnerabilities.clone(),
+                            );
                         }
                         self.add_package_version(pkg.clone(), src, ranges.clone());
                         for bin in artifacts.binaries.iter().filter(|b| {
@@ -1256,6 +1398,9 @@ pub fn format_solver_error(err: PubGrubError<RPackageRegistry>, reg: &RPackageRe
             if let Some(hint) = reg.os_type_hint(&package) {
                 return format!("  {}", hint);
             }
+            if let Some(hint) = reg.blocked_hint(&package, None) {
+                return format!("  {}", hint);
+            }
             if let Some(repo) = reg.pinned.get(&package) {
                 return format!(
                     "  Package {} is not available in {}, the repository it is pinned to.",
@@ -1291,6 +1436,10 @@ pub fn format_solver_error(err: PubGrubError<RPackageRegistry>, reg: &RPackageRe
             hinted.insert(pkg);
             hints.push(hint);
             continue;
+        }
+        if let Some(hint) = reg.blocked_hint(pkg, Some(range)) {
+            hinted.insert(pkg);
+            hints.push(hint);
         }
         let Some((below, above)) = reg.nearest_versions(pkg, range) else {
             continue;
@@ -1453,6 +1602,102 @@ mod tests {
         assert!(!vs.contains(&source("p", "0.9.9")));
         assert!(!vs.contains(&source("p", "1.0.1")));
         assert!(!vs.contains(&source("p", "1.0.0.1")));
+    }
+
+    // ---------------------------------------------------------------------
+    // Mirrors
+
+    /// One version of `a` from CRAN's feed, at a P3M snapshot URL.
+    struct FeedSource;
+
+    impl PackageVersionLoader for FeedSource {
+        fn load_versions(&self, package: &str) -> Result<Vec<crate::dcf::Package>, Box<dyn Error>> {
+            if package != "a" {
+                return Ok(vec![]);
+            }
+            let mut pkg =
+                crate::dcf::Package::from_crandb("a".to_string(), version("1.0.0"), vec![]);
+            pkg.download_url =
+                Some("https://p3m.dev/cran/2026-01-01/src/contrib/a_1.0.0.tar.gz".to_string());
+            pkg.sha256sum = Some("sha-a".to_string());
+            pkg.repository = Some(RepoId::Cran);
+            Ok(vec![pkg])
+        }
+    }
+
+    /// A binary of `a` from CRAN's feed.
+    struct FeedBinaries;
+
+    impl BinaryIndexLoader for FeedBinaries {
+        fn load_artifacts(&self, package: &str) -> Result<PackageArtifacts, Box<dyn Error>> {
+            let binaries = if package == "a" {
+                vec![BinaryArtifact {
+                    version: version("1.0.0"),
+                    row: 1,
+                    url: "https://p3m.dev/cran/bin/a_1.0.0.tgz".to_string(),
+                    sha256: "sha-a-bin".to_string(),
+                    linkingto: vec![],
+                    repository: Some(RepoId::Cran),
+                    built: None,
+                }]
+            } else {
+                vec![]
+            };
+            Ok(PackageArtifacts {
+                binaries,
+                source_urls: HashMap::new(),
+                source_sha256: HashMap::new(),
+            })
+        }
+
+        fn target_name(&self) -> String {
+            "stub".to_string()
+        }
+    }
+
+    fn lock_sources(binaries: Option<Box<dyn BinaryIndexLoader>>) -> Vec<String> {
+        let reg = RPackageRegistry::with_loaders(Box::new(FeedSource), binaries).with_mirrors(
+            HashMap::from([(RepoId::Cran, "https://cran.acme.com".to_string())]),
+        );
+        reg.add_package_version(
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+            ranges("a"),
+        );
+        let solution = resolve(
+            &reg,
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+        )
+        .unwrap();
+        let target = crate::rproj::RprojLockTarget::from_solution(&reg, &solution);
+        target
+            .packages
+            .iter()
+            .find(|p| p.package == "a")
+            .unwrap()
+            .sources
+            .clone()
+    }
+
+    #[test]
+    fn source_packages_come_from_the_mirror_first() {
+        assert_eq!(
+            lock_sources(None),
+            vec![
+                "https://cran.acme.com/src/contrib/a_1.0.0.tar.gz",
+                "https://cran.acme.com/src/contrib/Archive/a/a_1.0.0.tar.gz",
+                "https://p3m.dev/cran/2026-01-01/src/contrib/a_1.0.0.tar.gz",
+            ]
+        );
+    }
+
+    #[test]
+    fn binary_packages_come_from_the_feed() {
+        assert_eq!(
+            lock_sources(Some(Box::new(FeedBinaries))),
+            vec!["https://p3m.dev/cran/bin/a_1.0.0.tgz"]
+        );
     }
 
     // ---------------------------------------------------------------------

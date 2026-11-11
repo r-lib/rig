@@ -42,6 +42,7 @@ use linux::*;
 use resolve::*;
 
 mod alias;
+mod audit;
 mod auth;
 mod built;
 mod cache;
@@ -290,12 +291,19 @@ fn main_() -> i32 {
         }
         Err(err) => {
             let msg = format!("{}", err);
-            if err.downcast_ref::<output::ReportedError>().is_none() && !OUTPUT.error_shown(&msg) {
+            let (reported, status) = match err.downcast_ref::<output::ExitStatusError>() {
+                Some(e) => (
+                    e.error.downcast_ref::<output::ReportedError>().is_some(),
+                    e.status,
+                ),
+                None => (err.downcast_ref::<output::ReportedError>().is_some(), 1),
+            };
+            if !reported && !OUTPUT.error_shown(&msg) {
                 OUTPUT.error(&msg);
             }
             error!("{}", err);
             info!("RIG END [pid:{}] {}", pid, cmdline);
-            1
+            status
         }
     };
 
@@ -308,6 +316,7 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
     let mut retval: i32 = 0;
     match args.subcommand() {
         Some(("add", sub)) => sc_add_cmd(sub, args)?,
+        Some(("audit", sub)) => retval = audit::sc_audit(sub, args)?,
         Some(("default", sub)) => sc_default(sub, args)?,
         Some(("list", sub)) => sc_list(sub, args)?,
         Some(("proj", sub)) => sc_proj(sub, args)?,
@@ -315,7 +324,11 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("self", sub)) => sc_self(sub, args)?,
         Some(("system", sub)) => sc_system(sub, args)?,
         Some(("rtools", sub)) => sc_system_rtools(sub, args)?,
-        Some(("pkg", sub)) => sc_pkg(sub, args)?,
+        Some(("pkg", sub)) => match sub.subcommand() {
+            // The only `rig pkg` command with an exit status.
+            Some(("audit", s)) => retval = audit::sc_pkg_audit(s, args)?,
+            _ => sc_pkg(sub, args)?,
+        },
         Some(("ppm", sub)) => sc_ppm(sub, args)?,
         Some(("auth", sub)) => auth::cmd::sc_auth(sub, args)?,
         Some(("repos", sub)) => sc_repos(sub, args)?,

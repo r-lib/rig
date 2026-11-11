@@ -429,7 +429,11 @@ fn store_index(
     tsv: &[u8],
     etag: Option<String>,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
-    let rows = parse_binaries_tsv(tsv)?;
+    let mut rows = parse_binaries_tsv(tsv)?;
+    // The blob holds full URLs, relative ones are relative to ALLPACKAGES.
+    for row in rows.iter_mut() {
+        row.url = feed.resolve_url(&row.url);
+    }
     let built = blob::build(package, &rows)?;
     debug!(
         "Built binary index blob for '{}' ({} rows, {} bytes)",

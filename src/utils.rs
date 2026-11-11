@@ -4,6 +4,7 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 
 use regex::Regex;
@@ -199,6 +200,69 @@ pub fn normalize_modes(dir: &Path) -> std::io::Result<()> {
 #[cfg(not(unix))]
 pub fn normalize_modes(_dir: &Path) -> std::io::Result<()> {
     Ok(())
+}
+
+/// A path in a form that R accepts on the command line.
+///
+/// On Windows `canonicalize()` returns a verbatim `\\?\C:\...` path, which R
+/// does not handle: `R CMD INSTALL` joins `/DESCRIPTION` onto a package
+/// directory, and Windows does not normalize `/` in a verbatim path, so the
+/// package looks invalid. Older R versions do not know about verbatim paths
+/// at all. So drop the `\\?\` prefix and use `/` as the separator, which every
+/// R version supports. Elsewhere the path is returned unchanged.
+pub fn r_path(path: &Path) -> PathBuf {
+    if cfg!(windows) {
+        match path.to_str() {
+            Some(s) => PathBuf::from(windows_r_path(s)),
+            None => path.to_path_buf(),
+        }
+    } else {
+        path.to_path_buf()
+    }
+}
+
+/// The longest path, in UTF-16 units, that Windows accepts without long path
+/// support. `MAX_PATH` is 260, including the terminating NUL.
+const WINDOWS_MAX_PATH: usize = 259;
+
+/// A hint for a failed `R CMD INSTALL`, if one of `paths` is too long for a
+/// Windows without long path support. Since `r_path()` gives R a plain path,
+/// such a path only works with R 4.3.0 or later, and only if long paths are
+/// enabled in Windows. Never a hint on other systems.
+pub fn long_path_hint(paths: &[&Path]) -> Option<String> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let long: Vec<String> = paths
+        .iter()
+        .filter(|p| is_too_long_for_windows(p))
+        .map(|p| p.display().to_string())
+        .collect();
+    if long.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "\n  These paths are longer than {} characters: {}\n  \
+         R needs long path support to use them: R 4.3.0 or later, and\n  \
+         `LongPathsEnabled` set in the Windows registry. Or use a shorter path.",
+        WINDOWS_MAX_PATH,
+        long.join(", ")
+    ))
+}
+
+fn is_too_long_for_windows(path: &Path) -> bool {
+    path.to_string_lossy().encode_utf16().count() > WINDOWS_MAX_PATH
+}
+
+fn windows_r_path(path: &str) -> String {
+    let plain = if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{}", rest)
+    } else if let Some(rest) = path.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        path.to_string()
+    };
+    plain.replace('\\', "/")
 }
 
 pub fn calculate_hash(s: &str) -> String {
@@ -476,14 +540,22 @@ pub fn get_r_install_dir() -> Result<Option<String>, Box<dyn Error>> {
     Ok(None)
 }
 
+// rig builds R paths and link targets with backslashes, so a root given
+// with forward slashes (`C:/R`) gets backslashes, and loses its trailing
+// separator, to compare equal to the same root written as `C:\R`.
+#[cfg(any(target_os = "windows", test))]
+fn normalize_windows_r_install_dir(val: &str) -> String {
+    val.replace('/', "\\").trim_end_matches('\\').to_string()
+}
+
 #[cfg(target_os = "windows")]
 pub fn get_r_install_dir() -> Result<Option<String>, Box<dyn Error>> {
     if let Ok(val) = std::env::var("RIG_R_INSTALL_DIR") {
-        return Ok(Some(val.trim_end_matches('\\').to_string()));
+        return Ok(Some(normalize_windows_r_install_dir(&val)));
     }
 
     if let Some(val) = crate::config::get_global_config_value("r-install-dir")? {
-        return Ok(Some(val.trim_end_matches('\\').to_string()));
+        return Ok(Some(normalize_windows_r_install_dir(&val)));
     }
 
     if get_mode()? == Mode::User {
@@ -741,13 +813,30 @@ fish_add_path --prepend --move \"$HOME/.local/bin\"
     Ok(())
 }
 
+// `rig add --without-path`: leave the user's PATH setup (shell startup files
+// on macOS and Linux, the user PATH on Windows) alone. Set once from the
+// parsed arguments; the PATH is edited from helpers that take no arguments.
+static SKIP_PATH_SETUP: AtomicBool = AtomicBool::new(false);
+
+pub fn set_skip_path_setup(skip: bool) {
+    SKIP_PATH_SETUP.store(skip, Ordering::Relaxed);
+}
+
+pub fn skip_path_setup() -> bool {
+    SKIP_PATH_SETUP.load(Ordering::Relaxed)
+}
+
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
     use crate::output::OUTPUT;
-    use std::sync::atomic::{AtomicBool, Ordering};
 
     static ADD_DONE: AtomicBool = AtomicBool::new(false);
     static WARN_DONE: AtomicBool = AtomicBool::new(false);
+
+    if skip_path_setup() {
+        debug!("--without-path, not touching shell startup files");
+        return Ok(());
+    }
 
     let binary_dir = get_binary_dir()?;
 
@@ -1235,5 +1324,44 @@ mod tests {
         assert_eq!(mode(&root), 0o700);
         // Not what a link points to.
         assert_eq!(mode(&outside), 0o666);
+    }
+}
+
+#[cfg(test)]
+mod r_path_tests {
+    use super::*;
+
+    #[test]
+    fn test_windows_r_path() {
+        assert_eq!(
+            windows_r_path(r"\\?\C:\Users\me\AppData\Local\pkg"),
+            "C:/Users/me/AppData/Local/pkg"
+        );
+        assert_eq!(
+            windows_r_path(r"\\?\UNC\server\share\lib"),
+            "//server/share/lib"
+        );
+        assert_eq!(windows_r_path(r"C:\Temp\lib"), "C:/Temp/lib");
+        assert_eq!(windows_r_path("C:/Temp/lib"), "C:/Temp/lib");
+    }
+
+    #[test]
+    fn test_is_too_long_for_windows() {
+        let ok = format!("C:/{}", "a".repeat(WINDOWS_MAX_PATH - 3));
+        assert!(!is_too_long_for_windows(Path::new(&ok)));
+        let long = format!("{}a", ok);
+        assert!(is_too_long_for_windows(Path::new(&long)));
+    }
+
+    #[test]
+    fn test_normalize_windows_r_install_dir() {
+        assert_eq!(normalize_windows_r_install_dir("C:\\R"), "C:\\R");
+        assert_eq!(normalize_windows_r_install_dir("C:/R"), "C:\\R");
+        assert_eq!(normalize_windows_r_install_dir("C:/R/"), "C:\\R");
+        assert_eq!(normalize_windows_r_install_dir("C:\\R\\"), "C:\\R");
+        assert_eq!(
+            normalize_windows_r_install_dir("D:/tools\\rig/r"),
+            "D:\\tools\\rig\\r"
+        );
     }
 }

@@ -101,12 +101,33 @@ aliasline() {
   esac
 }
 
+# Join wrapped lines in the "Commands:" block of `--help` output (stdin) onto
+# the entry they continue. clap indents each entry by two spaces and wraps a
+# long description onto a more deeply indented line, which would otherwise be
+# taken for a separate command.
+join_commands() {
+  awk '
+    function flush(){ if (pend != "") print pend; pend = "" }
+    /^Commands:/ { flush(); incmd = 1; print; next }
+    incmd && /^[[:space:]]*$/ { flush(); incmd = 0; print; next }
+    incmd {
+      match($0, /^ */)
+      if (RLENGTH > 2 && pend != ""){
+        s = $0; sub(/^ +/, "", s); pend = pend " " s
+      } else { flush(); pend = $0 }
+      next
+    }
+    { print }
+    END { flush() }
+  '
+}
+
 # List the (non-help) subcommand names from a command's --help output, with
 # their `{platform:<os>}` and `{aliases:<a>,<b>}` sentinels (empty when the
 # subcommand has none). The names live in the "Commands:" block, indented,
 # first whitespace-delimited token per line, terminated by a blank line.
 subcommands() {
-  "$RIG" "$@" --help 2>&1 |
+  "$RIG" "$@" --help 2>&1 | join_commands |
     awk '
       /^Commands:/ { incmd = 1; next }
       incmd && /^[[:space:]]*$/ { incmd = 0 }
@@ -424,7 +445,7 @@ emit() {
     # `Commands:` block) show only their subcommand list; per-command Usage
     # and Options would just duplicate what each subcommand documents.
     local synopsis cmdsonly=""
-    synopsis="$("$RIG" "$@" --help 2>&1 |
+    synopsis="$("$RIG" "$@" --help 2>&1 | join_commands |
       awk 'f && /^Examples:/ { exit } /^Usage:/ { f = 1 } f { print }')"
     case $synopsis in
       *"
@@ -490,7 +511,7 @@ rm -f "$refdir/_overview.md" "$refdir/_toc.md"
 : >"$refdir/_toc.md"
 printf '%s\n\n' "$MARKER" >>"$refdir/_toc.md"
 
-"$RIG" --help 2>&1 |
+"$RIG" --help 2>&1 | join_commands |
   awk '
     /^Commands:/ { incmd = 1; next }
     incmd && /^[[:space:]]*$/ { incmd = 0 }
