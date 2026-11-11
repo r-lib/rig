@@ -42,9 +42,12 @@ After the import, rig prints the repositories of `rproj.toml`. For each
 repository with a URL it shows the type (e.g. `ppm-snapshot` or `r-universe`)
 and the protocol it will use for it, and how many packages are pinned to it.
 
-Packages from any other source (e.g. GitHub, a URL or a local file) are
-currently imported as ordinary version requirements. rig prints a warning that
-they may need manual adjustment.
+A package that renv installed from GitHub, GitLab, Bitbucket or a git URL
+becomes a `git` dependency.
+
+Packages from any other source (e.g. a URL or a local file) are currently
+imported as ordinary version requirements. rig prints a warning that they may
+need manual adjustment.
 
 ## Files
 

@@ -2,7 +2,9 @@
 
 * `rig proj renv import` improvements:
    - import repositories, detect their type,
-   - warns about packages from unsupported sources (e.g. GitHub).
+   - warn about packages from unsupported sources (e.g. URL or local file),
+   - import packages that renv installed from GitHub, GitLab, Bitbucket or
+     git as `git` dependencies.
 
 * New `rig audit` command: it checks the packages of a project's lock file
   and library, or of an R library, for known vulnerabilities and for
