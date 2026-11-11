@@ -1165,6 +1165,18 @@ impl Rproj {
         Ok(Some(versions))
     }
 
+    /// Set `r-versions` in `[tool.rig]`, see [`Rproj::r_versions`].
+    pub fn set_r_versions(&mut self, versions: &[String]) {
+        let list = versions
+            .iter()
+            .map(|v| toml::Value::String(v.clone()))
+            .collect();
+        self.tool
+            .entry("rig".to_string())
+            .or_default()
+            .insert("r-versions".to_string(), toml::Value::Array(list));
+    }
+
     /// The `prefer-binary` setting of `[tool.rig]`, as the number of newest
     /// versions the solver considers, like `--prefer-binary=<n>`: `true` is
     /// the default number, [`PREFER_BINARY_DEFAULT`], `false` or `0` turns it
@@ -5107,6 +5119,15 @@ foo = "bar"
         assert!(read("[\"\"]").is_err());
         assert!(read("[]").is_err());
         assert!(Rproj::minimal("p").r_versions().unwrap().is_none());
+    }
+
+    #[test]
+    fn r_versions_can_be_set() {
+        let mut m = Rproj::minimal("p");
+        m.set_r_versions(&["4.4.1".to_string()]);
+        assert_eq!(m.r_versions().unwrap(), Some(vec!["4.4.1".to_string()]));
+        let m: Rproj = toml::from_str(&toml::to_string_pretty(&m).unwrap()).unwrap();
+        assert_eq!(m.r_versions().unwrap(), Some(vec!["4.4.1".to_string()]));
     }
 
     /// A version 5 lockfile names platforms by their P3M target, and is read

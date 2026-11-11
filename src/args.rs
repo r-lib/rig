@@ -2392,6 +2392,12 @@ pub fn rig_app() -> Command {
                         .action(clap::ArgAction::SetTrue),
                 )
                 .arg(
+                    Arg::new("no-lock-versions")
+                        .help("Do not create rproj.lock with the package versions of renv.lock")
+                        .long("no-lock-versions")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
                     Arg::new("force")
                         .help("Overwrite existing project files")
                         .long("force")

@@ -332,6 +332,41 @@ pub fn fetch_git_checkout(
     })
 }
 
+/// Whether a git ref name is a branch or a tag, see [`remote_ref_kind`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RefKind {
+    Branch,
+    Tag,
+}
+
+/// Ask the remote at `url` whether `name` is a branch or a tag, with
+/// `git ls-remote`, without fetching anything. A name that is both is a
+/// branch. Fails if it is neither, or the remote cannot be reached.
+pub fn remote_ref_kind(url: &str, name: &str) -> Result<RefKind, Box<dyn Error>> {
+    let output = duct::cmd("git", ["ls-remote", "--heads", "--tags", url, name])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdout_capture()
+        .stderr_capture()
+        .unchecked()
+        .run()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("`git ls-remote {}` failed: {}", url, stderr.trim());
+    }
+    let refs = String::from_utf8_lossy(&output.stdout);
+    let refs: Vec<&str> = refs
+        .lines()
+        .filter_map(|line| line.split_whitespace().nth(1))
+        .collect();
+    if refs.contains(&format!("refs/heads/{}", name).as_str()) {
+        Ok(RefKind::Branch)
+    } else if refs.contains(&format!("refs/tags/{}", name).as_str()) {
+        Ok(RefKind::Tag)
+    } else {
+        bail!("{} has no branch or tag `{}`", url, name)
+    }
+}
+
 /// Resolve `owner/repo`'s latest GitHub release to its tag name, without the
 /// GitHub REST API: `https://github.com/<owner>/<repo>/releases/latest`
 /// redirects to `.../releases/tag/<tag>`, so a single unauthenticated request

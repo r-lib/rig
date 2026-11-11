@@ -11,9 +11,11 @@ use serde_derive::Serialize;
 use crate::common::*;
 use crate::dcf::{DepVersionSpec, RDepType};
 use crate::output::OUTPUT;
+use crate::pkgsource::git::{remote_ref_kind, RefKind};
 use crate::proj::{
-    check_project_conflicts, init_rvenv_for_manifest, proj_binary_target, proj_lock_r_version,
-    proj_read_manifest_deps, sc_proj_solve_project_deps, BASE_PKGS,
+    check_project_conflicts, init_rvenv_files, proj_binary_target, proj_lock_locked_versions,
+    proj_lock_r_version, proj_read_manifest_deps, sc_proj_solve_project_deps, GitSourceKey,
+    BASE_PKGS,
 };
 use crate::proj_repos::ProjRepos;
 use crate::repos::cranlike_metadata::minor_r_version;
@@ -95,6 +97,7 @@ fn sc_renv_import(
     let default_input = "renv.lock".to_string();
     let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
     let dependencies_only = args.get_flag("dependencies");
+    let lock_versions = !args.get_flag("no-lock-versions");
     let root = std::env::current_dir()?;
     let path = root.join(RPROJ_MANIFEST_FILE);
     let path = path.as_path();
@@ -152,9 +155,17 @@ fn sc_renv_import(
     };
 
     let detect = |url: &str| resolve_repo(url, None);
+    let ref_kind = |url: &str, name: &str| match remote_ref_kind(url, name) {
+        Ok(kind) => Some(kind),
+        Err(e) => {
+            info!("Cannot tell if {} is a branch or a tag: {}", name, e);
+            None
+        }
+    };
     let options = ImportOptions {
         detect: &detect,
         keep_snapshots: args.get_flag("keep-ppm-snapshots"),
+        ref_kind: &ref_kind,
     };
     let report = apply_lockfile(
         &mut manifest,
@@ -168,6 +179,16 @@ fn sc_renv_import(
         OUTPUT.warn(&msg);
         warn!("{}", msg);
     }
+
+    // The project is for the R version of `renv.lock`, unless the user asks
+    // for another one. `r-versions` keeps `rig proj lock` at that version,
+    // instead of solving for the default R, which would drop the versions
+    // of `renv.lock`.
+    let r_version = args
+        .get_one::<String>("r-version")
+        .cloned()
+        .unwrap_or_else(|| lockfile.R.Version.clone());
+    manifest.set_r_versions(std::slice::from_ref(&r_version));
 
     fs::write(path, toml::to_string_pretty(&manifest)?)?;
 
@@ -190,7 +211,33 @@ fn sc_renv_import(
     // A full import sets up a whole project, not just its manifest, so it
     // creates the same `.rvenv` layout as `rig proj init`.
     if !dependencies_only {
-        init_rvenv_for_manifest(args, &root, path)?;
+        init_rvenv_files(&root, path)?;
+    }
+
+    let next = if lock_versions {
+        let git_shas = report.locked_git_shas.into_iter().collect();
+        if let Err(e) =
+            proj_lock_locked_versions(&root, &r_version, report.locked_versions, git_shas, args)
+        {
+            let msg = format!(
+                "Cannot lock the package versions of {}. {} is ready, run \
+                 `rig proj lock` to lock compatible versions instead, or import \
+                 again with --no-lock-versions.",
+                input, RPROJ_MANIFEST_FILE
+            );
+            OUTPUT.info(&msg);
+            info!("{}", msg);
+            return Err(e);
+        }
+        "`rig proj sync`"
+    } else {
+        "`rig proj lock` and `rig proj sync`"
+    };
+    if !dependencies_only {
+        OUTPUT.info(&format!(
+            "Project set up for R {}. Next: run {}.",
+            r_version, next
+        ));
     }
 
     Ok(())
@@ -447,16 +494,29 @@ impl REnvLockfilePackage {
             }
             _ => return None,
         };
-        // `HEAD` is renv's spelling of "the default branch".
-        let rev = non_empty(&self.RemoteSha)
-            .or_else(|| non_empty(&self.RemoteRef).filter(|r| !r.eq_ignore_ascii_case("HEAD")))
-            .map(str::to_string);
-        Some(DepTable {
+        // The manifest gets the ref, and the lock file the commit, see
+        // `git_lock_key`. `HEAD` is renv's spelling of "the default branch".
+        // The ref is a branch until `apply_lockfile` finds out otherwise.
+        let mut table = DepTable {
             git: Some(git),
-            rev,
             subdir: non_empty(&self.RemoteSubdir).map(str::to_string),
             ..Default::default()
-        })
+        };
+        match self.git_ref() {
+            Some(r) if is_commit_sha(r) => table.rev = Some(r.to_string()),
+            Some(r) => table.branch = Some(r.to_string()),
+            None if non_empty(&self.RemoteRef).is_none() => {
+                table.rev = non_empty(&self.RemoteSha).map(str::to_string)
+            }
+            None => {}
+        }
+        Some(table)
+    }
+
+    /// The branch or tag a git package was installed from, `None` for the
+    /// default branch.
+    fn git_ref(&self) -> Option<&str> {
+        non_empty(&self.RemoteRef).filter(|r| !r.eq_ignore_ascii_case("HEAD"))
     }
 
     /// Whether the package was installed from GitHub, GitLab, Bitbucket or
@@ -609,6 +669,11 @@ fn github_https_url(url: &str) -> Option<String> {
 
 fn non_empty(s: &Option<String>) -> Option<&str> {
     s.as_deref().map(str::trim).filter(|s| !s.is_empty())
+}
+
+/// Whether a git ref looks like a commit sha rather than a branch or tag.
+fn is_commit_sha(s: &str) -> bool {
+    (7..=40).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 fn is_url(s: &str) -> bool {
@@ -1015,17 +1080,27 @@ impl<'a> ImportedRepositories<'a> {
     }
 }
 
-/// How the repositories of an `renv.lock` are imported.
+/// How an `renv.lock` is imported.
 struct ImportOptions<'a> {
     /// Finds the type of the repository at a URL, see [`resolve_repo`].
     detect: &'a dyn Fn(&str) -> DetectedRepo,
     /// Whether PPM snapshots stay as they are, see [`import_as`].
     keep_snapshots: bool,
+    /// Finds whether a ref of the git repository at a URL is a branch or a
+    /// tag, see [`remote_ref_kind`]. `None` if it cannot tell.
+    ref_kind: &'a dyn Fn(&str, &str) -> Option<RefKind>,
 }
 
-/// What an import found in an `renv.lock` that it could not make full use of.
+/// What an import found in an `renv.lock`: the versions to lock, and what it
+/// could not make full use of.
 #[derive(Debug, Default)]
 struct ImportReport {
+    /// The exact version requirement of each package imported with a version
+    /// requirement, for `rproj.lock`, see [`proj_lock_locked_versions`].
+    locked_versions: Vec<(String, String)>,
+    /// The locked commit of each git package, for `rproj.lock`, see
+    /// [`proj_lock_locked_versions`].
+    locked_git_shas: Vec<(GitSourceKey, String)>,
     /// The packages from a repository the lock file does not describe, in
     /// order. They are imported as plain version requirements.
     unresolved: Vec<String>,
@@ -1042,6 +1117,9 @@ struct ImportReport {
     /// The packages from a git URL that is not an `http://` or `https://`
     /// URL, e.g. an SSH URL, in order. They are imported with that URL.
     other_git_urls: Vec<String>,
+    /// The git packages whose ref is not known to be a branch or a tag, in
+    /// order. They are imported as a branch.
+    unknown_refs: Vec<String>,
 }
 
 /// The warnings about the packages of the lock file `input` that the import
@@ -1090,6 +1168,17 @@ fn import_warnings(report: &ImportReport, input: &str) -> Vec<String> {
         ));
     }
 
+    if !report.unknown_refs.is_empty() {
+        warnings.push(format!(
+            "Cannot tell if the git ref of {} package(s) in {} is a branch or a tag \
+             (the repository cannot be reached, or it does not have the ref any \
+             more); they were imported as a branch: {}",
+            report.unknown_refs.len(),
+            input,
+            report.unknown_refs.join(", ")
+        ));
+    }
+
     if !report.unresolved.is_empty() {
         warnings.push(format!(
             "{} package(s) in {} come from a repository that is not listed in the \
@@ -1128,7 +1217,10 @@ fn r_requirement(lockfile: &REnvLockfile) -> Result<String, Box<dyn Error>> {
 ///
 /// See [`ImportedRepositories::placement`] for the repository each package
 /// is taken from. A package installed from a git remote becomes a `git`
-/// dependency at the locked commit instead.
+/// dependency at its branch or tag instead.
+///
+/// The report has the locked versions and commits, to lock them in
+/// `rproj.lock`.
 fn apply_lockfile(
     manifest: &mut Rproj,
     lockfile: &REnvLockfile,
@@ -1153,7 +1245,7 @@ fn apply_lockfile(
     let mut packages: Vec<_> = lockfile.Packages.iter().collect();
     packages.sort_by(|a, b| a.0.cmp(b.0));
     for (name, pkg) in packages {
-        if let Some(table) = pkg.git_dep_table() {
+        if let Some(mut table) = pkg.git_dep_table() {
             if let Some(url) = pkg.git_remote_url() {
                 if github_https_url(url).is_some() {
                     report.github_git_urls.push(name.clone());
@@ -1161,11 +1253,30 @@ fn apply_lockfile(
                     report.other_git_urls.push(name.clone());
                 }
             }
+            let url = table.git.clone().unwrap_or_default();
+            if let Some(branch) = table.branch.clone() {
+                match (options.ref_kind)(&url, &branch) {
+                    Some(RefKind::Branch) => {}
+                    Some(RefKind::Tag) => table.tag = table.branch.take(),
+                    None => report.unknown_refs.push(name.clone()),
+                }
+            }
+            if let (None, Some(sha)) = (&table.rev, non_empty(&pkg.RemoteSha)) {
+                let refspec = table.branch.clone().or_else(|| table.tag.clone());
+                let key = (url, refspec, table.subdir.clone());
+                report.locked_git_shas.push((key, sha.to_string()));
+            }
             set_git_source(manifest, name, &table);
             continue;
         }
         manifest.add_dependency(name, &format!("^{}", pkg.Version), false);
-        match repos.placement(pkg) {
+        let placement = repos.placement(pkg);
+        if !matches!(placement, Placement::OtherSource) && !is_base_package(name) {
+            report
+                .locked_versions
+                .push((name.clone(), format!("= {}", pkg.Version)));
+        }
+        match placement {
             Placement::Pin(repo) => {
                 if set_repository(manifest, name, Some(&repo)) {
                     bioc_used |= repo == BIOC_REPOSITORY_NAME;
@@ -1276,8 +1387,8 @@ fn apply_lockfile(
 /// `[dependencies]`, and replace the entry of every other table that lists
 /// it, so that the package has one source. Each entry keeps its `attach`,
 /// `enhances` and `vignette-builder` flags, but not its version requirement
-/// or repository pin: the locked commit replaces them, and it may not
-/// satisfy them.
+/// or repository pin: the git source replaces them, and it may not satisfy
+/// them.
 fn set_git_source(manifest: &mut Rproj, name: &str, git: &DepTable) {
     let entry = |old: Option<&Dependency>| {
         let table = match old {
@@ -1515,15 +1626,29 @@ mod tests {
         }
     }
 
+    /// Whether `name` is a branch or a tag of the git repository at `url`:
+    /// names like `v1.2.0` are tags, `missing` is neither, anything else is a
+    /// branch.
+    fn test_ref_kind(_url: &str, name: &str) -> Option<RefKind> {
+        let mut chars = name.chars();
+        match (chars.next(), chars.next()) {
+            _ if name == "missing" => None,
+            (Some('v'), Some(c)) if c.is_ascii_digit() => Some(RefKind::Tag),
+            _ => Some(RefKind::Branch),
+        }
+    }
+
     const OPTIONS: ImportOptions<'static> = ImportOptions {
         detect: &test_detect,
         keep_snapshots: false,
+        ref_kind: &test_ref_kind,
     };
 
     /// `--keep-ppm-snapshots`.
     const KEEP: ImportOptions<'static> = ImportOptions {
         detect: &test_detect,
         keep_snapshots: true,
+        ref_kind: &test_ref_kind,
     };
 
     /// Import the lock file `json` into a new manifest, which must be valid.
@@ -1764,6 +1889,112 @@ mod tests {
             m.dependencies.get("R"),
             Some(&Dependency::Version(">= 4.4".to_string()))
         );
+    }
+
+    #[test]
+    fn locked_versions_are_exact_requirements_of_repository_packages() {
+        let json = lock(
+            &[cran(), repo("internal", INTERNAL_URL)],
+            &[
+                pkg("cli", "3.6.3", "CRAN"),
+                pkg("acme", "1.2-0", "internal"),
+                r#""zeta": {"Package": "zeta", "Version": "1.0.0", "Source": "Local",
+                "RemoteUrl": "/tmp/zeta"}"#
+                    .to_string(),
+                r#""ts": {"Package": "ts", "Version": "0.1.0", "Source": "GitHub",
+                "RemoteUsername": "o", "RemoteRepo": "ts", "RemoteSha": "3f2a9c1"}"#
+                    .to_string(),
+            ],
+        );
+        let (m, report) = import_report(&json);
+        assert_eq!(
+            report.locked_versions,
+            vec![
+                ("acme".to_string(), "= 1.2-0".to_string()),
+                ("cli".to_string(), "= 3.6.3".to_string()),
+            ]
+        );
+        assert_eq!(
+            m.dependencies.get("cli"),
+            Some(&Dependency::Version("^3.6.3".to_string()))
+        );
+    }
+
+    #[test]
+    fn locked_git_shas_are_keyed_like_the_lock_solve() {
+        let json = lock(
+            &[cran()],
+            &[
+                r#""a": {"Package": "a", "Version": "0.1.0", "Source": "GitHub",
+                "RemoteUsername": "o", "RemoteRepo": "a", "RemoteRef": "main",
+                "RemoteSha": "aaaaaaa"}"#
+                    .to_string(),
+                r#""b": {"Package": "b", "Version": "0.1.0", "Source": "GitHub",
+                "RemoteUsername": "o", "RemoteRepo": "b", "RemoteRef": "v1.0.0",
+                "RemoteSubdir": "pkg", "RemoteSha": "bbbbbbb"}"#
+                    .to_string(),
+                r#""c": {"Package": "c", "Version": "0.1.0", "Source": "GitHub",
+                "RemoteUsername": "o", "RemoteRepo": "c", "RemoteRef": "HEAD",
+                "RemoteSha": "ccccccc"}"#
+                    .to_string(),
+                r#""d": {"Package": "d", "Version": "0.1.0", "Source": "GitHub",
+                "RemoteUsername": "o", "RemoteRepo": "d", "RemoteSha": "ddddddd"}"#
+                    .to_string(),
+            ],
+        );
+        let (m, report) = import_report(&json);
+        let key = |repo: &str, refspec: Option<&str>, subdir: Option<&str>| {
+            (
+                format!("https://github.com/o/{}.git", repo),
+                refspec.map(str::to_string),
+                subdir.map(str::to_string),
+            )
+        };
+        // `d` has no ref, so the manifest pins its commit.
+        assert_eq!(
+            report.locked_git_shas,
+            vec![
+                (key("a", Some("main"), None), "aaaaaaa".to_string()),
+                (key("b", Some("v1.0.0"), Some("pkg")), "bbbbbbb".to_string()),
+                (key("c", None, None), "ccccccc".to_string()),
+            ]
+        );
+        assert!(report.locked_versions.is_empty());
+        let dep = |name: &str| match m.dependencies.get(name) {
+            Some(Dependency::Detailed(t)) => (**t).clone(),
+            other => panic!("unexpected dependency: {:?}", other),
+        };
+        assert_eq!(dep("a").branch.as_deref(), Some("main"));
+        assert_eq!(dep("a").rev, None);
+        assert_eq!(dep("b").tag.as_deref(), Some("v1.0.0"));
+        assert_eq!(dep("b").branch, None);
+        assert_eq!(
+            (dep("c").branch, dep("c").tag, dep("c").rev),
+            (None, None, None)
+        );
+        assert_eq!(dep("d").rev.as_deref(), Some("ddddddd"));
+    }
+
+    #[test]
+    fn a_ref_that_is_not_found_is_a_branch_with_a_warning() {
+        let json = lock(
+            &[cran()],
+            &[
+                r#""a": {"Package": "a", "Version": "0.1.0", "Source": "GitHub",
+                "RemoteUsername": "o", "RemoteRepo": "a", "RemoteRef": "missing",
+                "RemoteSha": "aaaaaaa"}"#
+                    .to_string(),
+            ],
+        );
+        let (m, report) = import_report(&json);
+        assert_eq!(report.unknown_refs, vec!["a".to_string()]);
+        match m.dependencies.get("a") {
+            Some(Dependency::Detailed(t)) => assert_eq!(t.branch.as_deref(), Some("missing")),
+            other => panic!("unexpected dependency: {:?}", other),
+        }
+        let warnings = import_warnings(&report, "renv.lock");
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("branch or a tag"));
     }
 
     // Bioconductor is turned off with the repositories that the lock file does
@@ -2332,7 +2563,7 @@ mod tests {
     }
 
     #[test]
-    fn github_package_is_a_git_dependency_at_the_locked_commit() {
+    fn github_package_is_a_git_dependency_at_its_ref() {
         let t = git_dep(
             r#"{"Package": "ts", "Version": "0.1.0", "Source": "GitHub", "RemoteType": "github",
                 "RemoteHost": "api.github.com", "RemoteUsername": "gaborcsardi", "RemoteRepo": "ts",
@@ -2343,7 +2574,7 @@ mod tests {
             t,
             DepTable {
                 git: Some("https://github.com/gaborcsardi/ts.git".to_string()),
-                rev: Some("3f2a9c1".to_string()),
+                branch: Some("main".to_string()),
                 ..Default::default()
             }
         );
@@ -2358,7 +2589,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(t.git.as_deref(), Some("https://github.com/o/r.git"));
-        assert_eq!(t.rev, None);
+        assert_eq!((t.branch, t.tag, t.rev), (None, None, None));
         assert_eq!(t.subdir.as_deref(), Some("pkg"));
     }
 
@@ -2369,7 +2600,31 @@ mod tests {
                 "RemoteUsername": "o", "RemoteRepo": "r", "RemoteRef": "v1.2.0"}"#,
         )
         .unwrap();
-        assert_eq!(t.rev.as_deref(), Some("v1.2.0"));
+        assert_eq!(t.branch.as_deref(), Some("v1.2.0"));
+        assert_eq!(t.rev, None);
+    }
+
+    #[test]
+    fn github_without_a_ref_uses_the_sha() {
+        let t = git_dep(
+            r#"{"Package": "ts", "Version": "0.1.0", "Source": "GitHub",
+                "RemoteUsername": "o", "RemoteRepo": "r", "RemoteSha": "3f2a9c1"}"#,
+        )
+        .unwrap();
+        assert_eq!(t.branch, None);
+        assert_eq!(t.rev.as_deref(), Some("3f2a9c1"));
+    }
+
+    #[test]
+    fn a_ref_that_is_a_commit_is_a_rev() {
+        let t = git_dep(
+            r#"{"Package": "ts", "Version": "0.1.0", "Source": "GitHub",
+                "RemoteUsername": "o", "RemoteRepo": "r", "RemoteRef": "3f2a9c1e",
+                "RemoteSha": "3f2a9c1e"}"#,
+        )
+        .unwrap();
+        assert_eq!(t.branch, None);
+        assert_eq!(t.rev.as_deref(), Some("3f2a9c1e"));
     }
 
     #[test]
@@ -2502,7 +2757,7 @@ mod tests {
         // And it is imported back as the same git dependency.
         let t = pkg.git_dep_table().unwrap();
         assert_eq!(t.git.as_deref(), Some("https://github.com/o/p.git"));
-        assert_eq!(t.rev.as_deref(), Some("abc123"));
+        assert_eq!(t.branch.as_deref(), Some("main"));
         assert_eq!(t.subdir.as_deref(), Some("pkg"));
     }
 
@@ -2597,7 +2852,7 @@ mod tests {
             t,
             DepTable {
                 git: Some("https://gitlab.example.de/bioinf/rlib/testpackage.git".to_string()),
-                rev: Some("babda05db8146b37a552c77651e2cd084a05ce98".to_string()),
+                branch: Some("main".to_string()),
                 ..Default::default()
             }
         );
@@ -2629,7 +2884,7 @@ mod tests {
                 "RemoteUrl": "https://github.com/kevinushey/renv.git1", "RemoteRef": "main"}"#,
         )
         .unwrap();
-        assert_eq!(t.rev.as_deref(), Some("main"));
+        assert_eq!(t.branch.as_deref(), Some("main"));
     }
 
     // renv installs from `Source` only, so a remote type without one is not
@@ -2990,7 +3245,7 @@ mod tests {
             m.dependencies.get("mime"),
             Some(&Dependency::Detailed(Box::new(DepTable {
                 git: Some("https://github.com/yihui/mime.git".to_string()),
-                rev: Some("1763e0dcb72fb58d97bab97bb834fc71f1e012bc".to_string()),
+                branch: Some("main".to_string()),
                 ..Default::default()
             })))
         );
