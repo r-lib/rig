@@ -75,9 +75,9 @@ use crate::platform::parse_platform_string;
 use crate::repos::binaries::{ppm_url, PpmStatus, MANYLINUX};
 use crate::repositories::{write_repositories_file, RepoFileEntry, RepositoriesContents};
 use crate::rproj::{LockRepository, Rproj, Workspace, RPROJ_MANIFEST_FILE};
-use crate::utils::write_atomically;
 #[cfg(not(windows))]
 use crate::utils::write_executable;
+use crate::utils::{r_path, write_atomically};
 
 pub const RVENV_DIR: &str = ".rvenv";
 pub const RVENV_LIB_SUBDIR: &str = "lib";
@@ -1194,26 +1194,22 @@ pub fn read_rvenv_cfg(root: &Path) -> Result<Option<RvenvCfg>, Box<dyn Error>> {
 ///
 /// `R_LIBS` is deliberately empty, so that the project library stays
 /// `.libPaths()[1]`, which is where `install.packages()` writes.
+///
+/// The paths always use `/` as the separator, on Windows too, see
+/// [`r_path`].
 pub fn rvenv_env_vars(venv: &Path) -> Vec<(String, String)> {
-    let venv = venv.display().to_string();
+    let venv = r_path(venv).display().to_string();
     vec![
         ("RVENV".to_string(), venv.clone()),
         (
             "R_LIBS_USER".to_string(),
-            format!("{}{}{}", venv, std::path::MAIN_SEPARATOR, RVENV_LIB_SUBDIR),
+            format!("{}/{}", venv, RVENV_LIB_SUBDIR),
         ),
         ("R_LIBS".to_string(), String::new()),
         ("R_LIBS_SITE".to_string(), RVENV_NO_SITE.to_string()),
         (
             "R_REPOSITORIES".to_string(),
-            format!(
-                "{}{}{}{}{}",
-                venv,
-                std::path::MAIN_SEPARATOR,
-                RVENV_ETC_SUBDIR,
-                std::path::MAIN_SEPARATOR,
-                RVENV_REPOS_FILE
-            ),
+            format!("{}/{}/{}", venv, RVENV_ETC_SUBDIR, RVENV_REPOS_FILE),
         ),
     ]
 }
@@ -1318,7 +1314,7 @@ fn repositories_contents(
 /// Substitute the placeholders of an `src/data/rvenv` template.
 fn render(template: &str, venv: &Path, name: &str, r_binary: &Path) -> String {
     template
-        .replace("@RVENV@", &venv.display().to_string())
+        .replace("@RVENV@", &r_path(venv).display().to_string())
         .replace("@RVENV_NAME@", name)
         .replace("@R_BINARY@", &r_binary.display().to_string())
         .replace("@RVENV_EXPORTS@", shell_exports().trim_end())
@@ -2248,7 +2244,7 @@ mod tests {
             }
             // The project path is baked in: a sourced script cannot find its
             // own location portably.
-            assert!(body.contains(&project_venv(root).display().to_string()));
+            assert!(body.contains(&r_path(&project_venv(root)).display().to_string()));
             assert_no_placeholders(&body, file);
         }
     }
@@ -2539,18 +2535,23 @@ mod tests {
         // library, all of which have to survive `--vanilla`.
         let vars: std::collections::HashMap<String, String> =
             rvenv_env_vars(Path::new("/p/.rvenv")).into_iter().collect();
-        // `rvenv_env_vars()` joins with the native separator, `\` on Windows.
-        let sep = std::path::MAIN_SEPARATOR;
         assert_eq!(vars["RVENV"], "/p/.rvenv");
-        assert_eq!(vars["R_LIBS_USER"], format!("/p/.rvenv{}lib", sep));
+        assert_eq!(vars["R_LIBS_USER"], "/p/.rvenv/lib");
         // Empty, so that the project library stays .libPaths()[1].
         assert_eq!(vars["R_LIBS"], "");
         // Not empty: an empty R_LIBS_SITE does not disable the site library
         // on every R version.
         assert_eq!(vars["R_LIBS_SITE"], RVENV_NO_SITE);
-        assert_eq!(
-            vars["R_REPOSITORIES"],
-            format!("/p/.rvenv{}etc{}repositories", sep, sep)
-        );
+        assert_eq!(vars["R_REPOSITORIES"], "/p/.rvenv/etc/repositories");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_environment_uses_forward_slashes() {
+        let vars = rvenv_env_vars(Path::new(r"C:\p\x/.rvenv"));
+        let vars: std::collections::HashMap<String, String> = vars.into_iter().collect();
+        assert_eq!(vars["RVENV"], "C:/p/x/.rvenv");
+        assert_eq!(vars["R_LIBS_USER"], "C:/p/x/.rvenv/lib");
+        assert_eq!(vars["R_REPOSITORIES"], "C:/p/x/.rvenv/etc/repositories");
     }
 }

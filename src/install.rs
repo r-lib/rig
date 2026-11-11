@@ -159,8 +159,31 @@ where
         }
     }
 
-    r_cmd_install(pkg, library_path, r_binary, print_fn).await
+    // `R CMD INSTALL` failures are shown with the path of their log, but an
+    // error before or after it (e.g. a library we cannot write to) would only
+    // be logged, so show that here.
+    r_cmd_install(pkg, library_path, r_binary, print_fn)
+        .await
+        .inspect_err(|err| {
+            if !err.is::<Reported>() {
+                let msg = format!("Failed to install {}: {}", pkg.name, err);
+                OUTPUT.error(&msg);
+                error!("{}", msg);
+            }
+        })
 }
+
+/// An install error that was already shown to the user.
+#[derive(Debug)]
+struct Reported(String);
+
+impl std::fmt::Display for Reported {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl Error for Reported {}
 
 /// Install a built package into the library, without starting R.
 ///
@@ -454,7 +477,8 @@ pub(crate) fn single_subdir(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
 /// `installed.packages()` does not.
 fn patch_description(pkg_dir: &Path, pkg: &PackageInfo) -> Result<(), Box<dyn Error>> {
     let path = pkg_dir.join("DESCRIPTION");
-    let text = std::fs::read_to_string(&path)?;
+    let text = std::fs::read_to_string(&path)
+        .map_err(|err| format!("cannot read {}: {}", path.display(), err))?;
     let mut drop = vec![REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD];
     drop.extend_from_slice(REMOTE_GIT_FIELDS);
     let mut out = drop_fields(&text, &drop);
@@ -478,7 +502,8 @@ fn patch_description(pkg_dir: &Path, pkg: &PackageInfo) -> Result<(), Box<dyn Er
         }
     }
 
-    std::fs::write(&path, out)?;
+    std::fs::write(&path, out)
+        .map_err(|err| format!("cannot write {}: {}", path.display(), err))?;
     Ok(())
 }
 
@@ -567,14 +592,17 @@ where
     );
 
     let logs_dir = library_path.join("_logs");
-    create_dir_all(&logs_dir).await?;
+    create_dir_all(&logs_dir)
+        .await
+        .map_err(|err| format!("cannot create {}: {}", logs_dir.display(), err))?;
 
     let log_file_path = logs_dir.join(format!("{}-install.log", package_name));
     let log_file = OpenOptions::new()
         .create(true)
         .write(true)
         .truncate(true)
-        .open(&log_file_path)?;
+        .open(&log_file_path)
+        .map_err(|err| format!("cannot open {}: {}", log_file_path.display(), err))?;
 
     let log_file_stderr = log_file.try_clone()?;
 
@@ -583,9 +611,14 @@ where
     // library instead of `library_path`. Canonicalize the paths passed on the
     // command line first, since they may otherwise be relative to rig's own
     // working directory rather than `run_dir`.
-    let run_dir = tempfile::tempdir()?;
-    let library_path_abs = library_path.canonicalize()?;
-    let package_path_abs = package_path.canonicalize()?;
+    let run_dir =
+        tempfile::tempdir().map_err(|err| format!("cannot create temporary directory: {}", err))?;
+    let library_path_abs = library_path
+        .canonicalize()
+        .map_err(|err| format!("cannot find {}: {}", library_path.display(), err))?;
+    let package_path_abs = package_path
+        .canonicalize()
+        .map_err(|err| format!("cannot find {}: {}", package_path.display(), err))?;
 
     // A `local::` source directory is the user's own checkout: build a copy
     // of it in rig's cache instead of the original, so `R CMD INSTALL` never
@@ -597,7 +630,8 @@ where
     let package_path_abs = if is_local && package_path_abs.is_dir() {
         let staged = crate::cache::local_pkg_build_dir(&package_path_abs)?;
         if staged.exists() {
-            std::fs::remove_dir_all(&staged)?;
+            std::fs::remove_dir_all(&staged)
+                .map_err(|err| format!("cannot remove {}: {}", staged.display(), err))?;
         }
         debug!(
             "Staging local package {} from {} to {} for an out-of-tree build",
@@ -615,7 +649,7 @@ where
             );
             OUTPUT.error(&msg);
             error!("{}", msg);
-            msg
+            Reported(msg)
         })?;
         staged
     } else {
@@ -634,7 +668,8 @@ where
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_file_stderr))
         .status()
-        .await?;
+        .await
+        .map_err(|err| format!("cannot run {}: {}", r_binary, err))?;
 
     if status.success() {
         // Before `patch_description`, so that the cached archive is what the
@@ -688,7 +723,10 @@ where
             status.code().unwrap_or(-1)
         );
 
-        bail!("Installation failed for {}", package_name);
+        Err(Box::new(Reported(format!(
+            "Installation failed for {}",
+            package_name
+        ))))
     }
 }
 

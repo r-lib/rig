@@ -174,7 +174,7 @@ the two formats most R packages and projects already use:
   export`](reference/proj.qmd#rig-proj-export) writes one back.
 - [`rig proj renv import`](reference/proj.qmd#rig-proj-renv-import) creates
   `rproj.toml` from an [renv](https://rstudio.github.io/renv/) `renv.lock`
-  file. [`rig proj renv export`](reference/proj.qmd#rig-proj-renv-export)
+  file, and `rproj.lock` with the same package versions. [`rig proj renv export`](reference/proj.qmd#rig-proj-renv-export)
   writes one back, resolved for a single R version and platform.
 
 ::: {.callout-note}

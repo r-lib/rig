@@ -1287,7 +1287,12 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     continue;
                 }
                 if re_als.is_match(&filename) {
-                    let rver = find_r_version_in_link(&path.path())?;
+                    // An alias into another R root is not ours to manage,
+                    // so it is left alone.
+                    let rver = match find_r_version_in_link(&path.path())? {
+                        Some(rver) => rver,
+                        None => continue,
+                    };
                     let realname = "R-".to_string() + &rver + ".exe";
                     if new_links.contains(&realname) {
                         continue;
@@ -1347,7 +1352,10 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
         debug!("Alias candidate: {}", fnamestr);
         if re.is_match(fnamestr) {
             trace!("Checking {}", path.display());
-            let rver = find_r_version_in_link(&path)?;
+            let rver = match find_r_version_in_link(&path)? {
+                Some(rver) => rver,
+                None => continue,
+            };
             let als = Alias {
                 alias: fnamestr[2..fnamestr.len() - 4].to_string(),
                 version: rver,
@@ -1359,72 +1367,96 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
     Ok(result)
 }
 
-fn find_r_version_in_link(path: &Path) -> Result<String, Box<dyn Error>> {
+// The R version an alias link (`R-release.exe` and the like) points at, or
+// None when the file is not a rig link, or its target is not under the R root
+// rig manages in the current mode. The latter happens when the link was made
+// by an install into another root, e.g. with a different `RIG_R_INSTALL_DIR`.
+// Such a link is skipped, as on macOS and Linux, rather than failing the
+// whole command (#506).
+fn find_r_version_in_link(path: &Path) -> Result<Option<String>, Box<dyn Error>> {
     let (target, _marker) = match read_shim_link(path) {
         Some(t) => t,
         None => {
-            OUTPUT.error(&format!("Invalid R link file: {}", path.display()));
-            error!("Invalid R link file: {}", path.display());
-            bail!("Invalid R link file: {}", path.display());
+            debug!("{} is not an R link file", path.display());
+            return Ok(None);
         }
     };
 
-    if get_mode().unwrap_or(Mode::Admin) == Mode::User {
-        // User mode: <root>\<version>\bin\R.exe — extract the component after the root
-        let user_root = get_r_root()?;
-        let prefix = format!("{}\\", user_root);
-        let target_lower = target.to_lowercase();
-        let prefix_lower = prefix.to_lowercase();
-        if target_lower.starts_with(&prefix_lower) {
-            let rest = &target[prefix.len()..];
-            if let Some(slash_pos) = rest.find('\\') {
-                return Ok(rest[..slash_pos].to_string());
-            }
-        }
-        OUTPUT.error(&format!(
-            "Cannot extract R version from {}, invalid R link file?",
-            path.display(),
-        ));
-        error!(
-            "Cannot extract R version from {}, invalid R link file?",
-            path.display()
+    let (version, why) = if get_mode().unwrap_or(Mode::Admin) == Mode::User {
+        let root = get_r_root()?;
+        let why = format!(
+            "it points to {}, which is not in the R installation directory, {}",
+            target, root
         );
-        bail!(
-            "Cannot extract R version from {}, invalid R link file?",
-            path.display()
-        );
+        (user_version_from_link_target(&target, &root), why)
+    } else {
+        let x86_root = get_r_root_arch("x86_64")?;
+        let why = format!("cannot find the R version in its target, {}", target);
+        (
+            admin_version_from_link_target(&target, &x86_root, get_native_arch()),
+            why,
+        )
+    };
+
+    if version.is_none() {
+        warn_skipped_alias_link(path, &why);
     }
 
-    // Admin mode: <root>\R-<base>\bin\R.exe
-    // Determine which root this link points into, so we can re-attach the right suffix.
-    let x86_root = get_r_root_arch("x86_64")?;
-    let is_x86 = get_native_arch() == "aarch64"
-        && target.to_lowercase().starts_with(&x86_root.to_lowercase());
+    Ok(version)
+}
 
-    let split = target.split("\\").collect::<Vec<&str>>();
-    for s in split {
+// Warn about a skipped alias link once per run: some commands look up the
+// aliases more than once.
+fn warn_skipped_alias_link(path: &Path, why: &str) {
+    static WARNED: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+    let mut warned = WARNED.lock().unwrap_or_else(|e| e.into_inner());
+    if warned.iter().any(|p| p == path) {
+        return;
+    }
+    warned.push(path.to_path_buf());
+
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    OUTPUT.warn(&format!("Ignoring {}: {}", name, why));
+    warn!("Ignoring {}: {}", path.display(), why);
+}
+
+// User mode: <root>\<version>\bin\R.exe, so the version is the path
+// component right after the root. Windows paths are case-insensitive, and
+// accept both `\` and `/`, and so does this match: a link made while the root
+// was set as `C:/R` has the target `C:/R\4.5.1\bin\R.exe`.
+fn user_version_from_link_target(target: &str, user_root: &str) -> Option<String> {
+    let target = target.replace('/', "\\");
+    let prefix = format!("{}\\", user_root.replace('/', "\\"));
+    if !target.to_lowercase().starts_with(&prefix.to_lowercase()) {
+        return None;
+    }
+
+    let rest = &target[prefix.len()..];
+    rest.find('\\').map(|pos| rest[..pos].to_string())
+}
+
+// Admin mode: <root>\R-<base>\bin\R.exe. On aarch64, a link into the x86_64
+// root is an x86_64 R, which gets its `-x86_64` suffix back.
+fn admin_version_from_link_target(
+    target: &str,
+    x86_root: &str,
+    native_arch: &str,
+) -> Option<String> {
+    let is_x86 =
+        native_arch == "aarch64" && target.to_lowercase().starts_with(&x86_root.to_lowercase());
+    let with_arch = |base: String| if is_x86 { base + "-x86_64" } else { base };
+
+    for s in target.split('\\') {
         if s == "R-devel" {
-            let base = "devel".to_string();
-            return Ok(if is_x86 { base + "-x86_64" } else { base });
+            return Some(with_arch("devel".to_string()));
         }
         // Skip the R-aarch64 root directory name itself
         if s != "R-aarch64" && s.starts_with("R-") {
-            let base = s[2..].to_string();
-            return Ok(if is_x86 { base + "-x86_64" } else { base });
+            return Some(with_arch(s[2..].to_string()));
         }
     }
-    OUTPUT.error(&format!(
-        "Cannot extract R version from {}, invalid R link file?",
-        path.display(),
-    ));
-    error!(
-        "Cannot extract R version from {}, invalid R link file?",
-        path.display()
-    );
-    bail!(
-        "Cannot extract R version from {}, invalid R link file?",
-        path.display()
-    );
+
+    None
 }
 
 pub fn sc_system_allow_core_dumps(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -2855,6 +2887,96 @@ mod tests {
 
         let (root, _g) = fake_install("4.6.1", "Patched");
         assert_eq!(user_install_name(&root, arch).unwrap(), "next");
+    }
+
+    #[test]
+    fn user_version_from_link_target_needs_the_root_as_prefix() {
+        let root = "C:\\Users\\me\\AppData\\Roaming\\rig\\data\\r";
+        let target = "C:\\Users\\me\\AppData\\Roaming\\rig\\data\\r\\4.5.1\\bin\\R.exe";
+        assert_eq!(
+            user_version_from_link_target(target, root),
+            Some("4.5.1".to_string())
+        );
+        // Windows paths are case-insensitive.
+        assert_eq!(
+            user_version_from_link_target(target, "c:\\users\\ME\\appdata\\roaming\\RIG\\data\\R"),
+            Some("4.5.1".to_string())
+        );
+        // A link left behind by an install into another root (#506).
+        assert_eq!(user_version_from_link_target(target, "D:\\R"), None);
+        // The same root with forward slashes, in the root or in the target.
+        assert_eq!(
+            user_version_from_link_target(target, "C:/Users/me/AppData/Roaming/rig/data/r"),
+            Some("4.5.1".to_string())
+        );
+        assert_eq!(
+            user_version_from_link_target(
+                "C:/Users/me/AppData/Roaming/rig/data/r\\4.5.1\\bin\\R.exe",
+                root
+            ),
+            Some("4.5.1".to_string())
+        );
+        // A directory whose name merely starts with the root is another root.
+        assert_eq!(
+            user_version_from_link_target(
+                "C:\\Users\\me\\AppData\\Roaming\\rig\\data\\r2\\4.5.1\\bin\\R.exe",
+                root
+            ),
+            None
+        );
+        // A file right under the root is not in a version directory.
+        assert_eq!(
+            user_version_from_link_target(
+                "C:\\Users\\me\\AppData\\Roaming\\rig\\data\\r\\R.exe",
+                root
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn admin_version_from_link_target_reads_the_r_directory() {
+        let x86_root = "C:\\Program Files\\R";
+        assert_eq!(
+            admin_version_from_link_target(
+                "C:\\Program Files\\R\\R-4.5.1\\bin\\R.exe",
+                x86_root,
+                "x86_64"
+            ),
+            Some("4.5.1".to_string())
+        );
+        assert_eq!(
+            admin_version_from_link_target(
+                "C:\\Program Files\\R\\R-devel\\bin\\R.exe",
+                x86_root,
+                "x86_64"
+            ),
+            Some("devel".to_string())
+        );
+        // On aarch64, a link into the x86_64 root is an x86_64 R, and the
+        // R-aarch64 root directory itself is not a version.
+        let x86_root = "C:\\Program Files (x86)\\R";
+        assert_eq!(
+            admin_version_from_link_target(
+                "C:\\Program Files (x86)\\R\\R-4.5.1\\bin\\R.exe",
+                x86_root,
+                "aarch64"
+            ),
+            Some("4.5.1-x86_64".to_string())
+        );
+        assert_eq!(
+            admin_version_from_link_target(
+                "C:\\Program Files\\R-aarch64\\R-4.5.1\\bin\\R.exe",
+                x86_root,
+                "aarch64"
+            ),
+            Some("4.5.1".to_string())
+        );
+        // Not under an R directory at all.
+        assert_eq!(
+            admin_version_from_link_target("D:\\tools\\bin\\R.exe", x86_root, "x86_64"),
+            None
+        );
     }
 
     #[test]

@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use clap::ArgMatches;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use pubgrub::resolve;
 use rayon::prelude::*;
 use simple_error::SimpleError;
@@ -22,6 +22,7 @@ use crate::common::{
 };
 use crate::dcf::*;
 use crate::download::download_multiple_first_available_with_progress;
+use crate::escalate::is_elevated_now;
 use crate::exclude_newer::{exclude_newer_arg, ExcludeNewerSpec};
 use crate::install::{
     install_packages, parse_linkingto, PackageInfo, REMOTE_GIT_FIELDS, REMOTE_HASH_FIELD,
@@ -47,8 +48,9 @@ use crate::repos::binaries::loader::{
 };
 use crate::repos::binaries::{PpmStatus, MANYLINUX};
 use crate::repos::cranlike_metadata::{ensure_repos_fresh, minor_r_version};
-use crate::repos::feed::{BiocSetting, PkgRepo, RepoFilter, RepoId};
+use crate::repos::feed::{BiocSetting, CranlikeProtocol, PkgRepo, RepoFilter, RepoId};
 use crate::repos::interpret_repos_args::{interpret_pkg_repos_args, PkgReposArgs};
+use crate::repos::r_universe::{lookup_remotes, url_sha256, RemoteRequest};
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
@@ -68,7 +70,7 @@ use crate::rversion::OsVersion;
 use crate::script_meta::{script_lock_env, script_lock_path};
 use crate::solver::*;
 use crate::textfmt::{dcf_field_to_text, reflow};
-use crate::utils::{create_parent_dir_if_needed, write_atomically};
+use crate::utils::{create_parent_dir_if_needed, get_mode, write_atomically, Mode};
 use toml_edit::DocumentMut;
 
 #[cfg(target_os = "macos")]
@@ -204,6 +206,18 @@ pub fn init_rvenv_for_manifest(
     manifest_path: &Path,
 ) -> Result<(), Box<dyn Error>> {
     let rver = resolve_project_r_version(args)?;
+    init_rvenv_files(root, manifest_path)?;
+    OUTPUT.info(&format!(
+        "Project set up for R {}. Next: run `rig proj lock` and `rig proj sync`.",
+        rver
+    ));
+    Ok(())
+}
+
+/// Write the tracked part of the `.rvenv` layout for a freshly written
+/// manifest, and report every file the project now has, see
+/// [`init_rvenv_for_manifest`].
+pub fn init_rvenv_files(root: &Path, manifest_path: &Path) -> Result<(), Box<dyn Error>> {
     let mut created = vec![manifest_path.to_path_buf()];
     created.extend(rvenv_init(root)?);
     for path in &created {
@@ -211,10 +225,6 @@ pub fn init_rvenv_for_manifest(
         OUTPUT.success(&format!("Created {}", name));
         info!("Created {}", name);
     }
-    OUTPUT.info(&format!(
-        "Project set up for R {}. Next: run `rig proj lock` and `rig proj sync`.",
-        rver
-    ));
     Ok(())
 }
 
@@ -1955,9 +1965,9 @@ fn describe_solve_repos(
     let pinned = filter
         .pins
         .iter()
-        .map(|(pkg, id)| {
-            let repo = id
-                .as_ref()
+        .map(|(pkg, ids)| {
+            let repo = ids
+                .first()
                 .map(name)
                 .unwrap_or_else(|| "Bioconductor".to_string());
             (pkg.clone(), repo)
@@ -2034,6 +2044,15 @@ pub(crate) fn sc_proj_solve_deps(
     let (repos_description, pinned) = describe_solve_repos(&repos, filter);
     let feeds = PkgRepo::feeds(&repos);
     let cranlike = PkgRepo::cranlike(&repos);
+    let mirrors: HashMap<RepoId, String> = feeds
+        .iter()
+        .filter_map(|f| f.mirror.clone().map(|m| (f.repo.clone(), m)))
+        .collect();
+    let r_universes: HashSet<RepoId> = cranlike
+        .iter()
+        .filter(|r| r.protocol == CranlikeProtocol::RUniverse)
+        .map(|r| r.repo_id())
+        .collect();
     let bioc_version = feeds.iter().find_map(|f| match &f.repo {
         RepoId::Bioc(v) => Some(v.clone()),
         _ => None,
@@ -2057,6 +2076,8 @@ pub(crate) fn sc_proj_solve_deps(
     let reg: RPackageRegistry = RPackageRegistry::with_loaders(Box::new(loader), binaries)
         .with_bioc_version(bioc_version)
         .with_repo_description(repos_description, pinned)
+        .with_mirrors(mirrors)
+        .with_r_universes(r_universes)
         .prefer_binary(prefer_binary)
         .with_preferences(pins.preferred.clone())
         .with_overrides(&pins.overrides);
@@ -2115,7 +2136,10 @@ pub(crate) fn sc_proj_solve_deps(
     let solution = resolve(&reg, root_pkg, root_version);
 
     match solution {
-        Ok(sol) => Ok((reg, sol)),
+        Ok(sol) => {
+            record_r_universe_remotes(&reg, &sol);
+            Ok((reg, sol))
+        }
         Err(e) => {
             // The target goes into the message here, where the platform is
             // known, so that a batch of parallel solves can report the failure
@@ -2139,6 +2163,58 @@ pub(crate) fn sc_proj_solve_deps(
     }
 }
 
+/// Look up where every package of the solution that comes from an
+/// r-universe repository was built from, for the lock file, see
+/// [`crate::repos::r_universe`]. A package that cannot be looked up is
+/// locked without it, with a warning: it cannot be built from git if
+/// r-universe replaces its file later.
+fn record_r_universe_remotes(reg: &RPackageRegistry, solution: &RegistrySolution) {
+    let mut found: Vec<(&String, &RegistryPackageVersion)> = vec![];
+    let mut requests: Vec<RemoteRequest> = vec![];
+    for (pkg, ver) in solution.iter() {
+        let Some(RepoId::Cranlike { url, .. }) = reg
+            .artifact_repository(pkg, ver)
+            .filter(|r| reg.is_r_universe(r))
+        else {
+            continue;
+        };
+        // The sha256 of the file itself, which is not `RemoteHash` for a
+        // binary package.
+        let Some(sha256) = reg
+            .artifact_url(pkg, ver)
+            .and_then(|u| url_sha256(&u))
+            .or_else(|| reg.artifact_sha256(pkg, ver))
+        else {
+            continue;
+        };
+        found.push((pkg, ver));
+        requests.push(RemoteRequest {
+            repo_url: url,
+            package: pkg.clone(),
+            version: ver.version.to_string(),
+            sha256,
+        });
+    }
+    if requests.is_empty() {
+        return;
+    }
+    let remotes = lookup_remotes(&requests);
+    for ((pkg, ver), (req, remote)) in found.into_iter().zip(requests.iter().zip(remotes)) {
+        match remote {
+            Some(remote) => reg.set_r_universe_remote(pkg, ver, remote),
+            None => {
+                let msg = format!(
+                    "Cannot find the git commit of {} {} at {}, it cannot be installed \
+                     once r-universe replaces this build",
+                    req.package, req.version, req.repo_url
+                );
+                OUTPUT.warn(&msg);
+                warn!("{}", msg);
+            }
+        }
+    }
+}
+
 /// The identity of a git/GitHub dependency's *request* -- its URL, resolved
 /// refspec (`None` meaning "just take the default branch tip"), and
 /// subdirectory -- but not the commit it resolves to. Two `rig proj lock`
@@ -2149,7 +2225,7 @@ pub(crate) fn sc_proj_solve_deps(
 /// release is latest -- exactly the remote round trip being skipped, so it
 /// can't be part of the key up front. [`existing_release_refs`] gives that
 /// case its own sticky mechanism, keyed on URL and subdirectory alone.
-type GitSourceKey = (String, Option<String>, Option<String>);
+pub(crate) type GitSourceKey = (String, Option<String>, Option<String>);
 
 /// Read and parse the `rproj.lock` at `root`, if there is one and it's the
 /// current lock format -- `None` for a first `rig proj lock`, or one
@@ -2157,7 +2233,7 @@ type GitSourceKey = (String, Option<String>, Option<String>);
 /// target always resolves fresh, same as before any sticky-lock behavior
 /// existed. Shared by [`existing_git_shas`] and [`existing_lock_satisfies`]
 /// so a `proj_lock` run parses the file once instead of twice.
-fn read_existing_lock(root: &Path) -> Option<RprojLock> {
+pub(crate) fn read_existing_lock(root: &Path) -> Option<RprojLock> {
     let text = fs::read_to_string(root.join(RPROJ_LOCK_FILE)).ok()?;
     let mut lock = RprojLock::parse(&text).ok()?;
     absolute_local_paths(&mut lock, root);
@@ -2172,7 +2248,7 @@ fn read_existing_lock(root: &Path) -> Option<RprojLock> {
 /// resolved it to, as long as the span itself is unchanged. Otherwise the
 /// cutoff would move every day and the lock would never be reused. `--upgrade`
 /// ignores the existing lock, so it resolves the span afresh.
-fn resolve_lock_options(
+pub(crate) fn resolve_lock_options(
     exclude_newer: Option<&ExcludeNewerSpec>,
     prefer_binary: Option<usize>,
     repos: &ProjRepos,
@@ -3266,6 +3342,15 @@ struct ProjLockOptions {
     /// name and an extra version requirement for this solve only, `"*"` if
     /// none was given, see [`parse_upgrade_packages`].
     upgrade_packages: Vec<(String, String)>,
+    /// Version requirements that every target has to satisfy, in addition
+    /// to the manifest's, as package name and requirement. Like
+    /// `upgrade_packages`, they force a new solve, but they are not
+    /// upgrades: the other packages keep their versions. `rig proj renv
+    /// import` uses them to lock the versions of `renv.lock`.
+    locked_versions: Vec<(String, String)>,
+    /// Commits to lock git dependencies at, instead of resolving their ref
+    /// against the remote. They win over the commits of the existing lock.
+    locked_git_shas: HashMap<GitSourceKey, String>,
     /// Solve for this machine only, instead of the default platform set.
     /// Used for the environments of scripts with inline metadata, which only
     /// ever run where they are created.
@@ -3311,6 +3396,7 @@ fn sc_proj_lock(
         host_only: false,
         lockfile_label: None,
         repos: interpret_pkg_repos_args(args)?,
+        ..Default::default()
     };
     if let Some(script) = args.get_one::<String>("script") {
         return proj_lock_script(Path::new(script), opts, args);
@@ -3463,6 +3549,27 @@ pub(crate) fn proj_lock_keep_targets(
     proj_lock(root, &opts, args)
 }
 
+/// Lock the project in `root` for R `r_version` and the default platform
+/// set, at exactly the package versions of `locked_versions` (package name
+/// and requirement) and the git commits of `locked_git_shas`. This is how
+/// `rig proj renv import` writes `rproj.lock` with the versions of
+/// `renv.lock`. Fails if they do not resolve.
+pub(crate) fn proj_lock_locked_versions(
+    root: &Path,
+    r_version: &str,
+    locked_versions: Vec<(String, String)>,
+    locked_git_shas: HashMap<GitSourceKey, String>,
+    args: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let opts = ProjLockOptions {
+        r_versions: vec![r_version.to_string()],
+        locked_versions,
+        locked_git_shas,
+        ..Default::default()
+    };
+    proj_lock(root, &opts, args)
+}
+
 /// Whether the existing lock of the project in `root` still fits its
 /// manifest, without solving anything: the lock was solved with the same
 /// options, and every target pins every direct dependency at an allowed
@@ -3475,7 +3582,8 @@ pub(crate) fn lock_fits_manifest(root: &Path) -> Result<bool, Box<dyn Error>> {
     let Some(lock) = read_existing_lock(root) else {
         return Ok(false);
     };
-    let solve = proj_read_solve_roots(root)?;
+    let mut solve = proj_read_solve_roots(root)?;
+    solve.repos.resolve_types(&lock.tool.rig.repositories);
     let mut lock_options = resolve_lock_options(
         solve.exclude_newer.as_ref(),
         solve.prefer_binary,
@@ -3634,7 +3742,7 @@ pub(crate) fn proj_lock_host(
 ///
 /// A workspace has one lock file and one library, both at its root, so a
 /// command run in a member directory has to act on the whole workspace.
-fn proj_lock_root() -> Result<PathBuf, Box<dyn Error>> {
+pub(crate) fn proj_lock_root() -> Result<PathBuf, Box<dyn Error>> {
     let cwd = std::env::current_dir()?;
     if let Some(workspace) = find_workspace_root(&cwd)? {
         if workspace != cwd {
@@ -4289,6 +4397,14 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     } else {
         read_existing_lock(root)
     };
+    // The types of the repositories, from the existing lock if their URL has
+    // not changed, detected otherwise.
+    repos.resolve_types(
+        existing_lock
+            .as_ref()
+            .map(|l| l.tool.rig.repositories.as_slice())
+            .unwrap_or_default(),
+    );
 
     warn_unknown_upgrade_packages(
         &opts.upgrade_packages,
@@ -4340,13 +4456,14 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         .iter()
         .map(|(n, _)| n.clone())
         .collect();
-    let (known_shas, known_releases) = match &existing_lock {
+    let (mut known_shas, known_releases) = match &existing_lock {
         Some(lock) => (
             existing_git_shas(lock, &upgrade_names),
             existing_release_refs(lock, &upgrade_names),
         ),
         None => (HashMap::new(), HashMap::new()),
     };
+    known_shas.extend(opts.locked_git_shas.clone());
     let git_sources = resolve_git_sources(&solve.git_deps, &known_shas, &known_releases)?;
 
     // For a package project (see `solve.self_alias`): the project's own
@@ -4386,7 +4503,12 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     for st in &solve_targets {
         let existing = existing_lock
             .as_ref()
-            .filter(|_| options_match && opts.upgrade_packages.is_empty())
+            .filter(|_| {
+                options_match
+                    && opts.upgrade_packages.is_empty()
+                    && opts.locked_versions.is_empty()
+                    && opts.locked_git_shas.is_empty()
+            })
             .and_then(|lock| {
                 existing_lock_satisfies(
                     lock,
@@ -4484,11 +4606,20 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // existing lock pins for it, where they fit, so e.g. adding a dependency
     // does not upgrade everything else. Only `--upgrade` (and `--no-cache`),
     // which ignore the existing lock, solve from scratch.
-    let overrides = upgrade_overrides(&opts.upgrade_packages)?;
+    let overrides: Vec<(String, String)> = opts
+        .upgrade_packages
+        .iter()
+        .chain(&opts.locked_versions)
+        .cloned()
+        .collect();
+    let overrides = upgrade_overrides(&overrides)?;
+    // A locked version wins over the version of the existing lock.
+    let mut pref_skip = upgrade_names.clone();
+    pref_skip.extend(opts.locked_versions.iter().map(|(n, _)| n.clone()));
     let pins_of = |st: &SolveTarget| SolvePins {
         preferred: existing_lock
             .as_ref()
-            .map(|lock| lock_target_preferences(lock, &st.rver, &st.platform_key, &upgrade_names))
+            .map(|lock| lock_target_preferences(lock, &st.rver, &st.platform_key, &pref_skip))
             .unwrap_or_default(),
         overrides: overrides.clone(),
     };
@@ -4519,6 +4650,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
 
     let mut targets: Vec<RprojLockTarget> = reused;
     let mut summaries: Vec<TargetSolution> = vec![];
+    let mut policy_notes = PolicyNotes::default();
     for (rver, platform_key, result) in solved {
         let (registry, solution) = match result {
             Ok(v) => v,
@@ -4535,6 +4667,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             }
         };
 
+        policy_notes.add(&registry, &solution);
         let mut target = RprojLockTarget::from_solution(&registry, &solution);
         let groups = compute_package_groups(&solve.group_roots, &target.packages);
         let extra_groups = compute_package_groups(&solve.extra_roots, &target.packages);
@@ -4613,6 +4746,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         };
         print_solution_table(&summaries, header.as_deref());
     }
+    policy_notes.print();
 
     // Deterministic diffs: always the same order regardless of the order
     // --r-version/--platform were given in.
@@ -4629,6 +4763,63 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     info!("Written project lockfile to {}", label);
 
     Ok(())
+}
+
+/// What the repositories' policies say about the packages of one or more
+/// solutions: the picked versions with known vulnerabilities, and the
+/// packages whose newer versions are blocked. Collected over the solves of
+/// all targets, and printed once, see [`PolicyNotes::print`].
+#[derive(Default)]
+pub(crate) struct PolicyNotes {
+    vulnerable: BTreeSet<String>,
+    blocked: BTreeSet<String>,
+}
+
+impl PolicyNotes {
+    pub fn add(&mut self, registry: &RPackageRegistry, solution: &RegistrySolution) {
+        for (pkg, ver) in solution_to_sorted_vec(registry, solution).iter() {
+            if pkg == "R" || BASE_PKGS.contains(&pkg.as_str()) || registry.is_local(pkg) {
+                continue;
+            }
+            if let Some(vulns) = registry.vulnerabilities(pkg, &ver.version) {
+                let list: Vec<String> = vulns.iter().map(|v| v.to_string()).collect();
+                self.vulnerable.insert(format!(
+                    "{} {} has known vulnerabilities: {}.",
+                    pkg,
+                    ver.version,
+                    list.join(", ")
+                ));
+            }
+            let newer: Vec<String> = registry
+                .blocked_versions(pkg)
+                .into_iter()
+                .filter(|(v, _)| *v > ver.version)
+                .map(|(v, reason)| format!("{} ({})", v, reason))
+                .collect();
+            if !newer.is_empty() {
+                self.blocked.insert(format!(
+                    "Using {} {}, the repository blocks {}.",
+                    pkg,
+                    ver.version,
+                    newer.join(", ")
+                ));
+            }
+        }
+    }
+
+    pub fn print(&self) {
+        for msg in &self.blocked {
+            info!("{}", msg);
+            OUTPUT.info(msg);
+        }
+        for msg in &self.vulnerable {
+            info!("{}", msg);
+            OUTPUT.warn(msg);
+        }
+        if !self.vulnerable.is_empty() {
+            OUTPUT.info("Run `rig audit` for details.");
+        }
+    }
 }
 
 /// What one solved target says about one package, for [`proj_lock`]'s summary.
@@ -5060,14 +5251,74 @@ fn install_r_with_rig_add(r_version: &str, arch: &str) -> Result<(), Box<dyn Err
         "R {} ({}) is not installed, installing it now",
         r_version, arch
     );
+    // In admin mode `rig add` escalates by re-running the whole current
+    // command line with sudo (gsudo on Windows), so everything after the R
+    // installation would run as root too, e.g. installing the packages into
+    // the project library (#503). So run `rig add` in a child process then,
+    // and only the child escalates.
+    if rig_add_in_child(get_mode()?, is_elevated_now()) {
+        return install_r_with_rig_add_process(r_version, arch);
+    }
     // `rig add` is a subcommand, not a function that takes a version, so go
-    // through clap. It escalates on its own in admin mode.
+    // through clap.
     let matches = rig_app().try_get_matches_from(r_add_args(r_version, arch))?;
     let (_name, addargs) = match matches.subcommand() {
         Some(x) => x,
         None => bail!("Internal error: `rig add` did not parse"),
     };
     sc_add(addargs)?;
+    Ok(())
+}
+
+/// Whether to run `rig add` in a child process, see
+/// [`install_r_with_rig_add`]: in admin mode, unless rig is already running
+/// as root (administrator on Windows), so `rig add` would escalate.
+fn rig_add_in_child(mode: Mode, elevated: bool) -> bool {
+    mode == Mode::Admin && !elevated
+}
+
+/// The `rig add` command that installs `r_version` for `arch` in a child
+/// process, in admin mode.
+fn rig_add_command(
+    exe: &Path,
+    r_version: &str,
+    arch: &str,
+    no_cache: bool,
+    cache_dir: Option<&str>,
+) -> std::process::Command {
+    let mut cmd = std::process::Command::new(exe);
+    // The global flags are not inherited by the child, pass them on.
+    // `escalate()` keeps these env vars for the escalated process.
+    cmd.arg("--admin");
+    if no_cache {
+        cmd.env("RIG_NO_CACHE", "true");
+    }
+    if let Some(dir) = cache_dir {
+        cmd.env("RIG_CACHE_DIR", dir);
+    }
+    cmd.args(&r_add_args(r_version, arch)[1..]);
+    cmd
+}
+
+/// Install `r_version` for `arch` by running `rig add` in a child process,
+/// which escalates on its own.
+fn install_r_with_rig_add_process(r_version: &str, arch: &str) -> Result<(), Box<dyn Error>> {
+    let exe = std::env::current_exe()?;
+    let mut cmd = rig_add_command(
+        &exe,
+        r_version,
+        arch,
+        crate::cache::no_cache(),
+        crate::cache::cache_dir_flag(),
+    );
+    debug!("Running {:?}", cmd);
+    let status = cmd.status()?;
+    if !status.success() {
+        let msg = format!("Failed to install R {} ({})", r_version, arch);
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!("{}", msg);
+    }
     Ok(())
 }
 
@@ -6401,7 +6652,7 @@ pub(crate) fn lockfile_package_info(
     // package from the downloaded file itself.
     let source = lock_package_source(pkg);
     let local = matches!(source, Some(LockSource::Local { .. }));
-    let file_path = match &source {
+    let mut file_path = match &source {
         Some(LockSource::Local { path }) => PathBuf::from(path),
         _ => {
             let base = cache_dir.join("packages").join(&pkg.target);
@@ -6411,10 +6662,26 @@ pub(crate) fn lockfile_package_info(
             }
         }
     };
+    // An r-universe package that had to be built from git, see
+    // `download_r_universe_packages`: its file is not there, its git
+    // checkout is, and it is installed from source.
+    let mut binary = pkg.binary;
+    if let Some((_, commit, subdir)) = git_fallback(pkg) {
+        let checkout = cache_dir
+            .join("packages")
+            .join(git_fallback_target(&commit));
+        if !file_path.exists() && checkout.exists() {
+            file_path = match subdir {
+                Some(subdir) => checkout.join(subdir),
+                None => checkout,
+            };
+            binary = false;
+        }
+    }
     let mut info = PackageInfo {
         name: pkg.package.clone(),
         version: pkg.version.clone(),
-        binary: pkg.binary,
+        binary,
         file_path,
         dependencies: pkg.dependencies.clone(),
         hash: pkg.metadata.get(REMOTE_HASH_FIELD).cloned(),
@@ -6452,12 +6719,16 @@ pub(crate) fn download_lockfile_packages(
     // Get cache directory
     let cache_dir = get_cache_dir()?;
 
+    // An r-universe package can be built from git if its file is gone, see
+    // `download_r_universe_packages`.
+    let (fallback_packages, packages): (Vec<&RprojLockPackage>, Vec<&RprojLockPackage>) =
+        packages.iter().partition(|pkg| git_fallback(pkg).is_some());
     // A git/GitHub/url package's `target` is a directory, fetched by
     // checking out a git worktree or downloading and extracting an archive,
     // not a plain HTTP download to a file -- handled separately, see
     // `fetch_git_lockfile_packages`.
     let (git_packages, http_packages): (Vec<&RprojLockPackage>, Vec<&RprojLockPackage>) =
-        packages.iter().partition(|pkg| {
+        packages.into_iter().partition(|pkg| {
             !matches!(
                 lock_package_source(pkg),
                 None | Some(LockSource::Http { .. })
@@ -6465,7 +6736,120 @@ pub(crate) fn download_lockfile_packages(
         });
 
     fetch_git_lockfile_packages(&git_packages, &cache_dir)?;
-    download_http_lockfile_packages(&http_packages, &cache_dir)
+    download_http_lockfile_packages(&http_packages, &cache_dir)?;
+    download_r_universe_packages(&fallback_packages, &cache_dir)
+}
+
+/// The git source after the file of a lockfile package, if it has one: an
+/// r-universe package, see [`crate::repos::r_universe`]. Its URL, commit and
+/// subdirectory.
+fn git_fallback(pkg: &RprojLockPackage) -> Option<(String, String, Option<String>)> {
+    if !matches!(lock_package_source(pkg), Some(LockSource::Http { .. })) {
+        return None;
+    }
+    pkg.sources
+        .iter()
+        .skip(1)
+        .find_map(|s| match LockSource::parse(s) {
+            Ok(LockSource::Git {
+                url,
+                commit,
+                subdir,
+            }) => Some((url, commit, subdir)),
+            _ => None,
+        })
+}
+
+/// Where the git checkout of an r-universe package goes in the package
+/// cache, see [`git_fallback`].
+fn git_fallback_target(commit: &str) -> String {
+    format!("git/r-universe/{}", commit)
+}
+
+/// Download r-universe packages, see [`crate::repos::r_universe`]. r-universe
+/// replaces the file of a package when its git repository changes, so the
+/// locked file may be gone, or a file of the same name may be another build.
+/// A file that cannot be downloaded, or does not have the locked sha256, is
+/// built from git instead, at the locked commit.
+fn download_r_universe_packages(
+    packages: &[&RprojLockPackage],
+    cache_dir: &Path,
+) -> Result<(), Box<dyn Error>> {
+    for pkg in packages {
+        let Some((url, commit, subdir)) = git_fallback(pkg) else {
+            continue;
+        };
+        let file = cache_dir.join("packages").join(&pkg.target);
+        let checkout = cache_dir
+            .join("packages")
+            .join(git_fallback_target(&commit));
+        if !file.exists() && checkout.exists() {
+            OUTPUT.success(&format!(
+                "{} is cached at {}",
+                pkg.package,
+                checkout.display()
+            ));
+            continue;
+        }
+
+        let urls: Vec<String> = pkg
+            .sources
+            .iter()
+            .filter(|s| matches!(LockSource::parse(s), Ok(LockSource::Http { .. })))
+            .cloned()
+            .collect();
+        let urls: Vec<&str> = urls.iter().map(|s| s.as_str()).collect();
+        create_parent_dir_if_needed(&file)?;
+        // The sha256 of the file is in its URL. Without one, `RemoteHash`
+        // is the sha256 of a source package, but not of a binary, see
+        // `url_sha256`.
+        let want = urls.iter().find_map(|u| url_sha256(u)).or_else(|| {
+            pkg.metadata
+                .get(REMOTE_HASH_FIELD)
+                .filter(|_| !pkg.binary)
+                .cloned()
+        });
+        let problem = match crate::download::download_first_available_(
+            &urls,
+            &file,
+            Some(PACKAGE_FILE_TTL),
+            None,
+            None,
+        ) {
+            Err(e) => Some(format!("cannot download it: {}", e)),
+            Ok(_) => match want.as_ref() {
+                Some(want) => match crate::utils::calculate_file_hash(&file) {
+                    Ok(have) if have == *want => None,
+                    Ok(_) => Some("r-universe has another build of it now".to_string()),
+                    Err(e) => Some(format!("cannot read it: {}", e)),
+                },
+                None => None,
+            },
+        };
+        let Some(problem) = problem else {
+            OUTPUT.success(&format!("Downloaded {}", pkg.package));
+            continue;
+        };
+
+        if file.exists() {
+            std::fs::remove_file(&file)?;
+        }
+        let msg = format!(
+            "{} {}: {}, building it from {} at {}",
+            pkg.package, pkg.version, problem, url, commit
+        );
+        OUTPUT.warn(&msg);
+        info!("{}", msg);
+        create_parent_dir_if_needed(&checkout)?;
+        crate::pkgsource::git::fetch_git_checkout(
+            &url,
+            Some(&commit),
+            subdir.as_deref(),
+            &checkout,
+        )?;
+        OUTPUT.success(&format!("Fetched {}", pkg.package));
+    }
+    Ok(())
 }
 
 /// The parsed `sources` entry of a lockfile package, see [`LockSource`].
@@ -6624,6 +7008,120 @@ fn download_http_lockfile_packages(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A lockfile package of an r-universe repository: its file at `url`,
+    /// with sha256 `hash`, and the git commit `commit` of `repo`.
+    fn r_universe_lock_package(
+        name: &str,
+        url: &str,
+        hash: &str,
+        repo: &str,
+        commit: &str,
+    ) -> RprojLockPackage {
+        RprojLockPackage {
+            package: name.to_string(),
+            version: "1.0".to_string(),
+            binary: true,
+            platform: "testos".to_string(),
+            dependencies: vec![],
+            metadata: HashMap::from([(REMOTE_HASH_FIELD.to_string(), hash.to_string())]),
+            sources: vec![
+                url.to_string(),
+                LockSource::Git {
+                    url: repo.to_string(),
+                    commit: commit.to_string(),
+                    subdir: None,
+                }
+                .to_string(),
+            ],
+            target: format!("bin/{}_1.0.tgz", name),
+            groups: vec![],
+            extra_groups: vec![],
+            is_project: false,
+            repository: Some("rlib".to_string()),
+            system_requirements: None,
+            os_type: None,
+        }
+    }
+
+    // `#[ignore]`d for the same reason as the git tests in
+    // `crate::pkgsource::git`: `git` spawns `git-upload-pack` via `PATH`,
+    // which other tests change while the suite runs. Run with
+    // `cargo test -- --ignored`.
+    #[test]
+    #[ignore]
+    fn r_universe_packages_are_built_from_git_if_their_file_is_gone() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let fixture = crate::pkgsource::git::tests::bare_fixture();
+        let repo = format!("file://{}", fixture.path().join("work").display());
+        let probe = tempfile::tempdir().unwrap();
+        let commit =
+            crate::pkgsource::git::fetch_git_checkout(&repo, Some("main"), None, probe.path())
+                .unwrap();
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let server = rt.block_on(MockServer::start());
+        for (p, status, body) in [
+            ("/good.tgz", 200, "good"),
+            ("/changed.tgz", 200, "rebuilt"),
+            ("/gone.tgz", 404, ""),
+        ] {
+            rt.block_on(
+                Mock::given(method("GET"))
+                    .and(path(p))
+                    .respond_with(ResponseTemplate::new(status).set_body_string(body))
+                    .mount(&server),
+            );
+        }
+        let good_file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(good_file.path(), "good").unwrap();
+        let hash = crate::utils::calculate_file_hash(good_file.path()).unwrap();
+
+        let cache = tempfile::tempdir().unwrap();
+        let pkgs: Vec<RprojLockPackage> = ["good", "changed", "gone"]
+            .iter()
+            .map(|n| {
+                // The binary's sha256 is in its URL, like on r-universe.
+                let url = format!("{}/{}.tgz?sha256={}", server.uri(), n, hash);
+                r_universe_lock_package(n, &url, &hash, &repo, &commit)
+            })
+            .collect();
+        let refs: Vec<&RprojLockPackage> = pkgs.iter().collect();
+        download_r_universe_packages(&refs, cache.path()).unwrap();
+
+        let checkout = cache
+            .path()
+            .join("packages")
+            .join(git_fallback_target(&commit));
+        let good = lockfile_package_info(&pkgs[0], cache.path(), None);
+        assert!(good.binary);
+        assert_eq!(
+            good.file_path,
+            cache.path().join("packages/bin/good_1.0.tgz")
+        );
+        assert!(good.file_path.exists());
+        for pkg in &pkgs[1..] {
+            let info = lockfile_package_info(pkg, cache.path(), None);
+            assert!(!info.binary, "{}", pkg.package);
+            assert_eq!(info.file_path, checkout, "{}", pkg.package);
+            assert!(checkout.join("DESCRIPTION").exists());
+            assert!(!cache.path().join("packages").join(&pkg.target).exists());
+        }
+    }
+
+    #[test]
+    fn git_fallback_needs_a_file_first() {
+        let pkg = r_universe_lock_package("a", "https://x/a.tgz", "h", "https://g/a", "abc");
+        assert_eq!(
+            git_fallback(&pkg),
+            Some(("https://g/a".to_string(), "abc".to_string(), None))
+        );
+        let mut git_only = pkg.clone();
+        git_only.sources.remove(0);
+        assert_eq!(git_fallback(&git_only), None);
+    }
     use crate::dcf::RDepType;
     use crate::rproj::{Dependency, Group, Workspace};
     use std::collections::BTreeMap;
@@ -7220,6 +7718,57 @@ mod tests {
     }
 
     #[test]
+    fn r_is_installed_in_a_child_process_only_if_rig_add_would_escalate() {
+        // #503: in admin mode `rig add` re-runs the whole command line with
+        // sudo, so the rest of `rig proj sync` would run as root.
+        assert!(rig_add_in_child(Mode::Admin, false));
+        assert!(!rig_add_in_child(Mode::Admin, true));
+        assert!(!rig_add_in_child(Mode::User, false));
+        assert!(!rig_add_in_child(Mode::User, true));
+    }
+
+    #[test]
+    fn rig_add_child_command_is_a_valid_admin_mode_rig_add() {
+        let cmd = rig_add_command(Path::new("/path/to/rig"), "4.6.1", "x86_64", false, None);
+        assert_eq!(cmd.get_program(), "/path/to/rig");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        let mut expected = vec!["--admin".to_string()];
+        expected.extend(r_add_args("4.6.1", "x86_64").into_iter().skip(1));
+        assert_eq!(args, expected);
+        assert_eq!(cmd.get_envs().count(), 0);
+
+        // clap must accept it as `rig add` in admin mode
+        let argv = std::iter::once("rig".to_string()).chain(args);
+        let matches = rig_app().try_get_matches_from(argv).unwrap();
+        assert!(matches.get_flag("admin"));
+        let (name, addargs) = matches.subcommand().unwrap();
+        assert_eq!(name, "add");
+        assert_eq!(addargs.get_one::<String>("str").unwrap(), "4.6.1");
+    }
+
+    #[test]
+    fn rig_add_child_command_keeps_the_cache_settings() {
+        let cmd = rig_add_command(Path::new("rig"), "4.6.1", "x86_64", true, Some("/my/cache"));
+        let envs: HashMap<String, String> = cmd
+            .get_envs()
+            .map(|(k, v)| {
+                (
+                    k.to_string_lossy().to_string(),
+                    v.unwrap().to_string_lossy().to_string(),
+                )
+            })
+            .collect();
+        assert_eq!(envs.get("RIG_NO_CACHE").map(|s| s.as_str()), Some("true"));
+        assert_eq!(
+            envs.get("RIG_CACHE_DIR").map(|s| s.as_str()),
+            Some("/my/cache")
+        );
+    }
+
+    #[test]
     fn lock_options_are_empty_without_exclude_newer() {
         let existing = RprojLockOptions {
             exclude_newer: Some("2020-01-01".to_string()),
@@ -7288,6 +7837,16 @@ mod tests {
         assert!(text.contains("[[tool.rig.repository]]"), "{}", text);
         let back: RprojLock = toml::from_str(&text).unwrap();
         assert_eq!(back.tool.rig, opts);
+
+        // The type and `extend` of a repository round trip, too.
+        let mut typed = lock;
+        typed.tool.rig.repositories[0].repo_type = Some(crate::repos::detect::RepoType::Cran);
+        typed.tool.rig.repositories[0].extend = Some(false);
+        let text = typed.to_toml().unwrap();
+        assert!(text.contains("type = \"cran\""), "{}", text);
+        assert!(text.contains("extend = false"), "{}", text);
+        let back: RprojLock = toml::from_str(&text).unwrap();
+        assert_eq!(back.tool.rig, typed.tool.rig);
     }
 
     #[test]

@@ -289,7 +289,9 @@ is_retired() {
 @test "rig pkg uses the configured repositories" {
     # Clean up before checking anything, so a failure does not leave the
     # repository setup changed for the other tests.
-    run rig repos add rigtest https://cran.r-project.org --enable -r 4.5.1
+    # Not a CRAN mirror: rig serves those from the extended CRAN metadata,
+    # so they have no metadata of their own.
+    run rig repos add rigtest https://r-lib.r-universe.dev --enable -r 4.5.1
     add_status=$status
     run rig pkg deps cli --r-version 4.5.1
     deps_status=$status

@@ -2193,9 +2193,14 @@ const CERT_BLOCK_END: &str = "## rig SSL_CERT_FILE end";
 // Produce the contents of `Renviron.site` with the rig CA-bundle block set to
 // `cert`. Any previous rig block in `existing` is replaced (not duplicated), so
 // re-running with a new path is idempotent and leaves the rest of the file
-// untouched.
+// untouched. The `${VAR-default}` form only sets each variable if it is not
+// already set, so a value exported in the shell or set via `R_ENVIRON` still
+// wins over the rig bundle.
 fn render_renviron_cert(existing: &str, cert: &str) -> String {
-    let body = format!("SSL_CERT_FILE={}\nCURL_CA_BUNDLE={}", cert, cert);
+    let body = format!(
+        "SSL_CERT_FILE=${{SSL_CERT_FILE-{}}}\nCURL_CA_BUNDLE=${{CURL_CA_BUNDLE-{}}}",
+        cert, cert
+    );
     render_fenced_block(existing, CERT_BLOCK_START, CERT_BLOCK_END, &body)
 }
 
@@ -2227,34 +2232,100 @@ fn render_fenced_block(existing: &str, start: &str, end: &str, body: &str) -> St
     out
 }
 
-// Download the CA bundle (if needed) and point the given user-mode R version at
-// it. Called automatically after a user-mode install.
+// System CA bundle, found by `probe_system_cert()` at startup.
+static SYSTEM_CERT: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+
+// Passes the probe result to the rig process that `escalate()` starts with
+// `sudo`. An empty value means that there is no system bundle.
+const SYSTEM_CERT_ENV: &str = "RIG_SYSTEM_CERT_FILE";
+
+// Look for the system CA bundle. `openssl_probe::probe()` returns
+// `SSL_CERT_FILE` if it is set, so this must run before `set_cert_envvar()`
+// points it at rig's own bundle. A user-set `SSL_CERT_FILE` wins, otherwise
+// this is the first known distro location that exists. `escalate()` keeps
+// `SSL_CERT_FILE`, so the escalated process would find rig's bundle; it uses
+// the result of the original process instead.
+fn probe_system_cert() {
+    SYSTEM_CERT.get_or_init(|| {
+        if let Some(cert) = std::env::var_os(SYSTEM_CERT_ENV) {
+            debug!("System CA bundle from {}: {:?}", SYSTEM_CERT_ENV, cert);
+            return (!cert.is_empty()).then(|| PathBuf::from(cert));
+        }
+        let cert = openssl_probe::probe().cert_file;
+        debug!("System CA bundle: {:?}", cert);
+        std::env::set_var(
+            SYSTEM_CERT_ENV,
+            cert.as_deref().map(|p| p.as_os_str()).unwrap_or_default(),
+        );
+        cert
+    });
+}
+
+// The CA bundle to point R at: the system bundle if there is one, so R
+// trusts the same certificates as the rest of the system, e.g. the
+// certificate of a TLS-inspecting proxy. Otherwise download the Mozilla
+// bundle.
+fn get_cert_bundle(force: bool) -> Result<PathBuf, Box<dyn Error>> {
+    probe_system_cert();
+    if let Some(Some(cert)) = SYSTEM_CERT.get() {
+        info!("Using system CA bundle {}", cert.display());
+        return Ok(cert.clone());
+    }
+    download_cacert(force)
+}
+
+// Find the CA bundle, downloading it if needed, and point the given R version
+// at it. Called automatically after installing a portable R build.
 fn setup_user_cert(rver: &str, force: bool) -> Result<(), Box<dyn Error>> {
-    let cert = download_cacert(force)?;
+    let cert = get_cert_bundle(force)?;
     configure_cert(rver, &cert)?;
-    OUTPUT.success(&format!("Configured CA certificate bundle for R {}", rver));
-    info!("Configured CA certificate bundle for R {}", rver);
+    OUTPUT.success(&format!(
+        "Configured CA certificate bundle {} for R {}",
+        cert.display(),
+        rver
+    ));
+    info!(
+        "Configured CA certificate bundle {} for R {}",
+        cert.display(),
+        rver
+    );
     Ok(())
 }
 
-// `rig system update-certs`: fetch a fresh CA bundle and re-point every
-// user-mode R installation at it. User mode only.
+// `rig system update-certs`: find the system CA bundle or fetch a fresh one,
+// and re-point the portable R installations at it. In user mode every
+// installation is portable. In admin mode the distro-specific builds use the
+// system certificates anyway, so only the portable ones are updated.
 pub fn sc_system_update_certs() -> Result<(), Box<dyn Error>> {
-    if get_mode()? != Mode::User {
-        OUTPUT.warn("`rig system update-certs` only applies in user mode.");
-        warn!("`rig system update-certs` called in admin mode, ignoring");
-        return Ok(());
-    }
-    let cert = download_cacert(true)?;
-    let vers = sc_get_list()?;
+    let mode = get_mode()?;
+    let rroot = get_r_root()?;
+    let vers: Vec<String> = sc_get_list()?
+        .into_iter()
+        .filter(|v| {
+            mode == Mode::User || read_install_platform(&Path::new(&rroot).join(v)).is_some()
+        })
+        .collect();
     if vers.is_empty() {
-        OUTPUT.warn("No R installations to configure.");
+        let what = if mode == Mode::User { "" } else { "portable " };
+        OUTPUT.warn(&format!("No {}R installations to configure.", what));
         return Ok(());
     }
+    if mode == Mode::Admin {
+        escalate("updating CA certificates")?;
+    }
+    let cert = get_cert_bundle(true)?;
     for ver in vers {
         configure_cert(&ver, &cert)?;
-        OUTPUT.success(&format!("Configured CA certificate bundle for R {}", ver));
-        info!("Configured CA certificate bundle for R {}", ver);
+        OUTPUT.success(&format!(
+            "Configured CA certificate bundle {} for R {}",
+            cert.display(),
+            ver
+        ));
+        info!(
+            "Configured CA certificate bundle {} for R {}",
+            cert.display(),
+            ver
+        );
     }
     Ok(())
 }
@@ -2543,6 +2614,7 @@ fn setup_user_fonts(rver: &str, with_fonts: bool, force: bool) -> Result<(), Box
 }
 
 pub fn set_cert_envvar() {
+    probe_system_cert();
     match std::env::var("SSL_CERT_FILE") {
         Ok(_) => {
             debug!("SSL_CERT_FILE is already set, keeping it.");
@@ -2673,8 +2745,8 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
         assert_eq!(
             out,
             "## rig SSL_CERT_FILE start\n\
-             SSL_CERT_FILE=/home/u/.local/share/rig/etc/cacert.pem\n\
-             CURL_CA_BUNDLE=/home/u/.local/share/rig/etc/cacert.pem\n\
+             SSL_CERT_FILE=${SSL_CERT_FILE-/home/u/.local/share/rig/etc/cacert.pem}\n\
+             CURL_CA_BUNDLE=${CURL_CA_BUNDLE-/home/u/.local/share/rig/etc/cacert.pem}\n\
              ## rig SSL_CERT_FILE end\n"
         );
     }
@@ -2684,8 +2756,8 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
         let existing = "FOO=bar\nBAZ=qux\n";
         let out = render_renviron_cert(existing, "/etc/cacert.pem");
         assert!(out.starts_with("FOO=bar\nBAZ=qux\n"));
-        assert!(out.contains("SSL_CERT_FILE=/etc/cacert.pem"));
-        assert!(out.contains("CURL_CA_BUNDLE=/etc/cacert.pem"));
+        assert!(out.contains("SSL_CERT_FILE=${SSL_CERT_FILE-/etc/cacert.pem}"));
+        assert!(out.contains("CURL_CA_BUNDLE=${CURL_CA_BUNDLE-/etc/cacert.pem}"));
     }
 
     #[test]
@@ -2696,7 +2768,7 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
         assert_eq!(second.matches(CERT_BLOCK_START).count(), 1);
         assert_eq!(second.matches(CERT_BLOCK_END).count(), 1);
         assert!(!second.contains("/old/cacert.pem"));
-        assert!(second.contains("SSL_CERT_FILE=/new/cacert.pem"));
+        assert!(second.contains("SSL_CERT_FILE=${SSL_CERT_FILE-/new/cacert.pem}"));
         assert!(second.starts_with("FOO=bar\n"));
 
         // A second run with the same path is a no-op on the contents.

@@ -19,6 +19,12 @@ changed since. Pass `--locked` to fail instead if `rproj.lock` is missing or
 out of date, see "Checking the lock file" in [`rig proj lock`](#rig-proj-lock). This is
 useful in CI. `--locked` reads `rproj.toml`, so it does not work with `--frozen`.
 
+A package of an r-universe repository is downloaded from r-universe, and rig
+checks its sha256. If the file is gone, or r-universe built the package again
+since the lock, rig builds the package from git, at the commit `rproj.lock`
+records, see "Repositories" in [`rig proj lock`](#rig-proj-lock). This needs `git`, and the
+tools to build the package from source.
+
 `--with-repos` (`--index`) and `--without-repos` (`--no-index`) lock again first,
 with the project's repositories changed, see "Repositories" in [`rig proj
 lock`](#rig-proj-lock). They do not work with `--frozen`.

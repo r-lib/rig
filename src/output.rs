@@ -62,7 +62,7 @@ impl Output {
         self.inner.quiet.store(quiet, Ordering::Relaxed);
     }
 
-    fn is_quiet(&self) -> bool {
+    pub fn is_quiet(&self) -> bool {
         self.inner.quiet.load(Ordering::Relaxed)
     }
 

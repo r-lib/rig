@@ -30,11 +30,11 @@ deactivate -NonDestructive
 
 $env:RVENV = "@RVENV@"
 Copy-Item -Path env:PATH -Destination env:_OLD_RVENV_PATH
-$env:PATH = "$env:RVENV\bin;$env:PATH"
-$env:R_LIBS_USER = "$env:RVENV\lib"
+$env:PATH = "$env:RVENV/bin;$env:PATH"
+$env:R_LIBS_USER = "$env:RVENV/lib"
 $env:R_LIBS = ""
 $env:R_LIBS_SITE = "/nonexistent/rvenv-no-site"
-$env:R_REPOSITORIES = "$env:RVENV\etc\repositories"
+$env:R_REPOSITORIES = "$env:RVENV/etc/repositories"
 
 if (-not $env:RVENV_DISABLE_PROMPT) {
     Copy-Item -Path Function:prompt -Destination Function:_old_virtual_prompt
