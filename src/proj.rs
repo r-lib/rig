@@ -1385,6 +1385,20 @@ pub(crate) struct ProjectSolve {
     pub r_versions: Option<Vec<String>>,
 }
 
+impl ProjectSolve {
+    /// The names of the packages the project itself provides: the project's
+    /// own package, or every workspace member. A `Remotes:` entry naming one
+    /// of these is not fetched, see [`resolve_git_sources`].
+    pub(crate) fn own_packages(&self) -> HashSet<String> {
+        self.roots
+            .iter()
+            .chain(self.self_alias.as_ref())
+            .map(|r| r.name.clone())
+            .filter(|name| name != PROJECT_ROOT_PKG)
+            .collect()
+    }
+}
+
 /// Read the project or workspace rooted at `root` and turn it into the roots
 /// of one solve.
 ///
@@ -2728,8 +2742,14 @@ pub(crate) struct ResolvedGitSource {
 /// fetches every dependency *within* a level in parallel: the common case
 /// (no `Remotes:` at all) is one round trip fetching every `git_deps` entry
 /// at once.
+///
+/// Packages named in `own` are provided by the project itself, see
+/// [`ProjectSolve::own_packages`], and are never fetched, e.g. otelsdk has
+/// `Remotes: r-lib/otel`, but in the otel project otel comes from the
+/// project directory, not from GitHub.
 pub(crate) fn resolve_git_sources(
     git_deps: &[(String, DepTable)],
+    own: &HashSet<String>,
     known_shas: &HashMap<GitSourceKey, String>,
     known_releases: &HashMap<(String, Option<String>), (String, String)>,
 ) -> Result<Vec<ResolvedGitSource>, Box<dyn Error>> {
@@ -2738,7 +2758,7 @@ pub(crate) fn resolve_git_sources(
     // see the `dev = false` call in `ensure_loaded`. This applies whether the
     // package is named directly in `rproj.toml` or reached transitively
     // through another package's `Remotes:`.
-    let mut seen: HashSet<String> = HashSet::new();
+    let mut seen: HashSet<String> = own.clone();
     let mut resolved: Vec<ResolvedGitSource> = vec![];
     let mut frontier: Vec<(String, DepTable)> = git_deps.to_vec();
 
@@ -3624,6 +3644,7 @@ pub(crate) fn lock_fits_manifest(root: &Path) -> Result<bool, Box<dyn Error>> {
     let no_upgrades = HashSet::new();
     let git_sources = resolve_git_sources(
         &solve.git_deps,
+        &solve.own_packages(),
         &existing_git_shas(&lock, &no_upgrades),
         &existing_release_refs(&lock, &no_upgrades),
     )?;
@@ -4464,7 +4485,12 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         None => (HashMap::new(), HashMap::new()),
     };
     known_shas.extend(opts.locked_git_shas.clone());
-    let git_sources = resolve_git_sources(&solve.git_deps, &known_shas, &known_releases)?;
+    let git_sources = resolve_git_sources(
+        &solve.git_deps,
+        &solve.own_packages(),
+        &known_shas,
+        &known_releases,
+    )?;
 
     // For a package project (see `solve.self_alias`): the project's own
     // content digest, resolved once up front the same way `git_sources` is
@@ -8428,6 +8454,23 @@ mod tests {
             "def456",
         )];
         assert!(!lock_target_git_sources_fresh(&t, &sources));
+    }
+
+    #[test]
+    fn resolve_git_sources_skips_the_project_itself() {
+        // E.g. a dependency's `Remotes:` names the project, which comes from
+        // its own directory: it is not fetched, so the bad URL is fine.
+        let git_deps = vec![(
+            "mypkg".to_string(),
+            DepTable {
+                git: Some("https://invalid.invalid/mypkg.git".to_string()),
+                ..Default::default()
+            },
+        )];
+        let own = HashSet::from(["mypkg".to_string()]);
+        let sources =
+            resolve_git_sources(&git_deps, &own, &HashMap::new(), &HashMap::new()).unwrap();
+        assert!(sources.is_empty());
     }
 
     /// This machine, for an R of architecture `arch`, as a glibc Linux with
