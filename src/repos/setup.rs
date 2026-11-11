@@ -807,6 +807,8 @@ mod tests {
             description: None,
             url: "https://example.com".to_string(),
             metadata: None,
+            repo_type: None,
+            extend: None,
             platforms: None,
             archs: None,
             rversions: None,

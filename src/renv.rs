@@ -17,6 +17,10 @@ use crate::proj::{
 };
 use crate::proj_repos::ProjRepos;
 use crate::repos::cranlike_metadata::minor_r_version;
+use crate::repos::detect::{DetectedRepo, RepoType};
+use crate::repos::feed::{CranlikeProtocol, PkgRepo};
+use crate::repos::protocol::repos_for;
+use crate::repos::repo_types::resolve_repo;
 use crate::rproj::{
     DepTable, Dependency, Repository, Rproj, BIOC_REPOSITORY_NAME, CRAN_REPOSITORY_NAME,
     RPROJ_MANIFEST_FILE,
@@ -152,11 +156,17 @@ fn sc_renv_import(
         Rproj::minimal(&default_name())
     };
 
+    let detect = |url: &str| resolve_repo(url, None);
+    let options = ImportOptions {
+        detect: &detect,
+        keep_snapshots: args.get_flag("keep-ppm-snapshots"),
+        versions,
+    };
     let report = apply_lockfile(
         &mut manifest,
         &lockfile,
         !dependencies_only || !path_existed,
-        versions,
+        &options,
     )?;
     let minor = minor_r_version(&lockfile.R.Version)?;
 
@@ -166,6 +176,15 @@ fn sc_renv_import(
     }
 
     fs::write(path, toml::to_string_pretty(&manifest)?)?;
+
+    // Detecting the types needs the network, so not if nobody looks.
+    if !OUTPUT.is_quiet() && !manifest.repository.is_empty() {
+        let bioc_version = lockfile.Bioconductor.as_ref().map(|b| b.Version.as_str());
+        OUTPUT.info(&format!("Package repositories in {}:", RPROJ_MANIFEST_FILE));
+        for line in repository_summary(&manifest, bioc_version, resolve_repo)? {
+            OUTPUT.println(&format!("  {}", line));
+        }
+    }
 
     let msg = format!(
         "Imported R {} and {} dependencies from {} into {}",
@@ -301,7 +320,7 @@ struct REnvLockfileBioconductor {
     Version: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 #[allow(non_snake_case)]
 struct REnvLockfilePackage {
     Package: String,
@@ -327,6 +346,9 @@ struct REnvLockfilePackage {
     RemoteRepos: Option<String>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
+    RemoteType: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     RemoteHost: Option<String>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -349,6 +371,63 @@ struct REnvLockfilePackage {
 }
 
 impl REnvLockfilePackage {
+    /// The package as installed from the GitHub, git, URL or local source
+    /// that the solver fetched it from, in renv's `Source` and `Remote*`
+    /// fields.
+    fn with_remote(self, git: &GitSourceInfo) -> REnvLockfilePackage {
+        let opt = |s: &Option<String>| s.clone().filter(|s| !s.is_empty());
+        let sha = Some(git.sha.clone()).filter(|s| !s.is_empty());
+        let subdir = opt(&git.subdir);
+        match git.remote_type {
+            "github" => {
+                let host = git.host.as_deref().unwrap_or("github.com");
+                let api = if host.eq_ignore_ascii_case("github.com") {
+                    "api.github.com".to_string()
+                } else {
+                    format!("{}/api/v3", host)
+                };
+                // `repo` is `owner/repo`, renv has the two parts separately.
+                let repo = git
+                    .repo
+                    .as_deref()
+                    .map(|r| r.rsplit('/').next().unwrap_or(r).to_string());
+                REnvLockfilePackage {
+                    Source: "GitHub".to_string(),
+                    RemoteType: Some("github".to_string()),
+                    RemoteHost: Some(api),
+                    RemoteUsername: opt(&git.username),
+                    RemoteRepo: repo,
+                    RemoteRef: Some(opt(&git.ref_).unwrap_or_else(|| "HEAD".to_string())),
+                    RemoteSha: sha,
+                    RemoteSubdir: subdir,
+                    ..self
+                }
+            }
+            "url" => REnvLockfilePackage {
+                Source: "URL".to_string(),
+                RemoteType: Some("url".to_string()),
+                RemoteUrl: Some(git.url.clone()),
+                RemoteSubdir: subdir,
+                ..self
+            },
+            "local" => REnvLockfilePackage {
+                Source: "Local".to_string(),
+                RemoteType: Some("local".to_string()),
+                RemoteUrl: Some(git.url.clone()),
+                ..self
+            },
+            _ => REnvLockfilePackage {
+                Source: "git".to_string(),
+                RemoteType: Some("git".to_string()),
+                RemoteUrl: Some(git.url.clone()),
+                RemoteRef: opt(&git.ref_),
+                RemoteSha: sha,
+                RemoteSubdir: subdir,
+                ..self
+            },
+        }
+    }
+
     /// The `git` remote a GitHub, GitLab, Bitbucket or git package was
     /// installed from, if any.
     fn git_dep_table(&self) -> Option<DepTable> {
@@ -358,6 +437,7 @@ impl REnvLockfilePackage {
         let host_repo = |default_host: &str, api: &str| -> Option<String> {
             let user = non_empty(&self.RemoteUsername)?;
             let repo = non_empty(&self.RemoteRepo)?;
+            let repo = repo.strip_suffix(".git").unwrap_or(repo);
             let host = non_empty(&self.RemoteHost)
                 .map(|h| git_host(h, api))
                 .unwrap_or_else(|| default_host.to_string());
@@ -367,7 +447,10 @@ impl REnvLockfilePackage {
             "github" => host_repo("https://github.com", "api.github.com")?,
             "gitlab" => host_repo("https://gitlab.com", "")?,
             "bitbucket" => host_repo("https://bitbucket.org", "api.bitbucket.org")?,
-            "git" | "xgit" | "git2r" => non_empty(&self.RemoteUrl)?.to_string(),
+            "git" | "xgit" | "git2r" => {
+                let url = self.git_remote_url()?;
+                github_https_url(url).unwrap_or_else(|| url.to_string())
+            }
             _ => return None,
         };
         // `HEAD` is renv's spelling of "the default branch".
@@ -380,6 +463,27 @@ impl REnvLockfilePackage {
             subdir: non_empty(&self.RemoteSubdir).map(str::to_string),
             ..Default::default()
         })
+    }
+
+    /// Whether the package was installed from GitHub, GitLab, Bitbucket or
+    /// a git URL, even if the lock file lacks the fields to import it.
+    fn is_git_source(&self) -> bool {
+        let kind = self.Source.trim().to_ascii_lowercase();
+        matches!(
+            kind.as_str(),
+            "github" | "gitlab" | "bitbucket" | "git" | "xgit" | "git2r"
+        )
+    }
+
+    /// The `RemoteUrl` of a package installed from a git URL, as opposed to
+    /// GitHub, GitLab or Bitbucket.
+    fn git_remote_url(&self) -> Option<&str> {
+        let kind = self.Source.trim().to_ascii_lowercase();
+        if matches!(kind.as_str(), "git" | "xgit" | "git2r") {
+            non_empty(&self.RemoteUrl)
+        } else {
+            None
+        }
     }
 
     /// Whether the package was installed from a package repository, as
@@ -438,26 +542,21 @@ impl REnvLockfile {
                 continue;
             }
             let deps = registry.get_dependency_summary(k, v).unwrap();
-            pkgs.insert(
-                k.to_string(),
-                REnvLockfilePackage {
-                    Package: k.to_string(),
-                    Version: v.version.to_string(),
+            let pkg = REnvLockfilePackage {
+                Package: k.to_string(),
+                Version: v.version.to_string(),
+                Depends: Some(deps),
+                ..Default::default()
+            };
+            let pkg = match registry.git_source(k, v) {
+                Some(git) => pkg.with_remote(&git),
+                None => REnvLockfilePackage {
                     Source: "Repository".to_string(),
                     Repository: Some("CRAN".to_string()),
-                    Depends: Some(deps),
-                    Imports: None,
-                    LinkingTo: None,
-                    RemoteRepos: None,
-                    RemoteHost: None,
-                    RemoteUsername: None,
-                    RemoteRepo: None,
-                    RemoteUrl: None,
-                    RemoteRef: None,
-                    RemoteSha: None,
-                    RemoteSubdir: None,
+                    ..pkg
                 },
-            );
+            };
+            pkgs.insert(k.to_string(), pkg);
         }
         REnvLockfile {
             Bioconductor: None,
@@ -496,12 +595,22 @@ fn git_host(host: &str, default_api: &str) -> String {
         .strip_suffix("/api/v3")
         .or_else(|| rest.strip_suffix("/2.0"))
         .unwrap_or(rest);
-    let rest = if rest.eq_ignore_ascii_case(default_api) {
-        rest.strip_prefix("api.").unwrap_or(rest)
-    } else {
-        rest
+    let rest = match default_api.strip_prefix("api.") {
+        Some(web) if rest.eq_ignore_ascii_case(default_api) => web,
+        _ => rest,
     };
     format!("{}://{}", scheme, rest)
+}
+
+/// The `https://` URL of a `git://github.com/` URL. GitHub does not serve
+/// the git protocol any more. `None` for any other URL.
+fn github_https_url(url: &str) -> Option<String> {
+    let prefix = "git://github.com/";
+    if has_scheme(url, &[prefix]) {
+        Some(format!("https://github.com/{}", &url[prefix.len()..]))
+    } else {
+        None
+    }
 }
 
 fn non_empty(s: &Option<String>) -> Option<&str> {
@@ -552,49 +661,85 @@ fn normalize_repo_url(url: &str) -> String {
     format!("{}{}{}", scheme, host, path)
 }
 
-/// A repository URL reduced to compare it with well-known ones: normalized,
-/// lower case, and without its scheme.
-fn well_known_url_key(url: &str) -> String {
-    let url = normalize_repo_url(url).to_ascii_lowercase();
-    match url.split_once("://") {
-        Some((_, rest)) => rest.to_string(),
-        None => url,
+/// The hosts of the public repositories that the built-in CRAN and
+/// Bioconductor repositories stand for.
+const PUBLIC_HOSTS: [&str; 8] = [
+    "cloud.r-project.org",
+    "cran.r-project.org",
+    "cran.rstudio.com",
+    "cran.rstudio.org",
+    "bioconductor.org",
+    "p3m.dev",
+    "packagemanager.posit.co",
+    "packagemanager.rstudio.com",
+];
+
+fn is_public_url(url: &str) -> bool {
+    reqwest::Url::parse(url.trim()).is_ok_and(|u| {
+        u.host_str()
+            .is_some_and(|h| PUBLIC_HOSTS.iter().any(|p| h.eq_ignore_ascii_case(p)))
+    })
+}
+
+/// How a repository of the lock file is imported.
+#[derive(Debug, PartialEq)]
+enum ImportAs {
+    /// As this built-in repository.
+    Builtin(&'static str),
+    /// As a repository of its own, at this URL.
+    Url(String),
+}
+
+/// How the repository `repo` at `url` of the lock file is imported, from its
+/// detected type. `bioc_version` is the Bioconductor release of the lock file.
+///
+/// A public repository is the built-in one it stands for: a CRAN mirror and
+/// Posit Package Manager's CRAN are the built-in CRAN, a Bioconductor
+/// repository of the lock file's release is the built-in Bioconductor, and a
+/// PPM snapshot is one of these as well, unless `keep_snapshots`. Private
+/// repositories stay, but a snapshot of a private PPM is its repository at
+/// `latest`, unless `keep_snapshots`.
+fn import_as(
+    repo: &DetectedRepo,
+    url: &str,
+    bioc_version: Option<&str>,
+    keep_snapshots: bool,
+) -> ImportAs {
+    let own = || ImportAs::Url(url.to_string());
+    let snapshot = repo.repo_type == RepoType::PpmSnapshot && !keep_snapshots;
+    if !is_public_url(url) {
+        return match ppm_latest_url(repo) {
+            Some(latest) if snapshot => ImportAs::Url(latest),
+            _ => own(),
+        };
+    }
+    let bioc = || match (bioc_version, repo.bioc_version.as_deref()) {
+        (Some(lock), Some(version)) if lock != version => own(),
+        (Some(_), _) => ImportAs::Builtin(BIOC_REPOSITORY_NAME),
+        (None, _) => own(),
+    };
+    match repo.repo_type {
+        RepoType::Cran | RepoType::PpmCran => ImportAs::Builtin(CRAN_REPOSITORY_NAME),
+        RepoType::Bioc | RepoType::PpmBioc => bioc(),
+        RepoType::PpmSnapshot if snapshot && repo.bioc_version.is_some() => bioc(),
+        RepoType::PpmSnapshot if snapshot => ImportAs::Builtin(CRAN_REPOSITORY_NAME),
+        _ => own(),
     }
 }
 
-/// Whether `url` is equivalent to rig's built-in CRAN repository.
-fn is_default_cran_url(url: &str) -> bool {
-    matches!(
-        well_known_url_key(url).as_str(),
-        "cloud.r-project.org"
-            | "cran.r-project.org"
-            | "cran.rstudio.com"
-            | "cran.rstudio.org"
-            | "p3m.dev/cran/latest"
-            | "packagemanager.posit.co/cran/latest"
-            | "packagemanager.rstudio.com/cran/latest"
-    )
-}
-
-/// Whether `url` is equivalent to rig's built-in Bioconductor repository.
-fn is_bioc_url(url: &str) -> bool {
-    let url = well_known_url_key(url);
-    let rest = url.strip_prefix("bioconductor.org/packages/").or_else(|| {
-        [
-            "p3m.dev",
-            "packagemanager.posit.co",
-            "packagemanager.rstudio.com",
-        ]
-        .iter()
-        .find_map(|host| url.strip_prefix(&format!("{}/bioconductor/latest/packages/", host)))
-    });
-    let Some(rest) = rest else {
-        return false;
-    };
-    matches!(
-        rest.split_once('/').map(|(_, kind)| kind),
-        Some("bioc" | "data/annotation" | "data/experiment" | "workflows" | "books")
-    )
+/// The URL of the PPM repository `repo` at `latest`, of the same
+/// Bioconductor repository if it is one. `None` if it is not on PPM.
+fn ppm_latest_url(repo: &DetectedRepo) -> Option<String> {
+    let base = repo.ppm_base.as_deref()?;
+    let name = repo.ppm_repo.as_deref()?;
+    let mut url = format!("{}/{}/latest", base, name);
+    if let Some(version) = &repo.bioc_version {
+        url.push_str(&format!("/packages/{}", version));
+        if let Some(subrepo) = &repo.bioc_subrepo {
+            url.push_str(&format!("/{}", subrepo));
+        }
+    }
+    Some(url)
 }
 
 /// The names renv gives to the repositories of Bioconductor.
@@ -654,8 +799,14 @@ enum Placement {
 }
 
 /// The repositories of an imported `renv.lock` file.
-struct ImportedRepositories {
+struct ImportedRepositories<'a> {
     entries: Vec<Repository>,
+    /// Finds the type of the repository at a URL.
+    detect: &'a dyn Fn(&str) -> DetectedRepo,
+    /// The detected repositories, by URL.
+    detected: HashMap<String, DetectedRepo>,
+    /// Whether PPM snapshots stay as they are, see [`import_as`].
+    keep_snapshots: bool,
     /// The repositories of the manifest that is imported into, whose names are
     /// taken.
     existing: Vec<Repository>,
@@ -670,6 +821,8 @@ struct ImportedRepositories {
     /// Bioconductor repository stands for the Bioconductor repositories it
     /// lists.
     bioc: bool,
+    /// The Bioconductor version of the lock file.
+    bioc_version: Option<String>,
     /// The names of the Bioconductor repositories of the lock file that are not
     /// the built-in one, e.g. a private mirror or a dated snapshot. renv
     /// installs the packages of Bioconductor from these, and there is no
@@ -677,15 +830,21 @@ struct ImportedRepositories {
     other_bioc: Vec<String>,
 }
 
-impl ImportedRepositories {
-    /// The repositories of an `renv.lock`, in order.
+impl<'a> ImportedRepositories<'a> {
+    /// The repositories of an `renv.lock`, in order. `bioc_version` is its
+    /// Bioconductor version, and `detect` finds the type of a repository.
     fn new(
         repos: &[REnvLockfileRepository],
-        bioc: bool,
+        bioc_version: Option<&str>,
         existing: &[Repository],
-    ) -> ImportedRepositories {
+        detect: &'a dyn Fn(&str) -> DetectedRepo,
+        keep_snapshots: bool,
+    ) -> ImportedRepositories<'a> {
         let mut imported = ImportedRepositories {
             entries: vec![],
+            detect,
+            detected: HashMap::new(),
+            keep_snapshots,
             existing: existing.to_vec(),
             names: HashMap::new(),
             urls: existing
@@ -693,7 +852,8 @@ impl ImportedRepositories {
                 .filter_map(|r| Some((normalize_repo_url(r.url.as_deref()?), r.name.clone())))
                 .collect(),
             listed: !repos.is_empty(),
-            bioc,
+            bioc: bioc_version.is_some(),
+            bioc_version: bioc_version.map(str::to_string),
             other_bioc: vec![],
         };
         for repo in repos {
@@ -719,13 +879,18 @@ impl ImportedRepositories {
     /// The manifest name of the repository at `url`, which is added if it is
     /// not there yet, under `name` if it is free.
     fn add_url(&mut self, name: &str, url: &str) -> String {
-        if is_default_cran_url(url) {
-            return self.list_cran();
-        }
-        if self.bioc && is_bioc_url(url) {
-            return BIOC_REPOSITORY_NAME.to_string();
-        }
-        let key = normalize_repo_url(url);
+        let url = url.trim();
+        let detect = self.detect;
+        let repo = self
+            .detected
+            .entry(url.to_string())
+            .or_insert_with(|| detect(url));
+        let url = match import_as(repo, url, self.bioc_version.as_deref(), self.keep_snapshots) {
+            ImportAs::Builtin(CRAN_REPOSITORY_NAME) => return self.list_cran(),
+            ImportAs::Builtin(builtin) => return builtin.to_string(),
+            ImportAs::Url(url) => url,
+        };
+        let key = normalize_repo_url(&url);
         if let Some((_, existing)) = self.urls.iter().find(|(k, _)| *k == key) {
             return existing.clone();
         }
@@ -735,8 +900,7 @@ impl ImportedRepositories {
                 .chain(&self.entries)
                 .any(|r| r.name.eq_ignore_ascii_case(n))
         });
-        let url = url.trim();
-        let url = strip_binary_path(url).unwrap_or_else(|| url.to_string());
+        let url = strip_binary_path(&url).unwrap_or(url);
         // renv installs a package from the repository it recorded for it, and
         // these are pinned, so no other package is taken from here.
         self.entries.push(Repository {
@@ -857,6 +1021,16 @@ impl ImportedRepositories {
     }
 }
 
+/// How an `renv.lock` is imported.
+struct ImportOptions<'a> {
+    /// Finds the type of the repository at a URL, see [`resolve_repo`].
+    detect: &'a dyn Fn(&str) -> DetectedRepo,
+    /// Whether PPM snapshots stay as they are, see [`import_as`].
+    keep_snapshots: bool,
+    /// How the locked package versions become version requirements.
+    versions: VersionPolicy,
+}
+
 /// What an import found in an `renv.lock` that it could not make full use of.
 #[derive(Debug, Default)]
 struct ImportReport {
@@ -866,6 +1040,16 @@ struct ImportReport {
     /// The packages from a source that rig cannot import, e.g. a URL or a
     /// local file, in order. They are imported as plain version requirements.
     other_sources: Vec<String>,
+    /// The packages from GitHub, GitLab, Bitbucket or a git URL whose lock
+    /// file entry does not say where, in order. They are imported as plain
+    /// version requirements.
+    incomplete_git: Vec<String>,
+    /// The packages from a `git://github.com/` URL, in order. They are
+    /// imported from the `https://` URL instead.
+    github_git_urls: Vec<String>,
+    /// The packages from a git URL that is not an `http://` or `https://`
+    /// URL, e.g. an SSH URL, in order. They are imported with that URL.
+    other_git_urls: Vec<String>,
 }
 
 /// The warnings about the packages of the lock file `input` that the import
@@ -880,6 +1064,37 @@ fn import_warnings(report: &ImportReport, input: &str) -> Vec<String> {
             report.other_sources.len(),
             input,
             report.other_sources.join(", ")
+        ));
+    }
+
+    if !report.incomplete_git.is_empty() {
+        warnings.push(format!(
+            "{} package(s) in {} come from GitHub, GitLab, Bitbucket or git, but the \
+             lock file does not say where (it needs `RemoteUsername` and `RemoteRepo`, \
+             or `RemoteUrl`); they were imported as ordinary version requirements: {}",
+            report.incomplete_git.len(),
+            input,
+            report.incomplete_git.join(", ")
+        ));
+    }
+
+    if !report.github_git_urls.is_empty() {
+        warnings.push(format!(
+            "{} package(s) in {} come from a git:// URL of GitHub, which GitHub \
+             does not serve any more; they were imported from the https:// URL: {}",
+            report.github_git_urls.len(),
+            input,
+            report.github_git_urls.join(", ")
+        ));
+    }
+
+    if !report.other_git_urls.is_empty() {
+        warnings.push(format!(
+            "{} package(s) in {} come from a git URL that is not an http:// or \
+             https:// URL, and may need manual adjustment: {}",
+            report.other_git_urls.len(),
+            input,
+            report.other_git_urls.join(", ")
         ));
     }
 
@@ -938,14 +1153,16 @@ fn apply_lockfile(
     manifest: &mut Rproj,
     lockfile: &REnvLockfile,
     repositories: bool,
-    versions: VersionPolicy,
+    options: &ImportOptions,
 ) -> Result<ImportReport, Box<dyn Error>> {
-    manifest.add_dependency("R", &r_requirement(lockfile, versions)?, false);
+    manifest.add_dependency("R", &r_requirement(lockfile, options.versions)?, false);
 
     let mut repos = ImportedRepositories::new(
         &lockfile.R.Repositories,
-        lockfile.Bioconductor.is_some(),
+        lockfile.Bioconductor.as_ref().map(|b| b.Version.as_str()),
         &manifest.repository,
+        options.detect,
+        options.keep_snapshots,
     );
     let mut report = ImportReport::default();
     let mut bioc_used = false;
@@ -957,15 +1174,17 @@ fn apply_lockfile(
     packages.sort_by(|a, b| a.0.cmp(b.0));
     for (name, pkg) in packages {
         if let Some(table) = pkg.git_dep_table() {
-            manifest.add_remote_dependency(name, table, false);
-            // The locked commit replaces any version requirement of the
-            // manifest, which it may not satisfy.
-            if let Some(Dependency::Detailed(t)) = manifest.dependencies.get_mut(name) {
-                t.version = None;
+            if let Some(url) = pkg.git_remote_url() {
+                if github_https_url(url).is_some() {
+                    report.github_git_urls.push(name.clone());
+                } else if !is_http_url(url) {
+                    report.other_git_urls.push(name.clone());
+                }
             }
+            set_git_source(manifest, name, &table);
             continue;
         }
-        let requirement = match versions {
+        let requirement = match options.versions {
             VersionPolicy::Compatible => format!("^{}", pkg.Version),
             VersionPolicy::Exact => format!("= {}", pkg.Version),
         };
@@ -985,6 +1204,9 @@ fn apply_lockfile(
                 set_repository(manifest, name, None);
             }
             Placement::Unresolved => report.unresolved.push(name.clone()),
+            Placement::OtherSource if pkg.is_git_source() => {
+                report.incomplete_git.push(name.clone())
+            }
             Placement::OtherSource => report.other_sources.push(name.clone()),
             Placement::Keep => {}
         }
@@ -1074,6 +1296,42 @@ fn apply_lockfile(
     Ok(report)
 }
 
+/// Make `git` the source of the dependency `name`: add it to
+/// `[dependencies]`, and replace the entry of every other table that lists
+/// it, so that the package has one source. Each entry keeps its `attach`,
+/// `enhances` and `vignette-builder` flags, but not its version requirement
+/// or repository pin: the locked commit replaces them, and it may not
+/// satisfy them.
+fn set_git_source(manifest: &mut Rproj, name: &str, git: &DepTable) {
+    let entry = |old: Option<&Dependency>| {
+        let table = match old {
+            Some(Dependency::Detailed(old)) => DepTable {
+                attach: old.attach,
+                enhances: old.enhances,
+                vignette_builder: old.vignette_builder,
+                ..git.clone()
+            },
+            _ => git.clone(),
+        };
+        Dependency::Detailed(Box::new(table))
+    };
+    let new = entry(manifest.dependencies.get(name));
+    manifest.dependencies.insert(name.to_string(), new);
+    let others = std::iter::once(&mut manifest.linking_dependencies)
+        .chain(
+            manifest
+                .dependency_groups
+                .values_mut()
+                .map(|g| &mut g.dependencies),
+        )
+        .chain(manifest.optional_dependencies.values_mut());
+    for table in others {
+        if let Some(dep) = table.get_mut(name) {
+            *dep = entry(Some(dep));
+        }
+    }
+}
+
 /// Pin the dependency `name` to the repository `repo`, or remove its pin if
 /// `repo` is `None`, unless it comes from somewhere else than a repository.
 /// Returns whether it was changed.
@@ -1101,12 +1359,87 @@ fn set_repository(manifest: &mut Rproj, name: &str, repo: Option<&str>) -> bool 
     true
 }
 
+/// The name of the protocol rig uses for `repo`.
+fn protocol_name(repo: &PkgRepo) -> &'static str {
+    match repo {
+        PkgRepo::Extended(_) => "extended",
+        PkgRepo::Cranlike(r) if r.protocol == CranlikeProtocol::RUniverse => "r-universe",
+        PkgRepo::Cranlike(_) => "cran",
+    }
+}
+
+/// One line about each repository of `manifest`, after an import: its URL,
+/// its type, the protocol rig uses for it, and which packages it serves.
+/// `bioc_version` is the Bioconductor release of the lock file, if any, and
+/// `detect` finds the type of a repository, see [`resolve_repo`].
+fn repository_summary(
+    manifest: &Rproj,
+    bioc_version: Option<&str>,
+    detect: impl Fn(&str, Option<RepoType>) -> DetectedRepo,
+) -> Result<Vec<String>, Box<dyn Error>> {
+    let pins = manifest.repository_pins()?;
+    let mut lines = vec![];
+    for repo in &manifest.repository {
+        if !repo.is_enabled() {
+            lines.push(format!("{}: off", repo.name));
+            continue;
+        }
+        let mut parts = vec![];
+        if repo.is_cran() {
+            parts.push("built-in CRAN".to_string());
+        } else if repo.is_bioc() {
+            match repo.version.as_deref().or(bioc_version) {
+                Some(v) => parts.push(format!("built-in Bioconductor {}", v)),
+                None => parts.push("built-in Bioconductor".to_string()),
+            }
+        }
+        let mut protocols: Vec<&str> = match repo.url.as_deref() {
+            Some(url) if !repo.is_builtin() => {
+                let detected = detect(url, repo.repo_type);
+                parts.push(url.to_string());
+                let unreachable =
+                    detected.repo_type == RepoType::CranLike && !detected.notes.is_empty();
+                parts.push(if unreachable {
+                    "type unknown, it did not respond".to_string()
+                } else if detected.guessed {
+                    format!("type {} (guessed)", detected.repo_type.as_str())
+                } else {
+                    format!("type {}", detected.repo_type.as_str())
+                });
+                repos_for(&repo.name, &detected, repo.is_extended(), bioc_version)
+                    .iter()
+                    .map(protocol_name)
+                    .collect()
+            }
+            _ if repo.is_extended() => vec!["extended"],
+            _ => vec!["cran"],
+        };
+        protocols.dedup();
+        if !protocols.is_empty() {
+            parts.push(format!("{} protocol", protocols.join(", ")));
+        }
+        let pinned = pins
+            .values()
+            .filter(|r| r.eq_ignore_ascii_case(&repo.name))
+            .count();
+        if repo.is_explicit() {
+            parts.push(format!("only for {} pinned package(s)", pinned));
+        } else if pinned > 0 {
+            parts.push(format!("{} pinned package(s)", pinned));
+        }
+        lines.push(format!("{}: {}", repo.name, parts.join(", ")));
+    }
+    Ok(lines)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const INTERNAL_URL: &str = "https://pkgs.example.com/prod";
     const PRIVATE_BIOC_URL: &str = "https://ppm.example.com/bioconductor/latest/packages/3.19/bioc";
+    const BIOC_SNAPSHOT_URL: &str =
+        "https://ppm.example.com/bioconductor/2024-05-01/packages/3.19/bioc";
 
     fn lockfile(json: &str) -> REnvLockfile {
         serde_json::from_str(json).unwrap()
@@ -1167,14 +1500,73 @@ mod tests {
         )
     }
 
-    /// Import the lock file `json` into a new manifest, which must be valid.
-    fn import_report(json: &str) -> (Rproj, ImportReport) {
-        import_with(json, VersionPolicy::Compatible)
+    /// The type of the repository at `url`, as the detection finds it: CRAN
+    /// mirrors, Posit Package Manager, Bioconductor mirrors and r-universe by
+    /// their URL, anything else is a CRAN-like repository. `ppm.example.com`
+    /// is a private PPM.
+    fn test_detect(url: &str) -> DetectedRepo {
+        use crate::repos::detect::describe;
+        let lower = url.trim().to_ascii_lowercase();
+        let rest = lower.split_once("://").map_or(lower.as_str(), |(_, r)| r);
+        let host = rest.split('/').next().unwrap_or_default();
+        let host = host.rsplit('@').next().unwrap_or_default();
+        match host {
+            "cloud.r-project.org"
+            | "cran.r-project.org"
+            | "cran.rstudio.com"
+            | "cran.example.com" => describe(url, RepoType::Cran),
+            "bioconductor.org" => describe(url, RepoType::Bioc),
+            "p3m.dev"
+            | "packagemanager.posit.co"
+            | "packagemanager.rstudio.com"
+            | "ppm.example.com" => {
+                let path = describe(url, RepoType::PpmOther);
+                let rtype = match (path.snapshot.as_deref(), path.ppm_repo.as_deref()) {
+                    (Some(s), _) if s != "latest" => RepoType::PpmSnapshot,
+                    (_, Some("bioconductor")) => RepoType::PpmBioc,
+                    (_, Some("cran")) => RepoType::PpmCran,
+                    _ => RepoType::PpmOther,
+                };
+                describe(url, rtype)
+            }
+            _ if host.ends_with(".r-universe.dev") => describe(url, RepoType::RUniverse),
+            // Like the detection, a URL that ends in `packages/<version>/bioc`,
+            // etc. is a Bioconductor repository.
+            _ if describe(url, RepoType::Bioc).bioc_version.is_some() => {
+                describe(url, RepoType::Bioc)
+            }
+            _ => describe(url, RepoType::CranLike),
+        }
     }
 
-    fn import_with(json: &str, versions: VersionPolicy) -> (Rproj, ImportReport) {
+    const OPTIONS: ImportOptions<'static> = ImportOptions {
+        detect: &test_detect,
+        keep_snapshots: false,
+        versions: VersionPolicy::Compatible,
+    };
+
+    /// `--keep-ppm-snapshots`.
+    const KEEP: ImportOptions<'static> = ImportOptions {
+        detect: &test_detect,
+        keep_snapshots: true,
+        versions: VersionPolicy::Compatible,
+    };
+
+    /// `--exact-versions`.
+    const EXACT: ImportOptions<'static> = ImportOptions {
+        detect: &test_detect,
+        keep_snapshots: false,
+        versions: VersionPolicy::Exact,
+    };
+
+    /// Import the lock file `json` into a new manifest, which must be valid.
+    fn import_report(json: &str) -> (Rproj, ImportReport) {
+        import_report_with(json, &OPTIONS)
+    }
+
+    fn import_report_with(json: &str, options: &ImportOptions) -> (Rproj, ImportReport) {
         let mut manifest = Rproj::minimal("proj");
-        let report = apply_lockfile(&mut manifest, &lockfile(json), true, versions).unwrap();
+        let report = apply_lockfile(&mut manifest, &lockfile(json), true, options).unwrap();
         manifest.check_repositories().unwrap();
         ProjRepos::from_manifest(&manifest)
             .unwrap()
@@ -1187,9 +1579,18 @@ mod tests {
         import_report(json).0
     }
 
+    /// Import with `--keep-ppm-snapshots`.
+    fn import_keep(json: &str) -> Rproj {
+        import_report_with(json, &KEEP).0
+    }
+
     /// Merge the lock file `json` into `manifest`, which must stay valid.
     fn merge(manifest: &mut Rproj, json: &str) {
-        apply_lockfile(manifest, &lockfile(json), false, VersionPolicy::Compatible).unwrap();
+        merge_with(manifest, json, &OPTIONS);
+    }
+
+    fn merge_with(manifest: &mut Rproj, json: &str, options: &ImportOptions) {
+        apply_lockfile(manifest, &lockfile(json), false, options).unwrap();
         manifest.check_repositories().unwrap();
     }
 
@@ -1227,50 +1628,113 @@ mod tests {
         m.repository.iter().map(|r| r.name.as_str()).collect()
     }
 
+    /// How a repository of type `rtype` at `url` is imported.
+    fn import_as_type(url: &str, rtype: RepoType, bioc_version: Option<&str>) -> ImportAs {
+        let d = crate::repos::detect::describe(url, rtype);
+        import_as(&d, url, bioc_version, false)
+    }
+
+    fn own(url: &str) -> ImportAs {
+        ImportAs::Url(url.to_string())
+    }
+
     #[test]
-    fn recognizes_default_cran_urls() {
+    fn public_cran_repositories_are_the_builtin_cran() {
+        let cran = ImportAs::Builtin(CRAN_REPOSITORY_NAME);
         for url in [
-            "https://cloud.r-project.org",
             "https://cloud.r-project.org/",
-            "http://cran.r-project.org",
-            "https://cran.rstudio.com/",
-            "https://packagemanager.posit.co/cran/latest",
-            "https://packagemanager.rstudio.com/cran/latest/",
-            "https://packagemanager.posit.co/cran/__linux__/jammy/latest",
-            "https://p3m.dev/cran/latest",
-            "https://p3m.dev/cran/__linux__/noble/latest",
+            "http://CRAN.r-project.org",
+            "https://cran.rstudio.com",
         ] {
-            assert!(is_default_cran_url(url), "{}", url);
+            assert_eq!(import_as_type(url, RepoType::Cran, None), cran, "{}", url);
         }
         for url in [
-            "https://packagemanager.posit.co/cran/2024-05-01",
-            "https://packagemanager.posit.co/cran/__linux__/jammy/2024-05-01",
-            "https://packagemanager.posit.co/bioconductor/latest",
-            "https://example.com/cran/latest",
-            "https://cran.example.com",
+            "https://p3m.dev/cran/__linux__/noble/latest",
+            "https://packagemanager.posit.co/cran/latest",
         ] {
-            assert!(!is_default_cran_url(url), "{}", url);
+            assert_eq!(
+                import_as_type(url, RepoType::PpmCran, None),
+                cran,
+                "{}",
+                url
+            );
+        }
+        // Another repository of the public PPM is not CRAN.
+        let url = "https://p3m.dev/all/latest";
+        assert_eq!(import_as_type(url, RepoType::PpmOther, None), own(url));
+    }
+
+    #[test]
+    fn private_repositories_are_kept() {
+        for (url, rtype) in [
+            ("https://cran.example.com", RepoType::Cran),
+            ("https://ppm.example.com/cran/latest", RepoType::PpmCran),
+            (PRIVATE_BIOC_URL, RepoType::PpmBioc),
+            (
+                "https://pkgs.example.com/packages/3.19/bioc",
+                RepoType::Bioc,
+            ),
+            ("https://cloud.r-project.org.example.com", RepoType::Cran),
+        ] {
+            assert_eq!(
+                import_as_type(url, rtype, Some("3.19")),
+                own(url),
+                "{}",
+                url
+            );
         }
     }
 
     #[test]
-    fn recognizes_bioconductor_urls() {
-        for url in [
-            "https://bioconductor.org/packages/3.18/bioc",
-            "https://bioconductor.org/packages/3.18/data/annotation/",
-            "https://packagemanager.posit.co/bioconductor/latest/packages/3.18/bioc",
-            "https://packagemanager.posit.co/bioconductor/__linux__/jammy/latest/packages/3.18/data/experiment",
-            "https://p3m.dev/bioconductor/__linux__/noble/latest/packages/3.18/bioc",
+    fn public_bioconductor_of_the_lock_files_release_is_the_builtin_bioconductor() {
+        let bioc = ImportAs::Builtin(BIOC_REPOSITORY_NAME);
+        let url = "https://bioconductor.org/packages/3.18/bioc";
+        assert_eq!(import_as_type(url, RepoType::Bioc, Some("3.18")), bioc);
+        assert_eq!(import_as_type(url, RepoType::Bioc, Some("3.19")), own(url));
+        assert_eq!(import_as_type(url, RepoType::Bioc, None), own(url));
+        let url = "https://p3m.dev/bioconductor/__linux__/noble/latest/packages/3.18/bioc";
+        assert_eq!(import_as_type(url, RepoType::PpmBioc, Some("3.18")), bioc);
+    }
+
+    #[test]
+    fn public_ppm_snapshots_are_builtin_unless_kept() {
+        let cran = "https://p3m.dev/cran/__linux__/noble/2024-05-01";
+        let bioc = "https://p3m.dev/bioconductor/2024-05-01/packages/3.18/bioc";
+        assert_eq!(
+            import_as_type(cran, RepoType::PpmSnapshot, None),
+            ImportAs::Builtin(CRAN_REPOSITORY_NAME)
+        );
+        assert_eq!(
+            import_as_type(bioc, RepoType::PpmSnapshot, Some("3.18")),
+            ImportAs::Builtin(BIOC_REPOSITORY_NAME)
+        );
+        assert_eq!(import_as_type(bioc, RepoType::PpmSnapshot, None), own(bioc));
+
+        let d = crate::repos::detect::describe(cran, RepoType::PpmSnapshot);
+        assert_eq!(import_as(&d, cran, None, true), own(cran));
+    }
+
+    #[test]
+    fn private_ppm_snapshots_are_their_repository_at_latest_unless_kept() {
+        for (snapshot, latest) in [
+            (
+                "https://ppm.example.com/cran/2024-05-01",
+                "https://ppm.example.com/cran/latest",
+            ),
+            (
+                "https://ppm.example.com/internal/__linux__/noble/2024-05-01/",
+                "https://ppm.example.com/internal/latest",
+            ),
+            (BIOC_SNAPSHOT_URL, PRIVATE_BIOC_URL),
         ] {
-            assert!(is_bioc_url(url), "{}", url);
-        }
-        for url in [
-            "https://packagemanager.posit.co/bioconductor/2024-05-01/packages/3.18/bioc",
-            "https://packagemanager.posit.co/cran/latest",
-            "https://bioconductor.org/packages/3.18/other",
-            "https://pkgs.example.com/bioconductor/latest/packages/3.18/bioc",
-        ] {
-            assert!(!is_bioc_url(url), "{}", url);
+            assert_eq!(
+                import_as_type(snapshot, RepoType::PpmSnapshot, Some("3.19")),
+                own(latest),
+                "{}",
+                snapshot
+            );
+            let d = crate::repos::detect::describe(snapshot, RepoType::PpmSnapshot);
+            assert_eq!(import_as(&d, snapshot, None, true), own(snapshot));
         }
     }
 
@@ -1299,7 +1763,7 @@ mod tests {
         assert!(!is_url("日本語"));
         assert!(!is_url("日本語日本語"));
         assert!(is_url("HTTPS://example.com"));
-        let mut repos = ImportedRepositories::new(&[], false, &[]);
+        let mut repos = ImportedRepositories::new(&[], None, &[], &test_detect, false);
         assert_eq!(repos.resolve("日本語のリポジトリ", None), None);
     }
 
@@ -1337,7 +1801,7 @@ mod tests {
 
     #[test]
     fn exact_versions_are_equal_requirements_and_limit_r_to_its_minor_version() {
-        let (m, _) = import_with(
+        let (m, _) = import_report_with(
             &lock(
                 &[cran(), repo("internal", INTERNAL_URL)],
                 &[
@@ -1345,7 +1809,7 @@ mod tests {
                     pkg("acme", "1.2-0", "internal"),
                 ],
             ),
-            VersionPolicy::Exact,
+            &EXACT,
         );
         assert_eq!(
             m.dependencies.get("cli"),
@@ -1375,7 +1839,7 @@ mod tests {
                     .to_string(),
             ],
         );
-        let (m, _) = import_with(&json, VersionPolicy::Exact);
+        let (m, _) = import_report_with(&json, &EXACT);
         assert_eq!(
             m.dependencies.get("ts"),
             Some(&Dependency::Detailed(Box::new(DepTable {
@@ -1392,7 +1856,7 @@ mod tests {
         manifest.add_dependency("cli", "^3.0.0", false);
         manifest.add_dependency("glue", ">= 1.0", false);
         let lock = lockfile(&lock(&[cran()], &[pkg("cli", "3.6.3", "CRAN")]));
-        apply_lockfile(&mut manifest, &lock, false, VersionPolicy::Exact).unwrap();
+        apply_lockfile(&mut manifest, &lock, false, &EXACT).unwrap();
         assert_eq!(
             manifest.dependencies.get("cli"),
             Some(&Dependency::Version("= 3.6.3".to_string()))
@@ -1455,15 +1919,14 @@ mod tests {
 
     #[test]
     fn cran_is_turned_off_if_the_lockfile_does_not_list_it() {
-        let snapshot = "https://packagemanager.posit.co/cran/2024-05-01";
         let m = import(&lock(
-            &[repo("snapshot", snapshot)],
-            &[pkg("cli", "3.6.3", "snapshot")],
+            &[repo("internal", INTERNAL_URL)],
+            &[pkg("cli", "3.6.3", "internal")],
         ));
         assert_eq!(
             m.repository,
             vec![
-                imported_repo("snapshot", snapshot),
+                imported_repo("internal", INTERNAL_URL),
                 Repository::disabled(CRAN_REPOSITORY_NAME),
                 bioc_off(),
             ]
@@ -1472,7 +1935,7 @@ mod tests {
 
     #[test]
     fn a_cran_named_snapshot_does_not_clash_with_the_builtin() {
-        let m = import(&lock(
+        let m = import_keep(&lock(
             &[repo(
                 "CRAN",
                 "https://packagemanager.posit.co/cran/2024-05-01",
@@ -1483,6 +1946,77 @@ mod tests {
         assert_eq!(m.repository[1].enabled, Some(false));
         // The package came from the snapshot, which is not the built-in CRAN.
         assert_eq!(repository_of(&m, "cli").as_deref(), Some("CRAN-repo"));
+    }
+
+    #[test]
+    fn a_ppm_snapshot_is_the_builtin_cran() {
+        for url in [
+            "https://packagemanager.posit.co/cran/2024-05-01",
+            "https://p3m.dev/cran/__linux__/noble/2024-05-01",
+        ] {
+            let m = import(&lock(
+                &[repo("CRAN", url)],
+                &[pkg("cli", "3.6.3", "CRAN"), pkg("glue", "1.7.0", url)],
+            ));
+            assert_eq!(m.repository, vec![bioc_off()], "{}", url);
+            assert_eq!(repository_of(&m, "cli"), None, "{}", url);
+            assert_eq!(repository_of(&m, "glue"), None, "{}", url);
+        }
+    }
+
+    #[test]
+    fn a_ppm_snapshot_of_bioconductor_is_the_builtin_bioconductor() {
+        let snapshot = "https://p3m.dev/bioconductor/2024-05-01/packages/3.19/bioc";
+        let m = import(&bioc_lock(
+            "3.19",
+            &[cran(), repo("BioCsoft", snapshot)],
+            &[bioc_pkg("Biobase", "2.64.0", None)],
+        ));
+        assert_eq!(m.repository, vec![bioc_entry("3.19")]);
+        assert_eq!(repository_of(&m, "Biobase").as_deref(), Some("bioc"));
+    }
+
+    // A private repository may have its own packages or its own policy, e.g.
+    // blocked versions, so it is never the built-in CRAN.
+    #[test]
+    fn a_private_cran_is_kept() {
+        for url in [
+            "https://ppm.example.com/cran/latest",
+            "https://cran.example.com",
+        ] {
+            let m = import(&lock(&[repo("CRAN", url)], &[pkg("cli", "3.6.3", "CRAN")]));
+            assert_eq!(
+                repository_names(&m),
+                ["CRAN-repo", "cran", "bioc"],
+                "{}",
+                url
+            );
+            assert_eq!(repository_of(&m, "cli").as_deref(), Some("CRAN-repo"));
+        }
+    }
+
+    // A private PPM snapshot is its repository at `latest`, like a public
+    // snapshot is the built-in CRAN, which is not a snapshot.
+    #[test]
+    fn a_private_ppm_snapshot_is_its_repository_at_latest() {
+        let snapshot = "https://ppm.example.com/cran/__linux__/jammy/2024-05-01";
+        let latest = "https://ppm.example.com/cran/latest";
+        let m = import(&lock(
+            &[repo("CRAN", snapshot)],
+            &[pkg("cli", "3.6.3", "CRAN"), pkg("glue", "1.7.0", snapshot)],
+        ));
+        assert_eq!(m.repository[0], imported_repo("CRAN-repo", latest));
+        assert_eq!(repository_of(&m, "cli").as_deref(), Some("CRAN-repo"));
+        assert_eq!(repository_of(&m, "glue").as_deref(), Some("CRAN-repo"));
+
+        let m = import_keep(&lock(
+            &[repo("CRAN", snapshot)],
+            &[pkg("cli", "3.6.3", "CRAN")],
+        ));
+        assert_eq!(
+            m.repository[0],
+            imported_repo("CRAN-repo", "https://ppm.example.com/cran/2024-05-01")
+        );
     }
 
     #[test]
@@ -1498,8 +2032,10 @@ mod tests {
                     URL: "https://cloud.r-project.org".to_string(),
                 },
             ],
-            false,
+            None,
             &[],
+            &test_detect,
+            false,
         );
         assert_eq!(repos.resolve("RSPM", None).as_deref(), Some("cran"));
         assert_eq!(repos.resolve("cran", None).as_deref(), Some("cran"));
@@ -1570,7 +2106,7 @@ mod tests {
 
     #[test]
     fn a_listed_repository_url_is_not_added_twice() {
-        let m = import(&lock(
+        let m = import_keep(&lock(
             &[
                 cran(),
                 repo("snap", "https://packagemanager.posit.co/cran/2024-05-01"),
@@ -1624,7 +2160,7 @@ mod tests {
 
     #[test]
     fn a_cran_alias_as_the_only_source_is_resolved() {
-        let m = import(&lock(
+        let m = import_keep(&lock(
             &[
                 repo("RSPM", "https://packagemanager.posit.co/cran/2024-05-01"),
                 cran(),
@@ -1764,12 +2300,84 @@ mod tests {
         );
     }
 
+    #[test]
+    fn git_packages_without_a_location_are_reported() {
+        let (m, report) = import_report(&lock(
+            &[cran()],
+            &[
+                r#""gh": {"Package": "gh", "Version": "1.0.0", "Source": "GitHub",
+                       "RemoteUsername": "o"}"#
+                    .to_string(),
+                r#""g": {"Package": "g", "Version": "2.0.0", "Source": "git"}"#.to_string(),
+                r#""loc": {"Package": "loc", "Version": "1.0.0", "Source": "Local",
+                       "RemoteUrl": "/tmp/loc"}"#
+                    .to_string(),
+            ],
+        ));
+        assert_eq!(report.incomplete_git, ["g", "gh"]);
+        assert_eq!(report.other_sources, ["loc"]);
+        assert_eq!(
+            m.dependencies.get("gh"),
+            Some(&Dependency::Version("^1.0.0".to_string()))
+        );
+        let warnings = import_warnings(&report, "renv.lock");
+        assert_eq!(warnings.len(), 2);
+        assert!(
+            warnings[1].starts_with("2 package(s) in renv.lock come from GitHub, GitLab"),
+            "{}",
+            warnings[1]
+        );
+        assert!(warnings[1].ends_with(": g, gh"), "{}", warnings[1]);
+    }
+
+    #[test]
+    fn git_urls_that_are_not_http_urls_are_reported() {
+        let (m, report) = import_report(&lock(
+            &[cran()],
+            &[
+                r#""ssh": {"Package": "ssh", "Version": "1.0.0", "Source": "git",
+                       "RemoteUrl": "git@git.example.com:team/ssh.git", "RemoteSha": "abc"}"#
+                    .to_string(),
+                r#""gh": {"Package": "gh", "Version": "1.0.0", "Source": "git",
+                       "RemoteUrl": "git://github.com/o/gh.git", "RemoteSha": "abc"}"#
+                    .to_string(),
+                r#""web": {"Package": "web", "Version": "1.0.0", "Source": "git",
+                       "RemoteUrl": "https://git.example.com/web.git", "RemoteSha": "abc"}"#
+                    .to_string(),
+            ],
+        ));
+        assert_eq!(report.github_git_urls, ["gh"]);
+        assert_eq!(report.other_git_urls, ["ssh"]);
+        // The SSH URL is kept as it is.
+        assert!(matches!(
+            m.dependencies.get("ssh"),
+            Some(Dependency::Detailed(t))
+                if t.git.as_deref() == Some("git@git.example.com:team/ssh.git")
+        ));
+        assert!(matches!(
+            m.dependencies.get("gh"),
+            Some(Dependency::Detailed(t))
+                if t.git.as_deref() == Some("https://github.com/o/gh.git")
+        ));
+        assert_eq!(
+            import_warnings(&report, "renv.lock"),
+            vec![
+                "1 package(s) in renv.lock come from a git:// URL of GitHub, which GitHub \
+                  does not serve any more; they were imported from the https:// URL: gh"
+                    .to_string(),
+                "1 package(s) in renv.lock come from a git URL that is not an http:// or \
+                  https:// URL, and may need manual adjustment: ssh"
+                    .to_string(),
+            ]
+        );
+    }
+
     // A Linux binary URL only works on one distribution.
     #[test]
     fn linux_binary_urls_are_imported_as_source_urls() {
         let snapshot = "https://p3m.dev/cran/__linux__/noble/2024-05-01";
         let private = "https://ppm.example.com/cran/__linux__/jammy/latest/";
-        let m = import(&lock(
+        let m = import_keep(&lock(
             &[repo("CRAN", snapshot)],
             &[pkg("cli", "3.6.3", "CRAN"), pkg("acme", "1.2.0", private)],
         ));
@@ -1791,7 +2399,7 @@ mod tests {
     fn a_linux_binary_url_of_a_listed_repository_is_that_repository() {
         let source = "https://p3m.dev/cran/2024-05-01";
         let binary = "https://p3m.dev/cran/__linux__/noble/2024-05-01";
-        let m = import(&lock(
+        let m = import_keep(&lock(
             &[repo("snap", source)],
             &[pkg("cli", "3.6.3", binary)],
         ));
@@ -1887,6 +2495,36 @@ mod tests {
     }
 
     #[test]
+    fn a_repository_name_can_end_in_dot_git() {
+        let t = git_dep(
+            r#"{"Package": "r", "Version": "0.1.0", "Source": "GitHub",
+                "RemoteUsername": "o", "RemoteRepo": "r.git"}"#,
+        )
+        .unwrap();
+        assert_eq!(t.git.as_deref(), Some("https://github.com/o/r.git"));
+    }
+
+    #[test]
+    fn the_default_api_host_is_case_insensitive() {
+        for (source, host, git) in [
+            ("GitHub", "API.GitHub.com", "https://github.com/o/r.git"),
+            (
+                "Bitbucket",
+                "API.BITBUCKET.ORG/2.0",
+                "https://bitbucket.org/o/r.git",
+            ),
+        ] {
+            let t = git_dep(&format!(
+                r#"{{"Package": "r", "Version": "0.1.0", "Source": "{}", "RemoteHost": "{}",
+                    "RemoteUsername": "o", "RemoteRepo": "r"}}"#,
+                source, host
+            ))
+            .unwrap();
+            assert_eq!(t.git.as_deref(), Some(git), "{}", host);
+        }
+    }
+
+    #[test]
     fn gitlab_and_bitbucket_hosts() {
         let t = git_dep(
             r#"{"Package": "p", "Version": "1.0.0", "Source": "GitLab", "RemoteHost": "gitlab.com",
@@ -1917,6 +2555,95 @@ mod tests {
         .unwrap();
         assert_eq!(t.git.as_deref(), Some("https://git.example.com/team/p.git"));
         assert_eq!(t.rev.as_deref(), Some("abc123"));
+    }
+
+    fn exported(info: GitSourceInfo) -> REnvLockfilePackage {
+        let pkg = REnvLockfilePackage {
+            Package: "p".to_string(),
+            Version: "1.0.0".to_string(),
+            ..Default::default()
+        }
+        .with_remote(&info);
+        // What `renv.lock` has, read back.
+        serde_json::from_str(&serde_json::to_string(&pkg).unwrap()).unwrap()
+    }
+
+    fn git_info(remote_type: &'static str, url: &str) -> GitSourceInfo {
+        GitSourceInfo {
+            remote_type,
+            url: url.to_string(),
+            host: None,
+            repo: None,
+            username: None,
+            subdir: None,
+            ref_: None,
+            sha: "abc123".to_string(),
+            binary: false,
+        }
+    }
+
+    #[test]
+    fn github_packages_are_exported_from_github() {
+        let pkg = exported(GitSourceInfo {
+            host: Some("github.com".to_string()),
+            repo: Some("o/p".to_string()),
+            username: Some("o".to_string()),
+            subdir: Some("pkg".to_string()),
+            ref_: Some("main".to_string()),
+            ..git_info("github", "https://github.com/o/p.git")
+        });
+        assert_eq!(pkg.Source, "GitHub");
+        assert_eq!(pkg.Repository, None);
+        assert_eq!(pkg.RemoteType.as_deref(), Some("github"));
+        assert_eq!(pkg.RemoteHost.as_deref(), Some("api.github.com"));
+        assert_eq!(pkg.RemoteUsername.as_deref(), Some("o"));
+        assert_eq!(pkg.RemoteRepo.as_deref(), Some("p"));
+        assert_eq!(pkg.RemoteRef.as_deref(), Some("main"));
+        assert_eq!(pkg.RemoteSha.as_deref(), Some("abc123"));
+        // And it is imported back as the same git dependency.
+        let t = pkg.git_dep_table().unwrap();
+        assert_eq!(t.git.as_deref(), Some("https://github.com/o/p.git"));
+        assert_eq!(t.rev.as_deref(), Some("abc123"));
+        assert_eq!(t.subdir.as_deref(), Some("pkg"));
+    }
+
+    #[test]
+    fn a_github_package_without_a_ref_is_from_the_default_branch() {
+        let pkg = exported(GitSourceInfo {
+            host: Some("github.com".to_string()),
+            repo: Some("o/p".to_string()),
+            username: Some("o".to_string()),
+            ..git_info("github", "https://github.com/o/p.git")
+        });
+        assert_eq!(pkg.RemoteRef.as_deref(), Some("HEAD"));
+    }
+
+    #[test]
+    fn git_url_and_local_packages_are_exported_from_their_source() {
+        let pkg = exported(git_info("git", "https://git.example.com/p.git"));
+        assert_eq!(pkg.Source, "git");
+        assert_eq!(
+            pkg.RemoteUrl.as_deref(),
+            Some("https://git.example.com/p.git")
+        );
+        let t = pkg.git_dep_table().unwrap();
+        assert_eq!(t.git.as_deref(), Some("https://git.example.com/p.git"));
+        assert_eq!(t.rev.as_deref(), Some("abc123"));
+
+        let pkg = exported(git_info("url", "https://example.com/p_1.0.0.tar.gz"));
+        assert_eq!(pkg.Source, "URL");
+        assert_eq!(
+            pkg.RemoteUrl.as_deref(),
+            Some("https://example.com/p_1.0.0.tar.gz")
+        );
+        assert_eq!(pkg.RemoteSha, None);
+
+        let pkg = exported(GitSourceInfo {
+            sha: String::new(),
+            ..git_info("local", "/tmp/p")
+        });
+        assert_eq!(pkg.Source, "Local");
+        assert_eq!(pkg.RemoteUrl.as_deref(), Some("/tmp/p"));
     }
 
     // The records below are from renv's own test suite.
@@ -1987,7 +2714,7 @@ mod tests {
     }
 
     #[test]
-    fn git_urls_of_any_scheme_are_kept() {
+    fn git_urls_of_github_are_https_urls() {
         let t = git_dep(
             r#"{"Package": "skeleton", "Version": "1.0.1", "Source": "git",
                 "RemoteUrl": "git://github.com/kevinushey/skeleton.git",
@@ -1995,7 +2722,7 @@ mod tests {
         );
         assert_eq!(
             t.unwrap().git.as_deref(),
-            Some("git://github.com/kevinushey/skeleton.git")
+            Some("https://github.com/kevinushey/skeleton.git")
         );
         // Older lock files have no commit, only the ref.
         let t = git_dep(
@@ -2137,16 +2864,28 @@ mod tests {
     }
 
     // The built-in Bioconductor repository is served by the public Posit
-    // Package Manager, so a private instance stays a repository of its own: the
-    // import must not depend on the machine it runs on, or drop the server the
-    // lock file installs from.
+    // Package Manager, so a private instance stays a repository of its own:
+    // the import must not drop the server the lock file installs from.
     #[test]
     fn a_private_package_manager_bioconductor_is_kept() {
-        let m = import(&bioc_lock(
-            "3.19",
-            &[cran(), repo("BioCsoft", PRIVATE_BIOC_URL)],
-            &[],
-        ));
+        for url in [PRIVATE_BIOC_URL, BIOC_SNAPSHOT_URL] {
+            let m = import(&bioc_lock("3.19", &[cran(), repo("BioCsoft", url)], &[]));
+            assert_eq!(
+                repository_names(&m),
+                ["bioc", "cran", "BioCsoft"],
+                "{}",
+                url
+            );
+            let entry = m.repository.iter().find(|r| r.name == "BioCsoft").unwrap();
+            assert_eq!(entry.url.as_deref(), Some(PRIVATE_BIOC_URL), "{}", url);
+        }
+    }
+
+    // A Bioconductor repository of another release is not the built-in one.
+    #[test]
+    fn a_bioconductor_repository_of_another_release_is_kept() {
+        let url = "https://bioconductor.org/packages/3.18/bioc";
+        let m = import(&bioc_lock("3.19", &[cran(), repo("BioCsoft", url)], &[]));
         assert_eq!(repository_names(&m), ["bioc", "cran", "BioCsoft"]);
     }
 
@@ -2154,10 +2893,7 @@ mod tests {
     // packages of Bioconductor, instead of the public one.
     #[test]
     fn bioconductor_packages_are_served_by_a_listed_private_bioconductor() {
-        for url in [
-            PRIVATE_BIOC_URL,
-            "https://packagemanager.posit.co/bioconductor/2024-05-01/packages/3.19/bioc",
-        ] {
+        for url in [PRIVATE_BIOC_URL, BIOC_SNAPSHOT_URL] {
             let m = import(&bioc_lock(
                 "3.19",
                 &[cran(), repo("BioCsoft", url)],
@@ -2532,6 +3268,65 @@ mod tests {
         );
     }
 
+    // Every table that lists the package gets the git source, so that the
+    // manifest has one source for it.
+    #[test]
+    fn a_git_package_replaces_its_entries_in_other_tables() {
+        let mut manifest = Rproj::minimal("proj");
+        manifest
+            .repository
+            .push(Repository::at_url("internal", INTERNAL_URL));
+        manifest
+            .dependency_groups
+            .entry("dev".to_string())
+            .or_default()
+            .dependencies
+            .insert(
+                "ts".to_string(),
+                Dependency::Detailed(Box::new(DepTable {
+                    version: Some("^2.0.0".to_string()),
+                    repository: Some("internal".to_string()),
+                    vignette_builder: Some(true),
+                    ..Default::default()
+                })),
+            );
+        manifest
+            .linking_dependencies
+            .insert("ts".to_string(), Dependency::Version("^2.0.0".to_string()));
+        merge(
+            &mut manifest,
+            &lock(
+                &[cran()],
+                &[
+                    r#""ts": {"Package": "ts", "Version": "0.1.0", "Source": "GitHub",
+                       "RemoteUsername": "o", "RemoteRepo": "ts", "RemoteSha": "3f2a"}"#
+                        .to_string(),
+                ],
+            ),
+        );
+        let git = DepTable {
+            git: Some("https://github.com/o/ts.git".to_string()),
+            rev: Some("3f2a".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            manifest.dependencies.get("ts"),
+            Some(&Dependency::Detailed(Box::new(git.clone())))
+        );
+        assert_eq!(
+            manifest.linking_dependencies.get("ts"),
+            Some(&Dependency::Detailed(Box::new(git.clone())))
+        );
+        assert_eq!(
+            manifest.dependency_groups["dev"].dependencies.get("ts"),
+            Some(&Dependency::Detailed(Box::new(DepTable {
+                vignette_builder: Some(true),
+                ..git
+            })))
+        );
+        assert!(manifest.repository_pins().unwrap().is_empty());
+    }
+
     // An existing entry for a private Bioconductor serves the Bioconductor
     // packages, so it cannot be explicit.
     #[test]
@@ -2615,13 +3410,7 @@ mod tests {
             manifest
         };
 
-        let err = apply_lockfile(
-            &mut bioc_off_manifest(),
-            &lock,
-            false,
-            VersionPolicy::Compatible,
-        )
-        .unwrap_err();
+        let err = apply_lockfile(&mut bioc_off_manifest(), &lock, false, &OPTIONS).unwrap_err();
         assert!(err.to_string().contains("turned off"), "{}", err);
 
         let mut manifest = bioc_off_manifest();
@@ -2632,7 +3421,7 @@ mod tests {
                 ..Default::default()
             })),
         );
-        apply_lockfile(&mut manifest, &lock, false, VersionPolicy::Compatible).unwrap();
+        apply_lockfile(&mut manifest, &lock, false, &OPTIONS).unwrap();
         assert_eq!(repository_of(&manifest, "Biobase"), None);
     }
 
@@ -2658,8 +3447,7 @@ mod tests {
             &[repo("internal", INTERNAL_URL)],
             &[pkg("acme", "1.2.0", "internal")],
         ));
-        let err =
-            apply_lockfile(&mut manifest, &lock, false, VersionPolicy::Compatible).unwrap_err();
+        let err = apply_lockfile(&mut manifest, &lock, false, &OPTIONS).unwrap_err();
         assert!(err.to_string().contains("two repositories"), "{}", err);
     }
 
@@ -2672,14 +3460,13 @@ mod tests {
         manifest
             .repository
             .push(Repository::disabled(CRAN_REPOSITORY_NAME));
-        let err =
-            apply_lockfile(&mut manifest, &lock, false, VersionPolicy::Compatible).unwrap_err();
+        let err = apply_lockfile(&mut manifest, &lock, false, &OPTIONS).unwrap_err();
         assert!(err.to_string().contains("Turn CRAN on"), "{}", err);
 
         manifest
             .repository
             .push(Repository::at_url("mirror", INTERNAL_URL));
-        apply_lockfile(&mut manifest, &lock, false, VersionPolicy::Compatible).unwrap();
+        apply_lockfile(&mut manifest, &lock, false, &OPTIONS).unwrap();
         assert_eq!(repository_of(&manifest, "cli"), None);
     }
 
@@ -2704,7 +3491,7 @@ mod tests {
                 })),
             );
         let lock = lockfile(&lock(&[cran()], &[pkg("cli", "3.6.3", "CRAN")]));
-        apply_lockfile(&mut manifest, &lock, false, VersionPolicy::Compatible).unwrap();
+        apply_lockfile(&mut manifest, &lock, false, &OPTIONS).unwrap();
         assert_eq!(repository_of(&manifest, "cli"), None);
     }
 
@@ -2720,5 +3507,97 @@ mod tests {
         );
         assert!(!set_repository(&mut manifest, "acme", Some("internal")));
         manifest.check_repositories().unwrap();
+    }
+
+    /// A detection that finds the type `rtype` for every URL, unless the
+    /// type is declared.
+    fn detect_as(rtype: RepoType) -> impl Fn(&str, Option<RepoType>) -> DetectedRepo {
+        move |url, declared| crate::repos::detect::describe(url, declared.unwrap_or(rtype))
+    }
+
+    #[test]
+    fn the_summary_shows_the_type_and_protocol_of_each_repository() {
+        let m = import(&lock(
+            &[cran(), repo("internal", INTERNAL_URL)],
+            &[
+                pkg("acme", "1.0.0", "internal"),
+                pkg("acme2", "1.0.0", "internal"),
+                pkg("cli", "3.6.3", "CRAN"),
+            ],
+        ));
+        let lines = repository_summary(&m, None, detect_as(RepoType::PpmOther)).unwrap();
+        assert_eq!(
+            lines,
+            vec![
+                "cran: built-in CRAN, extended protocol".to_string(),
+                format!(
+                    "internal: {}, type ppm-other, cran protocol, only for 2 pinned package(s)",
+                    INTERNAL_URL
+                ),
+                "bioc: off".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_summary_uses_the_detected_protocol() {
+        let m = import(&lock(
+            &[repo("acme", "https://acme.r-universe.dev")],
+            &[pkg("acme", "1.0.0", "acme")],
+        ));
+        let lines = repository_summary(&m, None, detect_as(RepoType::RUniverse)).unwrap();
+        assert_eq!(
+            lines[0],
+            "acme: https://acme.r-universe.dev, type r-universe, r-universe protocol, \
+             only for 1 pinned package(s)"
+        );
+
+        let lines = repository_summary(&m, None, detect_as(RepoType::Cran)).unwrap();
+        assert!(
+            lines[0].contains("type cran, extended protocol"),
+            "{}",
+            lines[0]
+        );
+    }
+
+    #[test]
+    fn the_summary_reports_repositories_that_did_not_respond() {
+        let m = import(&lock(
+            &[repo("internal", INTERNAL_URL)],
+            &[pkg("acme", "1.0.0", "internal")],
+        ));
+        let down = |url: &str, _: Option<RepoType>| {
+            let mut d = DetectedRepo::new(url, RepoType::CranLike);
+            d.notes
+                .push("src/contrib/PACKAGES did not respond".to_string());
+            d
+        };
+        let lines = repository_summary(&m, None, down).unwrap();
+        assert!(
+            lines[0].contains("type unknown, it did not respond, cran protocol"),
+            "{}",
+            lines[0]
+        );
+    }
+
+    #[test]
+    fn the_summary_shows_the_bioconductor_release() {
+        let m = import(&bioc_lock(
+            "3.19",
+            &[
+                cran(),
+                repo("BioCsoft", "https://bioconductor.org/packages/3.19/bioc"),
+            ],
+            &[bioc_pkg("limma", "3.60.0", None)],
+        ));
+        let lines = repository_summary(&m, Some("3.19"), detect_as(RepoType::Bioc)).unwrap();
+        assert!(
+            lines.contains(
+                &"bioc: built-in Bioconductor 3.19, extended protocol, only for 1 pinned package(s)"
+                    .to_string()
+            ),
+            "{:?}",
+            lines
+        );
     }
 }

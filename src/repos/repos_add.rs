@@ -6,7 +6,9 @@ use regex::Regex;
 use crate::output::OUTPUT;
 
 use super::config::{builtin_repo_names, get_custom_repos, save_custom_repos, CustomRepo};
+use super::detect::RepoType;
 use super::interpret_repos_args::ReposSetupArgs;
+use super::repo_types::resolve_repo;
 use super::{escalate_if_needed, repos_setup, target_versions};
 
 pub fn sc_repos_add(
@@ -18,11 +20,19 @@ pub fn sc_repos_add(
     let url = args.get_one::<String>("url").unwrap();
     let enable = args.get_flag("enable");
 
+    let url = check_repo_url(url)?;
+    let declared = match args.get_one::<String>("type") {
+        Some(t) => Some(t.parse::<RepoType>()?),
+        None => None,
+    };
+    let repo_type = repo_type_for(&url, declared);
     let repo = CustomRepo {
         name: check_repo_name(name)?,
-        url: check_repo_url(url)?,
+        url,
         title: args.get_one::<String>("title").cloned(),
         description: args.get_one::<String>("description").cloned(),
+        repo_type,
+        extend: args.get_flag("no-extend").then_some(false),
         // `--enable --all-versions`: R versions installed later get it, too.
         default: enable && args.get_flag("all-versions"),
     };
@@ -100,6 +110,25 @@ pub fn sc_repos_add(
     }
 
     Ok(())
+}
+
+/// The type of the new repository at `url`: `declared` if given, detected
+/// otherwise. `None` if it cannot be detected now: for a URL with a
+/// Bioconductor variable (`%v`, `%bm`), which only has a value for an R
+/// version, and for a repository that does not respond. Those are detected
+/// when they are used.
+fn repo_type_for(url: &str, declared: Option<RepoType>) -> Option<RepoType> {
+    if declared.is_some() {
+        return declared;
+    }
+    if url.contains('%') {
+        return None;
+    }
+    let detected = resolve_repo(url, None);
+    if detected.repo_type == RepoType::CranLike && !detected.notes.is_empty() {
+        return None;
+    }
+    Some(detected.repo_type)
 }
 
 fn check_repo_name(name: &str) -> Result<String, Box<dyn Error>> {

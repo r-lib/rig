@@ -15,7 +15,7 @@ if defined _OLD_RVENV_PATH (
 ) else (
     set "_OLD_RVENV_PATH=%PATH%"
 )
-set "PATH=%RVENV%\bin;%PATH%"
+set "PATH=%RVENV%/bin;%PATH%"
 
 if defined _OLD_RVENV_PROMPT (
     set "PROMPT=%_OLD_RVENV_PROMPT%"
@@ -24,7 +24,7 @@ if defined _OLD_RVENV_PROMPT (
 )
 if not defined RVENV_DISABLE_PROMPT set "PROMPT=(@RVENV_NAME@) %PROMPT%"
 
-set "R_LIBS_USER=%RVENV%\lib"
+set "R_LIBS_USER=%RVENV%/lib"
 set "R_LIBS="
 set "R_LIBS_SITE=/nonexistent/rvenv-no-site"
-set "R_REPOSITORIES=%RVENV%\etc\repositories"
+set "R_REPOSITORIES=%RVENV%/etc/repositories"
