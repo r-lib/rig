@@ -962,9 +962,32 @@ mod tests {
     // Serialize tests that mutate env vars to avoid races.
     static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
+    /// Puts back the env vars `with_temp_home` tests change, even if the test
+    /// panics. Other tests in the process run R scripts that need `PATH`.
+    struct RestoreEnv(Vec<(&'static str, Option<std::ffi::OsString>)>);
+
+    impl Drop for RestoreEnv {
+        fn drop(&mut self) {
+            for (name, value) in &self.0 {
+                unsafe {
+                    match value {
+                        Some(value) => std::env::set_var(name, value),
+                        None => std::env::remove_var(name),
+                    }
+                }
+            }
+        }
+    }
+
     fn with_temp_home<F: FnOnce(&Path)>(f: F) {
         let dir = tempfile::tempdir().unwrap();
-        let _guard = ENV_MUTEX.lock().unwrap();
+        let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let _restore = RestoreEnv(
+            ["HOME", "PATH", "RIG_BINARY_DIR", "RIG_MODE"]
+                .into_iter()
+                .map(|name| (name, std::env::var_os(name)))
+                .collect(),
+        );
         unsafe {
             std::env::set_var("HOME", dir.path());
             std::env::remove_var("RIG_BINARY_DIR");
@@ -1123,9 +1146,12 @@ mod tests {
             let bin_dir = home.join("mybin");
             fs::create_dir_all(&bin_dir).unwrap();
             let bin_str = bin_dir.to_str().unwrap().to_string();
+            // Keep the system directories on `PATH`: tests running at the
+            // same time still need `sh`, `mkdir`, etc.
+            let path = format!("{}:/usr/local/bin:/usr/bin:/bin", bin_str);
             unsafe {
                 std::env::set_var("RIG_BINARY_DIR", &bin_str);
-                std::env::set_var("PATH", &bin_str);
+                std::env::set_var("PATH", &path);
             }
             // Should succeed without error regardless of WARN_DONE state.
             check_local_bin_path().unwrap();
