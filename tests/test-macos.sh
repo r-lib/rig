@@ -675,7 +675,9 @@ RNAME=$(find_rname)
 @test "proj lock uses the R versions of the manifest" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf rverproj && mkdir rverproj && cd rverproj
-    run rig proj init -r $RMINOR
+    # The R versions below must satisfy the manifest's `R >= ...`. No R is
+    # needed for this, `rig proj lock` does not run R.
+    run rig proj init -r 4.4
     [[ "$status" -eq 0 ]]
     run rig proj add --no-lock cli
     [[ "$status" -eq 0 ]]
