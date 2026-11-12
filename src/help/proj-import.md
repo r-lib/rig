@@ -66,6 +66,11 @@ export`](#rig-proj-export) writes the fields in this order.
 A full import sets up a whole project, not just its manifest, so it creates
 the same files as [`rig proj init`](#rig-proj-init) .
 
+A full import also rewrites `DESCRIPTION` from the new `rproj.toml`, like
+`rig proj export --force` would, so the two files start out in sync. Use
+`--keep-description` to leave `DESCRIPTION` unchanged. `--dependencies` never
+rewrites `DESCRIPTION`.
+
 `--r-version` sets the R version the project is set up for. It does not have
 to be installed, and it does not change what is written: the manifest's R
 requirement always comes from the `DESCRIPTION` file, and the `.rvenvlib/rvenv`
