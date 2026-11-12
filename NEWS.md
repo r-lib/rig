@@ -1,5 +1,15 @@
 # rig 0.11.2-dev (development version)
 
+* `rig proj import` improvements:
+   - `rig proj import` now does a better job at parsing author names and
+     `rig proj export` at writing them back in the same form,
+   - `rig proj import` now records the order of the `DESCRIPTION` fields in
+     `description-field-order` in `[tool.rig]`, and `rig proj export` writes
+     the fields in the same order.
+   - `rig proj import` now also rewrites `DESCRIPTION` from the new
+     `rproj.toml`, like `rig proj export --force`. Use `--keep-description`
+     to leave `DESCRIPTION` unchanged.
+
 * `rig proj renv import` improvements:
    - create both `rproj.toml` and `rproj.lock`, with the lock file having
      the same package versions as `renv.lock`, use `--no-lock-versions` to

@@ -33,10 +33,13 @@ to merge dependencies into an existing file instead.
 | `KeepSource:`         | `[build].keep-source`          |
 
 `Authors@R` is parsed into `[project].authors`, one entry per `person()` call, in
-order; this is a best-effort parser for common `person()` usage (name, `email`,
-`role`, and an `ORCID`/`ROR` `comment`), not a full R parser, so unusual calls are
-skipped with a warning. If `Authors@R` is absent, the simpler `Maintainer:
-Name <email>` field is used instead, as a single author with role `cre`.
+order; this is a best-effort parser for common `person()` usage (`given`,
+`family`, `middle`, `email`, `role`, and an `ORCID`/`ROR` `comment`), not a
+full R parser, so unusual calls are skipped with a warning. Arguments are
+matched to `person()`'s signature, by name or by position, like R does, and
+`first` and `last` are stored as `given` and `family`. If `Authors@R` is
+absent, the simpler `Maintainer: Name <email>` field is used instead, as a
+single author with role `cre`; the last word of the name is the family name.
 
 `Config/Needs/<name>` depepdencies are parsed specially, an entry that is not
 a plain package name (with an optional version requirement) is kept
@@ -54,10 +57,19 @@ package listed there is also `Suggests`-listed in the same `DESCRIPTION` file
 using a package conditionally if it's `Suggests`-listed), so it also ends up
 in `[dependency-groups.dev]`, same as any other `Suggests` entry.
 
+A full import records the order of the `DESCRIPTION` fields in
+`description-field-order` in the `[tool.rig]` table, and [`rig proj
+export`](#rig-proj-export) writes the fields in this order.
+
 ## Files
 
 A full import sets up a whole project, not just its manifest, so it creates
 the same files as [`rig proj init`](#rig-proj-init) .
+
+A full import also rewrites `DESCRIPTION` from the new `rproj.toml`, like
+`rig proj export --force` would, so the two files start out in sync. Use
+`--keep-description` to leave `DESCRIPTION` unchanged. `--dependencies` never
+rewrites `DESCRIPTION`.
 
 `--r-version` sets the R version the project is set up for. It does not have
 to be installed, and it does not change what is written: the manifest's R

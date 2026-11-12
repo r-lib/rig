@@ -456,6 +456,14 @@ fn sc_proj_import(
         if build != Build::default() {
             manifest.build = Some(build);
         }
+        // Record the field order, so `rig proj export` can write the fields
+        // in the same order. rig's own note field is always written first.
+        let order: Vec<String> = paragraph
+            .iter()
+            .map(|(key, _)| key.to_string())
+            .filter(|key| key != DESCRIPTION_RIG_NOTE_FIELD)
+            .collect();
+        manifest.set_description_field_order(&order);
     }
 
     manifest.merge_description(&pkg);
@@ -648,6 +656,20 @@ fn sc_proj_import(
     };
     OUTPUT.success(&msg);
     info!("{}", msg);
+
+    // A full import also rewrites the project's `DESCRIPTION` from the new
+    // manifest, like `rig proj export --force`, so that the two files start
+    // out in sync, and later exports produce no unexpected changes.
+    // `--dependencies` merges into a manifest that was not created from this
+    // `DESCRIPTION`, so it never rewrites it.
+    if !dependencies_only && !args.get_flag("keep-description") {
+        let description = root.join("DESCRIPTION");
+        let manifest = proj_read_manifest(&root)?;
+        write_description_to(&description, &manifest)?;
+        let msg = format!("Rewrote DESCRIPTION from {}", RPROJ_MANIFEST_FILE);
+        OUTPUT.success(&msg);
+        info!("{}", msg);
+    }
 
     // A full import sets up a whole project, not just its manifest, so it
     // creates the same `.rvenv` layout as `rig proj init`.

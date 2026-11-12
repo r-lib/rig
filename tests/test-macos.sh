@@ -522,6 +522,8 @@ teardown() {
     grep -q '^version = "1.2.3"$' rproj.toml
     grep -q '^R = ">= 4.1"$' rproj.toml
     grep -q '^jsonlite = ' rproj.toml
+    # DESCRIPTION is rewritten from rproj.toml
+    grep -q '^Config/rig/note:' DESCRIPTION
 
     # Refuses to overwrite the manifest, and says what to do instead
     run rig proj import
@@ -539,15 +541,26 @@ teardown() {
     run rig proj import --force
     [[ "$status" -eq 0 ]]
 
+    # --keep-description leaves DESCRIPTION alone
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf impkeep && mkdir impkeep && cd impkeep
+    printf 'Package: impkeep\nVersion: 1.0.0\nImports: jsonlite\n' > DESCRIPTION
+    cp DESCRIPTION DESCRIPTION.orig
+    run rig proj import --keep-description
+    [[ "$status" -eq 0 ]]
+    cmp DESCRIPTION DESCRIPTION.orig
+
     # --dependencies only writes the manifest
     cd "$BATS_TEST_TMPDIR"
     rm -rf impdeps && mkdir impdeps && cd impdeps
-    cp ../impproj/DESCRIPTION .
+    printf 'Package: impdeps\nVersion: 1.0.0\nImports: jsonlite\n' > DESCRIPTION
+    cp DESCRIPTION DESCRIPTION.orig
     run rig proj import --dependencies
     [[ "$status" -eq 0 ]]
     [[ -f rproj.toml ]]
     [[ ! -e .rvenv ]]
     [[ ! -e .Renviron ]]
+    cmp DESCRIPTION DESCRIPTION.orig
 }
 
 @test "proj import remotes" {

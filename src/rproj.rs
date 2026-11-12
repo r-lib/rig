@@ -70,6 +70,46 @@ pub const RPROJ_MANIFEST_FILE: &str = "rproj.toml";
 /// export` uses its presence to overwrite such a file without `--force`.
 pub const DESCRIPTION_RIG_NOTE_FIELD: &str = "Config/rig/note";
 
+/// The `[tool.rig]` key that records the field order of the `DESCRIPTION`
+/// file `rig proj import` read, see [`Rproj::description_field_order`].
+pub const DESCRIPTION_FIELD_ORDER_KEY: &str = "description-field-order";
+
+/// Put the `(name, text)` fields of a generated `DESCRIPTION` into the
+/// recorded field `order`. Only the fields named in `order` move: they swap
+/// places among themselves, filling the positions they already have, in
+/// `order`'s order. Every other field, e.g. one added to `rproj.toml` after
+/// the import, keeps its position.
+pub(crate) fn apply_description_field_order(
+    fields: Vec<(String, String)>,
+    order: &[String],
+) -> Vec<(String, String)> {
+    let mut rank: HashMap<&str, usize> = HashMap::new();
+    for (i, name) in order.iter().enumerate() {
+        rank.entry(name.as_str()).or_insert(i);
+    }
+    let mut ranked: Vec<(usize, usize)> = fields
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (name, _))| rank.get(name.as_str()).map(|r| (*r, i)))
+        .collect();
+    ranked.sort();
+    // `sources[i]` is the index of the field that goes to position `i`.
+    let mut moved = ranked.into_iter().map(|(_, i)| i);
+    let sources: Vec<usize> = fields
+        .iter()
+        .enumerate()
+        .map(|(i, (name, _))| match rank.contains_key(name.as_str()) {
+            true => moved.next().unwrap_or(i),
+            false => i,
+        })
+        .collect();
+    let mut slots: Vec<Option<(String, String)>> = fields.into_iter().map(Some).collect();
+    sources
+        .into_iter()
+        .map(|i| slots[i].take().expect("each field is used once"))
+        .collect()
+}
+
 /// The dependency groups that map onto a `DESCRIPTION` dependency field
 /// instead of onto a `Config/Needs/*` field: `dev` is `Suggests` and
 /// `enhances` is `Enhances` (see [`Rproj::merge_description`]). Every other
@@ -211,9 +251,22 @@ impl Project {
 }
 
 /// One `authors = [...]` entry; generates a `person()` in `Authors@R`.
+/// The name fields follow R's `person()` signature: `given`, `family` and
+/// `middle` (`person()`'s `first` and `last` are stored as `given` and
+/// `family`).
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct Author {
-    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub given: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub middle: Option<String>,
+    /// A single combined name, as written by rig 0.11 before `given` and
+    /// `family` were separate. Only used when none of `given`, `family` and
+    /// `middle` is set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -245,13 +298,33 @@ impl Author {
     }
 
     /// Build one `person(...)` call for `Authors@R`, the inverse of
-    /// [`Author::from_authors_r`]'s per-call parsing. `name` is written as
-    /// the sole positional argument (`given`, with no `family`), since
-    /// [`Author`] only stores one combined name; that round-trips through
-    /// [`parse_person_call`], which treats a lone positional string as
-    /// `given` alone.
+    /// [`Author::from_authors_r`]'s per-call parsing. `given` and `family`
+    /// are written positionally, e.g. `person("Jane", "Doe", ...)`, and
+    /// `middle` by name. A manifest written by rig 0.11 only has the
+    /// combined `name`, see [`Author::legacy_name_parts`] for how that is
+    /// split.
     pub fn to_person_r(&self) -> String {
-        let mut parts = vec![format!("\"{}\"", escape_r_string(&self.name))];
+        let (given, family, middle) =
+            if self.given.is_some() || self.family.is_some() || self.middle.is_some() {
+                (self.given.clone(), self.family.clone(), self.middle.clone())
+            } else {
+                let (given, family) = self.legacy_name_parts();
+                (given, family, None)
+            };
+        let mut parts = vec![];
+        if let Some(given) = &given {
+            parts.push(format!("\"{}\"", escape_r_string(given)));
+        }
+        if let Some(family) = &family {
+            if given.is_some() {
+                parts.push(format!("\"{}\"", escape_r_string(family)));
+            } else {
+                parts.push(format!("family = \"{}\"", escape_r_string(family)));
+            }
+        }
+        if let Some(middle) = &middle {
+            parts.push(format!("middle = \"{}\"", escape_r_string(middle)));
+        }
         if let Some(email) = &self.email {
             parts.push(format!("email = \"{}\"", escape_r_string(email)));
         }
@@ -262,7 +335,11 @@ impl Author {
                 .map(|r| format!("\"{}\"", escape_r_string(r)))
                 .collect::<Vec<_>>()
                 .join(", ");
-            parts.push(format!("role = c({})", roles));
+            if self.roles.len() == 1 {
+                parts.push(format!("role = {}", roles));
+            } else {
+                parts.push(format!("role = c({})", roles));
+            }
         }
         let mut comment = vec![];
         if let Some(orcid) = &self.orcid {
@@ -277,8 +354,47 @@ impl Author {
         format!("person({})", parts.join(", "))
     }
 
+    /// Split the rig 0.11 combined `name` into `(given, family)`: the last
+    /// word is `family` and the rest is `given`. A one-word name, or one
+    /// that looks like an organization, is `given` alone. An organization's
+    /// name usually has a comma (`"Posit Software, PBC"`), or its only roles
+    /// are copyright holder and/or funder.
+    fn legacy_name_parts(&self) -> (Option<String>, Option<String>) {
+        let name = self.name.as_deref().unwrap_or("").trim();
+        if name.is_empty() {
+            return (None, None);
+        }
+        let is_organization = name.contains(',')
+            || (!self.roles.is_empty() && self.roles.iter().all(|r| r == "cph" || r == "fnd"));
+        match name.rsplit_once(char::is_whitespace) {
+            Some((given, family)) if !is_organization => {
+                (Some(given.trim_end().to_string()), Some(family.to_string()))
+            }
+            _ => (Some(name.to_string()), None),
+        }
+    }
+
+    /// The full name, `given`, `middle` and `family` joined with spaces (or
+    /// the rig 0.11 combined `name`).
+    #[cfg(test)]
+    pub fn full_name(&self) -> String {
+        let parts = [&self.given, &self.middle, &self.family]
+            .into_iter()
+            .flatten()
+            .map(|part| part.trim())
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>();
+        if parts.is_empty() {
+            self.name.clone().unwrap_or_default()
+        } else {
+            parts.join(" ")
+        }
+    }
+
     /// Fallback when `Authors@R` is absent: parses DESCRIPTION's
     /// `Maintainer: Name <email>` into a single author with role `cre`.
+    /// Like R's `as.person()`, the last word of the name is `family` and
+    /// the rest is `given`.
     pub fn from_maintainer(raw: &str) -> Option<Author> {
         let raw = raw.trim();
         let (name, email) = match (raw.find('<'), raw.find('>')) {
@@ -291,12 +407,16 @@ impl Author {
         if name.is_empty() {
             return None;
         }
+        let (given, family) = match name.rsplit_once(char::is_whitespace) {
+            Some((given, family)) => (Some(given.trim_end().to_string()), Some(family.to_string())),
+            None => (Some(name), None),
+        };
         Some(Author {
-            name,
+            given,
+            family,
             email,
             roles: vec!["cre".to_string()],
-            orcid: None,
-            ror: None,
+            ..Default::default()
         })
     }
 }
@@ -565,18 +685,17 @@ fn parse_person_call(args: &str) -> Result<Author, String> {
         }
     }
 
-    let name = [given, middle, family]
-        .into_iter()
-        .flatten()
-        .filter(|part| !part.trim().is_empty())
-        .collect::<Vec<_>>()
-        .join(" ");
-    if name.is_empty() {
+    let non_empty = |part: Option<String>| part.filter(|p| !p.trim().is_empty());
+    let (given, family, middle) = (non_empty(given), non_empty(family), non_empty(middle));
+    if given.is_none() && family.is_none() && middle.is_none() {
         return Err(format!("no name found in person({})", args));
     }
 
     Ok(Author {
-        name,
+        given,
+        family,
+        middle,
+        name: None,
         email,
         roles,
         orcid,
@@ -1213,6 +1332,44 @@ impl Rproj {
         } else {
             config_prefer_binary()
         }
+    }
+
+    /// The `description-field-order` setting of `[tool.rig]`: the order of
+    /// the fields of the `DESCRIPTION` file `rig proj import` read, which
+    /// [`Rproj::to_description`] restores. Empty if it is not set. A value
+    /// that is not a list of strings is ignored with a warning, since it only
+    /// affects the look of the generated `DESCRIPTION`.
+    pub fn description_field_order(&self) -> Vec<String> {
+        let Some(value) = self
+            .tool
+            .get("rig")
+            .and_then(|t| t.get(DESCRIPTION_FIELD_ORDER_KEY))
+        else {
+            return vec![];
+        };
+        let fields: Option<Vec<String>> = value
+            .as_array()
+            .and_then(|list| list.iter().map(|v| v.as_str().map(String::from)).collect());
+        fields.unwrap_or_else(|| {
+            warn!(
+                "Ignoring `{}` in `[tool.rig]`, it must be a list of DESCRIPTION field names",
+                DESCRIPTION_FIELD_ORDER_KEY
+            );
+            vec![]
+        })
+    }
+
+    /// Set `description-field-order` in `[tool.rig]`, see
+    /// [`Rproj::description_field_order`].
+    pub fn set_description_field_order(&mut self, fields: &[String]) {
+        let list = fields
+            .iter()
+            .map(|f| toml::Value::String(f.clone()))
+            .collect();
+        self.tool.entry("rig".to_string()).or_default().insert(
+            DESCRIPTION_FIELD_ORDER_KEY.to_string(),
+            toml::Value::Array(list),
+        );
     }
 
     /// Set `prefer-binary` in `[tool.rig]`, from a `--prefer-binary=<n>`
@@ -1999,42 +2156,62 @@ impl Rproj {
     /// dropped (DESCRIPTION's `pkg (>= 1.2.3)` syntax has no room for a
     /// two-sided range, so only the lower bound, if any, survives).
     pub fn to_description(&self) -> Result<(String, Vec<String>), Box<dyn Error>> {
-        let mut out = String::new();
+        // Each field is collected as `(name, rendered text)` first, so that
+        // they can be put into the order recorded at `rig proj import`, see
+        // [`apply_description_field_order`].
+        let mut fields: Vec<(String, String)> = Vec::new();
         let mut dropped: Vec<String> = Vec::new();
 
-        writeln!(
-            out,
-            "{}: This file was created by rig, do not edit it manually",
-            DESCRIPTION_RIG_NOTE_FIELD
-        )?;
-        writeln!(out, "Package: {}", self.project.name)?;
+        fn push(fields: &mut Vec<(String, String)>, name: &str, text: String) {
+            fields.push((name.to_string(), text));
+        }
+        push(
+            &mut fields,
+            DESCRIPTION_RIG_NOTE_FIELD,
+            format!(
+                "{}: This file was created by rig, do not edit it manually",
+                DESCRIPTION_RIG_NOTE_FIELD
+            ),
+        );
+        push(
+            &mut fields,
+            "Package",
+            format!("Package: {}", self.project.name),
+        );
         if !self.project.is_package() {
-            writeln!(
-                out,
-                "Type: {}",
-                title_case(self.project.type_.as_deref().unwrap_or("package"))
-            )?;
+            push(
+                &mut fields,
+                "Type",
+                format!(
+                    "Type: {}",
+                    title_case(self.project.type_.as_deref().unwrap_or("package"))
+                ),
+            );
         }
         if let Some(title) = &self.project.title {
-            writeln!(out, "{}", fold_dcf_prose("Title", title, 75))?;
+            push(&mut fields, "Title", fold_dcf_prose("Title", title, 75));
         }
-        writeln!(out, "Version: {}", self.project.version)?;
+        push(
+            &mut fields,
+            "Version",
+            format!("Version: {}", self.project.version),
+        );
         if !self.project.authors.is_empty() {
-            writeln!(
-                out,
-                "Authors@R: {}",
-                format_authors_r(&self.project.authors)
-            )?;
+            push(
+                &mut fields,
+                "Authors@R",
+                format!("Authors@R: {}", format_authors_r(&self.project.authors)),
+            );
         }
         if let Some(description) = &self.project.description {
-            writeln!(
-                out,
-                "{}",
-                crate::textfmt::text_to_dcf_field("Description", description)
-            )?;
+            push(
+                &mut fields,
+                "Description",
+                crate::textfmt::text_to_dcf_field("Description", description),
+            );
         }
         if let Some(license) = &self.project.license {
-            writeln!(out, "License: {}", license)?;
+            push(&mut fields, "License", format!("License: {}", license));
         }
         let mut urls: Vec<&str> = vec![];
         if let Some(homepage) = self.project.urls.get("homepage") {
@@ -2044,10 +2221,14 @@ impl Rproj {
             urls.push(source);
         }
         if !urls.is_empty() {
-            writeln!(out, "URL: {}", urls.join(", "))?;
+            push(&mut fields, "URL", format!("URL: {}", urls.join(", ")));
         }
         if let Some(bugreports) = self.project.urls.get("bugreports") {
-            writeln!(out, "BugReports: {}", bugreports)?;
+            push(
+                &mut fields,
+                "BugReports",
+                format!("BugReports: {}", bugreports),
+            );
         }
         let pkg_deps = self.to_dep_version_specs_impl(true, false)?;
         for dep_type in RDepType::all() {
@@ -2070,7 +2251,11 @@ impl Rproj {
                     item
                 })
                 .collect();
-            writeln!(out, "{}:{}", dep_type, fold_dcf_list(&items))?;
+            push(
+                &mut fields,
+                &dep_type.to_string(),
+                format!("{}:{}", dep_type, fold_dcf_list(&items)),
+            );
         }
 
         let mut git_deps = self.description_git_dependencies();
@@ -2080,12 +2265,16 @@ impl Rproj {
                 .iter()
                 .map(|(name, table)| dep_table_to_pak_ref(name, table))
                 .collect();
-            writeln!(out, "Remotes:{}", fold_dcf_list(&items))?;
+            push(
+                &mut fields,
+                "Remotes",
+                format!("Remotes:{}", fold_dcf_list(&items)),
+            );
         }
 
         if let Some(build) = &self.build {
             for (field, value) in build.description_fields() {
-                writeln!(out, "{}: {}", field, value)?;
+                push(&mut fields, field, format!("{}: {}", field, value));
             }
         }
 
@@ -2101,11 +2290,9 @@ impl Rproj {
                 }
                 items.push(item);
             }
-            if items.is_empty() {
-                writeln!(out, "Config/Needs/{}:", group_name)?;
-            } else {
-                writeln!(out, "Config/Needs/{}:{}", group_name, fold_dcf_list(&items))?;
-            }
+            let name = format!("Config/Needs/{}", group_name);
+            let text = format!("{}:{}", name, fold_dcf_list(&items));
+            push(&mut fields, &name, text);
         }
 
         for (group_name, extra) in self.optional_dependencies.iter() {
@@ -2120,36 +2307,35 @@ impl Rproj {
                 }
                 items.push(item);
             }
-            if items.is_empty() {
-                writeln!(out, "Config/Needs/Optional/{}:", group_name)?;
-            } else {
-                writeln!(
-                    out,
-                    "Config/Needs/Optional/{}:{}",
-                    group_name,
-                    fold_dcf_list(&items)
-                )?;
-            }
+            let name = format!("Config/Needs/Optional/{}", group_name);
+            let text = format!("{}:{}", name, fold_dcf_list(&items));
+            push(&mut fields, &name, text);
         }
 
         for (group, table) in self.config.iter() {
             for (key, value) in table.iter() {
-                writeln!(
-                    out,
-                    "Config/{}/{}: {}",
-                    group,
-                    key,
-                    format_config_value(value)
-                )?;
+                let name = format!("Config/{}/{}", group, key);
+                let text = format!("{}: {}", name, format_config_value(value));
+                push(&mut fields, &name, text);
             }
         }
 
         // The `[description]` escape hatch has no structured place in
-        // DESCRIPTION's field order, so it goes last.
+        // DESCRIPTION's field order, so it goes last, unless the recorded
+        // field order says otherwise.
         for (key, value) in self.description.iter() {
-            writeln!(out, "{}: {}", key, format_config_value(value))?;
+            push(
+                &mut fields,
+                key,
+                format!("{}: {}", key, format_config_value(value)),
+            );
         }
 
+        let order = self.description_field_order();
+        let mut out = String::new();
+        for (_, text) in apply_description_field_order(fields, &order) {
+            writeln!(out, "{}", text)?;
+        }
         Ok((out, dropped))
     }
 
@@ -3599,7 +3785,10 @@ mod tests {
         m.project.license = Some("MIT + file LICENSE".to_string());
         m.project.keywords = Some(vec!["cli".to_string()]);
         m.project.authors = vec![Author {
-            name: "Gábor Csárdi".to_string(),
+            given: Some("Gábor".to_string()),
+            family: Some("Csárdi".to_string()),
+            middle: None,
+            name: None,
             email: Some("gabor@posit.co".to_string()),
             roles: vec!["aut".to_string(), "cre".to_string()],
             orcid: Some("0000-0001-7098-9676".to_string()),
@@ -4775,7 +4964,10 @@ foo = "bar"
         assert_eq!(
             authors,
             vec![Author {
-                name: "Jane Doe".to_string(),
+                given: Some("Jane".to_string()),
+                family: Some("Doe".to_string()),
+                middle: None,
+                name: None,
                 email: Some("jane@x.com".to_string()),
                 roles: vec!["aut".to_string(), "cre".to_string()],
                 orcid: None,
@@ -4791,8 +4983,8 @@ foo = "bar"
              person(\"John\", \"Smith\", role = \"ctb\")\n)",
         );
         assert_eq!(authors.len(), 2);
-        assert_eq!(authors[0].name, "Jane Doe");
-        assert_eq!(authors[1].name, "John Smith");
+        assert_eq!(authors[0].full_name(), "Jane Doe");
+        assert_eq!(authors[1].full_name(), "John Smith");
         assert_eq!(authors[1].roles, vec!["ctb".to_string()]);
     }
 
@@ -4814,7 +5006,10 @@ foo = "bar"
         assert_eq!(
             authors,
             vec![Author {
-                name: "Gábor Csárdi".to_string(),
+                given: Some("Gábor".to_string()),
+                family: Some("Csárdi".to_string()),
+                middle: None,
+                name: None,
                 email: Some("gabor@posit.co".to_string()),
                 roles: vec!["aut".to_string(), "cre".to_string()],
                 orcid: None,
@@ -4832,7 +5027,10 @@ foo = "bar"
         assert_eq!(
             authors,
             vec![Author {
-                name: "Jane Q Doe".to_string(),
+                given: Some("Jane".to_string()),
+                family: Some("Doe".to_string()),
+                middle: Some("Q".to_string()),
+                name: None,
                 email: Some("jane@x.com".to_string()),
                 roles: vec!["cre".to_string()],
                 orcid: Some("0000-0001-7098-9676".to_string()),
@@ -4851,7 +5049,10 @@ foo = "bar"
         assert_eq!(
             authors,
             vec![Author {
-                name: "Jane Q Doe".to_string(),
+                given: Some("Jane".to_string()),
+                family: Some("Doe".to_string()),
+                middle: Some("Q".to_string()),
+                name: None,
                 email: Some("jane@x.com".to_string()),
                 roles: vec!["aut".to_string()],
                 orcid: None,
@@ -4870,7 +5071,8 @@ foo = "bar"
     #[test]
     fn maintainer_parses_name_and_email() {
         let author = Author::from_maintainer("Jane Doe <jane@x.com>").unwrap();
-        assert_eq!(author.name, "Jane Doe");
+        assert_eq!(author.given, Some("Jane".to_string()));
+        assert_eq!(author.family, Some("Doe".to_string()));
         assert_eq!(author.email, Some("jane@x.com".to_string()));
         assert_eq!(author.roles, vec!["cre".to_string()]);
     }
@@ -4878,7 +5080,7 @@ foo = "bar"
     #[test]
     fn maintainer_without_email_still_parses() {
         let author = Author::from_maintainer("Jane Doe").unwrap();
-        assert_eq!(author.name, "Jane Doe");
+        assert_eq!(author.full_name(), "Jane Doe");
         assert_eq!(author.email, None);
     }
 
@@ -4889,7 +5091,10 @@ foo = "bar"
         m.project.description = Some("Does things.".to_string());
         m.project.license = Some("MIT".to_string());
         m.project.authors.push(Author {
-            name: "Jane Doe".to_string(),
+            given: Some("Jane".to_string()),
+            family: Some("Doe".to_string()),
+            middle: None,
+            name: None,
             email: Some("jane@x.com".to_string()),
             roles: vec!["aut".to_string(), "cre".to_string()],
             orcid: None,
@@ -4920,7 +5125,8 @@ foo = "bar"
         assert!(desc.contains("Type: Project\n"));
         assert!(desc.contains("Title: My Package\n"));
         assert!(desc.contains(
-            "Authors@R: person(\"Jane Doe\", email = \"jane@x.com\", role = c(\"aut\", \"cre\"))\n"
+            "Authors@R: person(\"Jane\", \"Doe\", email = \"jane@x.com\",\n    \
+             role = c(\"aut\", \"cre\"))\n"
         ));
         assert!(desc.contains("Description: Does things.\n"));
         assert!(desc.contains("License: MIT\n"));
@@ -4929,6 +5135,75 @@ foo = "bar"
         assert!(desc.contains("Depends:\n    R (>= 4.1)\n"));
         assert!(desc.contains("Imports:\n    dplyr (>= 1.1.0),\n    rlang (>= 1.0)\n"));
         assert!(desc.contains("Suggests:\n    testthat (>= 3.0)\n"));
+    }
+
+    #[test]
+    fn apply_description_field_order_moves_only_recorded_fields() {
+        let fields = |names: &[&str]| -> Vec<(String, String)> {
+            names
+                .iter()
+                .map(|n| (n.to_string(), format!("{}: x", n)))
+                .collect()
+        };
+        let names = |fields: Vec<(String, String)>| -> Vec<String> {
+            fields.into_iter().map(|(n, _)| n).collect()
+        };
+        let order: Vec<String> = ["Version", "Package", "Imports", "Gone"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        // `Title` and `License` are not recorded, they stay where they are.
+        let got = apply_description_field_order(
+            fields(&["Package", "Title", "Version", "License", "Imports"]),
+            &order,
+        );
+        assert_eq!(
+            names(got),
+            vec!["Version", "Title", "Package", "License", "Imports"]
+        );
+        // No recorded order: unchanged.
+        let got = apply_description_field_order(fields(&["Package", "Title"]), &[]);
+        assert_eq!(names(got), vec!["Package", "Title"]);
+    }
+
+    #[test]
+    fn to_description_uses_the_recorded_field_order() {
+        let mut m = Rproj::minimal("mypkg");
+        m.project.title = Some("My Package".to_string());
+        m.project.license = Some("MIT".to_string());
+        m.description.insert(
+            "Encoding".to_string(),
+            toml::Value::String("UTF-8".to_string()),
+        );
+        m.set_description_field_order(&[
+            "Encoding".to_string(),
+            "Package".to_string(),
+            "Version".to_string(),
+            "Title".to_string(),
+        ]);
+        let (desc, _) = m.to_description().unwrap();
+        let keys: Vec<&str> = desc
+            .lines()
+            .filter(|l| !l.starts_with(' '))
+            .map(|l| l.split(':').next().unwrap())
+            .collect();
+        // Without the recorded order the fields would be `Config/rig/note`,
+        // `Package`, `Type`, `Title`, `Version`, `License`, `Depends`,
+        // `Encoding`. `Type`, `License` and `Depends` were not recorded, so
+        // they keep their positions, while the recorded ones move around them.
+        assert_eq!(
+            keys,
+            vec![
+                DESCRIPTION_RIG_NOTE_FIELD,
+                "Encoding",
+                "Type",
+                "Package",
+                "Version",
+                "License",
+                "Depends",
+                "Title",
+            ]
+        );
     }
 
     #[test]
@@ -5330,34 +5605,119 @@ foo = "bar"
         assert!(toml_text.contains("description = \"Does things.\""));
     }
 
-    fn author(name: &str, roles: &[&str]) -> Author {
+    fn author(given: &str, family: &str, roles: &[&str]) -> Author {
         Author {
-            name: name.to_string(),
-            email: None,
+            given: Some(given.to_string()),
+            family: Some(family.to_string()),
             roles: roles.iter().map(|r| r.to_string()).collect(),
-            orcid: None,
-            ror: None,
+            ..Default::default()
+        }
+    }
+
+    /// An author from a rig 0.11 manifest, with a single combined `name`.
+    fn legacy_author(name: &str, roles: &[&str]) -> Author {
+        Author {
+            name: Some(name.to_string()),
+            roles: roles.iter().map(|r| r.to_string()).collect(),
+            ..Default::default()
         }
     }
 
     #[test]
     fn to_description_writes_one_author_as_a_bare_call() {
         let mut m = Rproj::minimal("mypkg");
-        m.project.authors.push(author("Jane Doe", &["aut", "cre"]));
+        m.project
+            .authors
+            .push(author("Jane", "Doe", &["aut", "cre"]));
         let (desc, _) = m.to_description().unwrap();
-        assert!(desc.contains("Authors@R: person(\"Jane Doe\", role = c(\"aut\", \"cre\"))\n"));
+        assert!(desc.contains("Authors@R: person(\"Jane\", \"Doe\", role = c(\"aut\", \"cre\"))\n"));
+    }
+
+    #[test]
+    fn to_person_r_writes_given_family_and_middle() {
+        assert_eq!(
+            author("Gábor", "Csárdi", &["aut", "cre"]).to_person_r(),
+            "person(\"Gábor\", \"Csárdi\", role = c(\"aut\", \"cre\"))"
+        );
+        let mut a = author("Jane", "van Doe", &["aut"]);
+        a.middle = Some("Q".to_string());
+        assert_eq!(
+            a.to_person_r(),
+            "person(\"Jane\", \"van Doe\", middle = \"Q\", role = \"aut\")"
+        );
+        let org = Author {
+            given: Some("Posit Software, PBC".to_string()),
+            roles: vec!["cph".to_string(), "fnd".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(
+            org.to_person_r(),
+            "person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\"))"
+        );
+        let family_only = Author {
+            family: Some("Doe".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(family_only.to_person_r(), "person(family = \"Doe\")");
+    }
+
+    #[test]
+    fn to_person_r_splits_a_legacy_name_into_given_and_family() {
+        assert_eq!(
+            legacy_author("Gábor Csárdi", &["aut", "cre"]).to_person_r(),
+            "person(\"Gábor\", \"Csárdi\", role = c(\"aut\", \"cre\"))"
+        );
+        assert_eq!(
+            legacy_author("Jane Q Doe", &["aut"]).to_person_r(),
+            "person(\"Jane Q\", \"Doe\", role = \"aut\")"
+        );
+        assert_eq!(
+            legacy_author("Hadley", &["aut"]).to_person_r(),
+            "person(\"Hadley\", role = \"aut\")"
+        );
+        // Organizations are not split.
+        assert_eq!(
+            legacy_author("Posit Software, PBC", &["cph", "fnd"]).to_person_r(),
+            "person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\"))"
+        );
+        assert_eq!(
+            legacy_author("R Core Team", &["cph"]).to_person_r(),
+            "person(\"R Core Team\", role = \"cph\")"
+        );
+    }
+
+    #[test]
+    fn legacy_name_is_read_from_toml() {
+        let a: Author = toml::from_str("name = \"Jane Doe\"\nroles = [\"aut\"]\n").unwrap();
+        assert_eq!(a, legacy_author("Jane Doe", &["aut"]));
+        assert_eq!(a.full_name(), "Jane Doe");
+    }
+
+    #[test]
+    fn to_person_r_round_trips_through_the_parser() {
+        for a in [
+            author("Gábor", "Csárdi", &["aut", "cre"]),
+            author("Jane", "van Doe", &["ctb"]),
+        ] {
+            let r = a.to_person_r();
+            assert_eq!(Author::from_authors_r(&r), vec![a]);
+        }
     }
 
     #[test]
     fn to_description_writes_multiple_authors_one_per_line() {
         let mut m = Rproj::minimal("mypkg");
-        m.project.authors.push(author("Jane Doe", &["aut", "cre"]));
-        m.project.authors.push(author("Rich Contributor", &["ctb"]));
+        m.project
+            .authors
+            .push(author("Jane", "Doe", &["aut", "cre"]));
+        m.project
+            .authors
+            .push(author("Rich", "Contributor", &["ctb"]));
         let (desc, _) = m.to_description().unwrap();
         assert!(desc.contains(
             "Authors@R: c(\n    \
-             person(\"Jane Doe\", role = c(\"aut\", \"cre\")),\n    \
-             person(\"Rich Contributor\", role = c(\"ctb\"))\n  \
+             person(\"Jane\", \"Doe\", role = c(\"aut\", \"cre\")),\n    \
+             person(\"Rich\", \"Contributor\", role = \"ctb\")\n  \
              )\n"
         ));
     }
@@ -5366,13 +5726,18 @@ foo = "bar"
     fn to_description_wraps_a_long_person_call_across_lines() {
         let mut m = Rproj::minimal("mypkg");
         m.project.authors.push(Author {
-            name: "Salim Brüggemann".to_string(),
+            given: Some("Salim".to_string()),
+            family: Some("Brüggemann".to_string()),
+            middle: None,
+            name: None,
             email: Some("salim-b@pm.me".to_string()),
             roles: vec!["ctb".to_string()],
             orcid: Some("0000-0002-5329-5987".to_string()),
             ror: None,
         });
-        m.project.authors.push(author("Rich Contributor", &["ctb"]));
+        m.project
+            .authors
+            .push(author("Rich", "Contributor", &["ctb"]));
         let (desc, _) = m.to_description().unwrap();
 
         // The first author's call is too long for one line, so it wraps,
@@ -5380,9 +5745,9 @@ foo = "bar"
         // fits on a single line.
         assert!(desc.contains(
             "Authors@R: c(\n    \
-             person(\"Salim Brüggemann\", email = \"salim-b@pm.me\", role = c(\"ctb\"),\n           \
+             person(\"Salim\", \"Brüggemann\", email = \"salim-b@pm.me\", role = \"ctb\",\n           \
              comment = c(ORCID = \"0000-0002-5329-5987\")),\n    \
-             person(\"Rich Contributor\", role = c(\"ctb\"))\n  \
+             person(\"Rich\", \"Contributor\", role = \"ctb\")\n  \
              )\n"
         ));
     }

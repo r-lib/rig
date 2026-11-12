@@ -35,6 +35,11 @@ two-sided range (e.g. `^1.2.3` means `>= 1.2.3, < 2.0.0`). When a dependency
 has both a lower and an upper bound, only the lower bound is written; rig
 prints a warning listing which packages were affected.
 
+If `[tool.rig]` has a `description-field-order` list, set by [`rig proj
+import`](#rig-proj-import), the fields named in it are written in this
+order. Other fields, e.g. ones added to `rproj.toml` after the import, keep
+their usual position.
+
 By default rig writes `DESCRIPTION` in the current directory; use `--output` to
 write to a different file.
 

@@ -1798,6 +1798,12 @@ pub fn rig_app() -> Command {
                         .action(clap::ArgAction::SetTrue),
                 )
                 .arg(
+                    Arg::new("keep-description")
+                        .help("Do not rewrite DESCRIPTION from the new rproj.toml")
+                        .long("keep-description")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
                     Arg::new("force")
                         .help("Overwrite existing project files")
                         .long("force")
