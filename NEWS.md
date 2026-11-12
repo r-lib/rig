@@ -182,6 +182,9 @@
 * Compiled source packages from private Posit Package Manager instances are now
   cached correctly.
 
+* rig now retries package downloads that seem to fail with a transient error,
+  and respects servers that rate-limit requests.
+
 # rig 0.11.0
 
 ## Custom repositories
