@@ -10,6 +10,23 @@ teardown() {
     true
 }
 
+# The main R version of the tests, a recent one for the native architecture.
+# RNAME is its name in `rig ls`, its R.framework directory and its `R-*`
+# quick link. The installer decides that name: `4.6`, `4.6-arm64` or
+# `4.6-x86_64`, so look it up instead of guessing. It is empty until the
+# "add" test installs this version. (bats runs this for every test.)
+RMINOR=4.6
+find_rname() {
+    local d
+    for d in "$RMINOR" "$RMINOR-arm64" "$RMINOR-x86_64"; do
+        if [[ -d "/Library/Frameworks/R.framework/Versions/$d" ]]; then
+            echo "$d"
+            return
+        fi
+    done
+}
+RNAME=$(find_rname)
+
 # These run before any `rig add`, on purpose: they must work with no R
 # installed, which is when they are the most useful.
 
@@ -174,17 +191,19 @@ teardown() {
 }
 
 @test "add" {
-    if ! rig ls | grep -q '^[* ] 4.1'; then
-        run sudo rig add 4.1 -a x86_64
+    if [[ -z "$RNAME" ]]; then
+        run sudo rig add $RMINOR
         [[ "$status" -eq 0 ]]
-        run rig ls
-        echo "$output" | grep -q "^[* ] 4.1"
+        RNAME=$(find_rname)
+        [[ -n "$RNAME" ]]
     fi
+    run rig ls
+    echo "$output" | grep -q "^[* ] $RNAME "
     run sudo rig system make-links
     [[ "$status" -eq 0 ]]
-    run R-4.1 -q -s -e 'cat(as.character(getRversion()))'
+    run R-$RNAME -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^4[.]1[.][0-9]$"
+    echo "$output" | grep -q "^$RMINOR[.][0-9]$"
 
     if ! rig ls | grep -q '^[* ] 4.0'; then
         run sudo rig add 4.0 -a x86_64
@@ -211,34 +230,25 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo $output
     echo "$output" | grep -q "^$devel[.][0-9]\$"
-
-    if [[ "$(arch)" = "arm64" ]]; then
-        if ! rig ls | grep -q '^[* ] 4.1'; then
-            run sudo rig add 4.1 --arch arm64
-            [[ "$status" -eq 0 ]]
-            run rig ls
-            echo "$output" | grep -q "^[* ] 4.1-arm64"
-        fi
-    fi
 }
 
 @test "default" {
     run rig default
     [[ "$status" -eq 0 ]]
-    run sudo rig default 4.1
+    run sudo rig default $RNAME
     [[ "$status" -eq 0 ]]
     run rig default
-    [[ "$output" = "4.1" ]]
+    [[ "$output" = "$RNAME" ]]
     run sudo rig default 1.0
     [[ ! "$status" -eq 0 ]]
     echo $output | grep -q "is not installed"
 }
 
 @test "list" {
-    run rig default 4.1
+    run rig default $RNAME
     run rig list
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^[*] 4.1[ ]*[(]R 4[.]1[.][0-9][)]"
+    echo "$output" | grep -q "^[*] $RNAME[ ]*[(]R $RMINOR[.][0-9][)]"
     run rig ls
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^  4.0"
@@ -249,23 +259,23 @@ teardown() {
     [[ "$status" -eq 0 ]]
     run rig repos available
     echo "$output" | grep -q "^rigtest .*custom"
-    run rig repos enable rigtest -r 4.1
+    run rig repos enable rigtest -r $RNAME
     [[ "$status" -eq 0 ]]
-    run rig repos list -r 4.1
+    run rig repos list -r $RNAME
     echo "$output" | grep -q "^rigtest "
     # choices survive a new setup
-    run rig repos setup -r 4.1
+    run rig repos setup -r $RNAME
     [[ "$status" -eq 0 ]]
-    run rig repos list -r 4.1
+    run rig repos list -r $RNAME
     echo "$output" | grep -q "^rigtest "
-    run rig repos disable rigtest -r 4.1
+    run rig repos disable rigtest -r $RNAME
     [[ "$status" -eq 0 ]]
-    run rig repos list -r 4.1
+    run rig repos list -r $RNAME
     ! echo "$output" | grep -q "^rigtest "
-    run rig repos enable rigtest -r 4.1
+    run rig repos enable rigtest -r $RNAME
     run rig repos rm rigtest
     [[ "$status" -eq 0 ]]
-    run rig repos list -r 4.1
+    run rig repos list -r $RNAME
     ! echo "$output" | grep -q "^rigtest "
     run rig repos rm cran
     [[ ! "$status" -eq 0 ]]
@@ -276,9 +286,9 @@ teardown() {
     # repository setup changed for the other tests.
     # Not a CRAN mirror: rig serves those from the extended CRAN metadata,
     # so they have no metadata of their own.
-    run rig repos add rigtest https://r-lib.r-universe.dev --enable -r 4.1
+    run rig repos add rigtest https://r-lib.r-universe.dev --enable -r $RNAME
     add_status=$status
-    run rig pkg deps cli --r-version 4.1
+    run rig pkg deps cli --r-version $RNAME
     deps_status=$status
     deps_output=$output
     rig repos rm rigtest
@@ -339,7 +349,7 @@ teardown() {
 @test "system create-lib" {
     run rig system create-lib
     [[ $status -eq 0 ]]
-    run R-4.1 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
+    run R-$RNAME -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
     [[ $status -eq 0 ]]
     [[ "$output" = "[1] TRUE" ]]
     run R-4.0 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
@@ -348,11 +358,11 @@ teardown() {
 }
 
 @test "system add-pak" {
-    run sudo rig default 4.1
+    run sudo rig default $RNAME
     [[ "$status" -eq 0 ]]
     run rig system add-pak
-    echo $output | grep -qE "(Installing|Updating) pak for R 4.1"
-    run R-4.1 -q -s -e 'pak::lib_status()'
+    echo $output | grep -qE "(Installing|Updating) pak for R $RNAME"
+    run R-$RNAME -q -s -e 'pak::lib_status()'
     [[ "$status" -eq 0 ]]
 
     if ! rig ls | grep -q '^[* ] 3.5'; then
@@ -374,7 +384,7 @@ teardown() {
 @test "system fix-permissions" {
     run sudo rig system fix-permissions
     [[ "$status" -eq 0 ]]
-    run ls -ld /Library/Frameworks/R.framework/Versions/4.1/Resources/library
+    run ls -ld /Library/Frameworks/R.framework/Versions/$RNAME/Resources/library
     [[ "$status" -eq 0 ]]
     echo $output | grep -q -- "drwxr-xr-x"
 }
@@ -399,37 +409,33 @@ teardown() {
 @test "system no-openmp" {
     run sudo rig system no-openmp
     [[ $status -eq 0 ]]
-    run grep -q fopenmp /Library/Frameworks/R.framework/Versions/4.1/Resources/etc/Makeconf
+    run grep -q fopenmp /Library/Frameworks/R.framework/Versions/$RNAME/Resources/etc/Makeconf
     [[ $status -eq 1 ]]
 }
 
 @test "system blas" {
-    run sudo rig system blas set accelerate 4.1
+    run sudo rig system blas set accelerate $RNAME
     [[ $status -eq 0 ]]
-    run readlink /Library/Frameworks/R.framework/Versions/4.1/Resources/lib/libRblas.dylib
+    run readlink /Library/Frameworks/R.framework/Versions/$RNAME/Resources/lib/libRblas.dylib
     [[ "$output" == "libRblas.vecLib.dylib" ]]
-    run rig system blas status 4.1
+    run rig system blas status $RNAME
     [[ $status -eq 0 ]]
     echo $output | grep -q -- "accelerate"
 
-    run sudo rig system blas set reference 4.1
+    run sudo rig system blas set reference $RNAME
     [[ $status -eq 0 ]]
-    run readlink /Library/Frameworks/R.framework/Versions/4.1/Resources/lib/libRblas.dylib
+    run readlink /Library/Frameworks/R.framework/Versions/$RNAME/Resources/lib/libRblas.dylib
     [[ "$output" == "libRblas.0.dylib" ]]
-    run rig system blas status 4.1
+    run rig system blas status $RNAME
     [[ $status -eq 0 ]]
     echo $output | grep -q -- "reference"
 }
 
 @test "system allow-debugger" {
-    run sudo rig default 4.1
+    run sudo rig default $RNAME
     [[ "$status" -eq 0 ]]
     run sudo rig system allow-debugger
-    if [[ "$(uname -r | cut -d. -f1)" -lt "21" ]]; then
-	run codesign -d --entitlements :- /Library/Frameworks/R.framework/Versions/4.1/Resources/bin/exec/R
-    else
-	run codesign -d --entitlements :- /Library/Frameworks/R.framework/Versions/4.1/Resources/bin/exec/R
-    fi
+    run codesign -d --entitlements :- /Library/Frameworks/R.framework/Versions/$RNAME/Resources/bin/exec/R
     echo $output | grep -q -- "com.apple.security.get-task-allow"
 }
 
@@ -439,14 +445,14 @@ teardown() {
 
     # No R needs to be installed for the requested version, `rig proj init`
     # does not touch an R installation.
-    run rig proj init -r 4.1
+    run rig proj init -r $RMINOR
     [[ "$status" -eq 0 ]]
     [[ -f rproj.toml ]]
     [[ -f .Renviron ]]
     [[ -f .gitignore ]]
     [[ -f .rvenvlib/rvenv/DESCRIPTION ]]
     grep -q '^name = "myproj"$' rproj.toml
-    grep -q '^R = ">= 4.1"$' rproj.toml
+    grep -q "^R = \">= $RMINOR\"\$" rproj.toml
     grep -q '^R_LIBS_USER=.rvenvlib$' .Renviron
     grep -q '^/.rvenv/$' .gitignore
     grep -q '^Package: rvenv$' .rvenvlib/rvenv/DESCRIPTION
@@ -456,7 +462,7 @@ teardown() {
     # The IDE leg: a plain R session in the project picks up the shim
     # package. Without a project library it warns and leaves the library path
     # as it was, instead of pointing the session at rig's own directory.
-    run env -u RVENV R-4.1 -q -s -e 'cat(.libPaths()[1], Sys.getenv("R_LIBS_USER"))'
+    run env -u RVENV R-$RNAME -q -s -e 'cat(.libPaths()[1], Sys.getenv("R_LIBS_USER"))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "Project is not synced"
     [[ "$output" != *".rvenv"* ]]
@@ -466,14 +472,14 @@ teardown() {
     # sync`; copy it in here to simulate a synced project without a full sync.
     mkdir -p .rvenv/lib
     cp "$DIR/../src/data/rvenv/onload.R" .rvenv/onload.R
-    run env -u RVENV R-4.1 -q -s -e 'cat(.libPaths()[1])'
+    run env -u RVENV R-$RNAME -q -s -e 'cat(.libPaths()[1])'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "myproj/[.]rvenv/lib"
 
     # A library built for another R minor version is not attached: only a
     # warning, and the library path stays as it was.
     echo "r-minor = 0.0" > .rvenv/rvenv.cfg
-    run env -u RVENV R-4.1 -q -s -e 'cat(.libPaths()[1], Sys.getenv("RVENV"))'
+    run env -u RVENV R-$RNAME -q -s -e 'cat(.libPaths()[1], Sys.getenv("RVENV"))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "Project needs R 0.0"
     [[ "$output" != *".rvenv"* ]]
@@ -482,7 +488,7 @@ teardown() {
     rmdir .rvenv/lib
 
     # Refuses to overwrite, and says what is in the way
-    run rig proj init -r 4.1
+    run rig proj init -r $RMINOR
     [[ "$status" -ne 0 ]]
     echo "$output" | grep -q "rproj.toml"
     echo "$output" | grep -q -- "--force"
@@ -491,7 +497,7 @@ teardown() {
     # rig only manages its block
     echo "*.log" >> .gitignore
     echo "MY_PROJECT_VAR=1" >> .Renviron
-    run rig proj init -r 4.1 --force
+    run rig proj init -r $RMINOR --force
     [[ "$status" -eq 0 ]]
     grep -q '^[*].log$' .gitignore
     [[ "$(grep -c '^# rig rvenv start$' .gitignore)" -eq 1 ]]
@@ -584,7 +590,7 @@ teardown() {
 @test "proj add" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf addproj && mkdir addproj && cd addproj
-    run rig proj init -r 4.1
+    run rig proj init -r $RMINOR
     [[ "$status" -eq 0 ]]
 
     # --no-lock only edits the manifest, so none of this needs the network
@@ -619,7 +625,7 @@ teardown() {
 @test "proj repositories" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf repoproj && mkdir repoproj && cd repoproj
-    run rig proj init -r 4.1
+    run rig proj init -r $RMINOR
     [[ "$status" -eq 0 ]]
 
     # --with-repos adds the repository and pins the package to it
@@ -647,7 +653,7 @@ teardown() {
 @test "proj lock uses the platforms of the manifest" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf platproj && mkdir platproj && cd platproj
-    run rig proj init -r 4.1
+    run rig proj init -r $RMINOR
     [[ "$status" -eq 0 ]]
     run rig proj add --no-lock cli
     [[ "$status" -eq 0 ]]
@@ -669,7 +675,7 @@ teardown() {
 @test "proj lock uses the R versions of the manifest" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf rverproj && mkdir rverproj && cd rverproj
-    run rig proj init -r 4.1
+    run rig proj init -r $RMINOR
     [[ "$status" -eq 0 ]]
     run rig proj add --no-lock cli
     [[ "$status" -eq 0 ]]
