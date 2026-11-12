@@ -1284,6 +1284,18 @@ impl Rproj {
         Ok(Some(versions))
     }
 
+    /// Set `platforms` in `[tool.rig]`, see [`Rproj::platforms`].
+    pub fn set_platforms(&mut self, platforms: &[String]) {
+        let list = platforms
+            .iter()
+            .map(|p| toml::Value::String(p.clone()))
+            .collect();
+        self.tool
+            .entry("rig".to_string())
+            .or_default()
+            .insert("platforms".to_string(), toml::Value::Array(list));
+    }
+
     /// Set `r-versions` in `[tool.rig]`, see [`Rproj::r_versions`].
     pub fn set_r_versions(&mut self, versions: &[String]) {
         let list = versions

@@ -1,0 +1,75 @@
+{
+  "packages": {
+    "adder": {
+      "Source": "github",
+      "Repository": null,
+      "GithubRepo": "adder",
+      "GithubUsername": "acme-testing",
+      "GithubRef": "HEAD",
+      "GithubSha1": "8f1248149d636f7427fc07a44cb750e8b49d741b",
+      "GithubSubdir": null,
+      "description": {
+        "Package": "adder",
+        "Version": "0.1.0",
+        "RemoteType": "github",
+        "RemoteHost": "api.github.com",
+        "RemoteRepo": "adder",
+        "RemoteUsername": "acme-testing",
+        "RemoteRef": "HEAD",
+        "RemoteSha": "8f1248149d636f7427fc07a44cb750e8b49d741b",
+        "GithubRepo": "adder",
+        "GithubUsername": "acme-testing",
+        "GithubSHA1": "8f1248149d636f7427fc07a44cb750e8b49d741b"
+      }
+    },
+    "subadder": {
+      "Source": "github",
+      "Repository": null,
+      "GithubRepo": "sub_adder",
+      "GithubUsername": "acme-testing",
+      "GithubRef": "HEAD",
+      "GithubSha1": "7d7f31bda54403a7aad80a4c9a5a0b1c44e2625e",
+      "GithubSubdir": "subadder",
+      "description": {
+        "Package": "subadder",
+        "Version": "0.2.0",
+        "Imports": "adder (>= 0.1.0)",
+        "RemoteType": "github",
+        "RemoteHost": "api.github.com",
+        "RemoteRepo": "sub_adder",
+        "RemoteUsername": "acme-testing",
+        "RemoteRef": "HEAD",
+        "RemoteSha": "7d7f31bda54403a7aad80a4c9a5a0b1c44e2625e",
+        "RemoteSubdir": "subadder"
+      }
+    },
+    "glab": {
+      "Source": "gitlab",
+      "Repository": null,
+      "description": {
+        "Package": "glab",
+        "Version": "1.0.0",
+        "RemoteType": "gitlab",
+        "RemoteHost": "gitlab.com",
+        "RemoteRepo": "glab",
+        "RemoteUsername": "acme-testing",
+        "RemoteRef": "v1.0.0",
+        "RemoteSha": "1111111111111111111111111111111111111111"
+      }
+    },
+    "QuantTools": {
+      "Source": "bitbucket",
+      "Repository": null,
+      "description": {
+        "Package": "QuantTools",
+        "Version": "0.5.7",
+        "RemoteType": "bitbucket",
+        "RemoteRepo": "quanttools",
+        "RemoteUsername": "quanttools",
+        "RemoteRef": "master",
+        "RemoteSha": "3104c6d7108295d2c17b7ab712b62602bf867904"
+      }
+    }
+  },
+  "platform": "4.4.3"
+}

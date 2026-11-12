@@ -112,6 +112,7 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
         Some(("sync", s)) => sc_proj_sync(s, args, mainargs),
         Some(("status", s)) => sc_proj_status(s, args, mainargs),
         Some(("renv", s)) => crate::renv::sc_renv(s, mainargs),
+        Some(("rsconnect", s)) => crate::rsconnect::sc_rsconnect(s, mainargs),
         _ => Ok(()), // unreachable
     }
 }

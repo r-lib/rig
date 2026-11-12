@@ -1,0 +1,34 @@
+{
+  "packages": {
+    "Biobase": {
+      "Source": "Bioconductor",
+      "Repository": "https://bioconductor.org/packages/3.20/bioc/src/contrib",
+      "description": {
+        "Package": "Biobase",
+        "Version": "2.66.0",
+        "Depends": "R (>= 2.10), BiocGenerics (>= 0.27.1), utils",
+        "Imports": "methods"
+      }
+    },
+    "BiocGenerics": {
+      "Source": "Bioconductor",
+      "Repository": "https://bioconductor.org/packages/3.20/bioc/src/contrib",
+      "description": {
+        "Package": "BiocGenerics",
+        "Version": "0.52.0",
+        "Depends": "R (>= 4.0.0), methods, utils, graphics, stats, generics",
+        "Imports": "methods, utils, graphics, stats"
+      }
+    },
+    "generics": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com",
+      "description": {
+        "Package": "generics",
+        "Version": "0.1.3",
+        "Depends": "R (>= 3.2)"
+      }
+    }
+  },
+  "platform": "4.4.3"
+}

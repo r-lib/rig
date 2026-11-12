@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "platform": "4.4.3",
+  "packages": {
+    "Matrix": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com/",
+      "description": {
+        "Package": "Matrix",
+        "Version": "1.7-0",
+        "Priority": "recommended",
+        "Depends": "R (>= 4.4.0), methods",
+        "Imports": "graphics, grid, lattice, stats, utils",
+        "LinkingTo": "",
+        "SystemRequirements": "C++ compiler,\n  GNU make"
+      }
+    },
+    "lattice": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com/",
+      "description": {
+        "Package": "lattice",
+        "Version": "0.22-6",
+        "Priority": "recommended",
+        "Depends": "R (>= 4.0.0)",
+        "Imports": "grid, grDevices, graphics, stats, utils"
+      }
+    },
+    "R6": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com/",
+      "description": {
+        "Package": "R6",
+        "Version": "2.5.1",
+        "Depends": "R (>= 3.6)"
+      }
+    },
+    "rowr": {
+      "Source": "CRAN",
+      "Repository": null,
+      "description": {
+        "Package": "rowr",
+        "Version": "1.1.3",
+        "Depends": "R (>= 3.0.1)",
+        "Imports": "methods",
+        "OS_type": "unix"
+      }
+    }
+  }
+}

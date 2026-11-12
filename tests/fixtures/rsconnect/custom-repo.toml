@@ -1,0 +1,25 @@
+[project]
+name = "app"
+version = "0.1.0"
+type = "project"
+
+[dependencies]
+R = ">= 4.4"
+R6 = "^2.5.1"
+jsonlite = "^1.8.9"
+
+[dependencies.ferris]
+version = "^0.1.0"
+repository = "RSPM"
+
+[[repository]]
+name = "cran"
+
+[[repository]]
+name = "RSPM"
+url = "http://solo.example.com/internal/latest"
+explicit = true
+
+[[repository]]
+name = "bioc"
+enabled = false

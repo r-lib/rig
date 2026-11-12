@@ -1,0 +1,22 @@
+[project]
+name = "app"
+version = "0.1.0"
+type = "project"
+
+[dependencies]
+R = ">= 4.4"
+
+[dependencies.QuantTools]
+git = "https://bitbucket.org/quanttools/quanttools.git"
+branch = "master"
+
+[dependencies.adder]
+git = "https://github.com/acme-testing/adder.git"
+
+[dependencies.glab]
+git = "https://gitlab.com/acme-testing/glab.git"
+tag = "v1.0.0"
+
+[dependencies.subadder]
+git = "https://github.com/acme-testing/sub_adder.git"
+subdir = "subadder"

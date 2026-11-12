@@ -1,0 +1,35 @@
+[project]
+name = "app"
+version = "0.1.0"
+type = "project"
+
+[dependencies]
+R = ">= 4.4"
+R6 = "^2.5.1"
+jsonlite = "^1.8.8"
+rowr = "^1.1.3"
+
+[dependencies.ferris]
+version = "^0.1.0"
+repository = "internal"
+
+[dependencies.plainpkg]
+version = "^2.0"
+repository = "plain"
+
+[[repository]]
+name = "cran"
+
+[[repository]]
+name = "internal"
+url = "https://ppm.example.com/rspm/cran/latest"
+explicit = true
+
+[[repository]]
+name = "plain"
+url = "https://cran.example.com"
+explicit = true
+
+[[repository]]
+name = "bioc"
+enabled = false

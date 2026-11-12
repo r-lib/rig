@@ -2444,7 +2444,78 @@ pub fn rig_app() -> Command {
                         .required(false),
                 ),
         );
-    rig = rig.subcommand(cmd_proj.subcommand(cmd_renv));
+    // Experimental: hidden and undocumented while it is being tested.
+    let cmd_rsconnect = Command::new("rsconnect")
+        .about("Interoperate with rsconnect manifests")
+        .display_order(0)
+        .hide(true)
+        .arg_required_else_help(true)
+        .subcommand(
+            Command::new("import")
+                .about("Create rproj.toml and rproj.lock from an rsconnect manifest.json")
+                .display_order(0)
+                .arg(
+                    Arg::new("input")
+                        .help("rsconnect manifest.json file to import (default: manifest.json)")
+                        .long("input")
+                        .short('i')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("dependencies")
+                        .help("Only merge dependencies, not metadata")
+                        .long("dependencies")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("keep-ppm-snapshots")
+                        .help(
+                            "Keep Posit Package Manager snapshots as they are, instead\n\
+                            of using the built-in CRAN and Bioconductor repositories\n\
+                            for public snapshots and `latest` for private ones.",
+                        )
+                        .long("keep-ppm-snapshots")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("no-lock-versions")
+                        .help("Do not create rproj.lock with the package versions of the manifest")
+                        .long("no-lock-versions")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("force")
+                        .help("Overwrite existing project files")
+                        .long("force")
+                        .short('f')
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version of the project (default: the version in the manifest)")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("platform")
+                        .help(
+                            "Platform(s) to lock for, e.g. ubuntu-24.04, linux or source,\n\
+                            written to platforms in [tool.rig] of rproj.toml.\n\
+                            Comma-separated, and can be repeated. Default: the\n\
+                            platforms of `rig proj lock`.",
+                        )
+                        .long("platform")
+                        .num_args(1)
+                        .value_delimiter(',')
+                        .action(clap::ArgAction::Append)
+                        .required(false),
+                ),
+        );
+    rig = rig.subcommand(cmd_proj.subcommand(cmd_renv).subcommand(cmd_rsconnect));
 
     let cmd_pkg = Command::new("pkg")
         .about(ABOUT_PKG)
