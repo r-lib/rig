@@ -129,6 +129,28 @@ fn pkg_repos_args() -> [Arg; 2] {
     ]
 }
 
+/// The options every `rig proj` task (`test`, `check`) takes.
+fn proj_task_args() -> Vec<Arg> {
+    vec![
+        Arg::new("r-version")
+            .help("R version to use, instead of the project environment")
+            .short('r')
+            .long("r-version")
+            .num_args(1)
+            .required(false),
+        Arg::new("dry-run")
+            .help("Show the command, but do not run it")
+            .long("dry-run")
+            .num_args(0)
+            .required(false),
+        Arg::new("builtin")
+            .help("Run rig's own task, even if the project declares a script\nwith the same name")
+            .long("builtin")
+            .num_args(0)
+            .required(false),
+    ]
+}
+
 /// The arguments of `rig audit` and `rig pkg audit`, with the help of
 /// `--library` and `--r-version`.
 fn audit_args(library_help: &'static str, rversion_help: &'static str) -> Vec<Arg> {
@@ -2144,6 +2166,73 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("test")
+                .about(ABOUT_PROJ_TEST)
+                .long_about(HELP_PROJ_TEST)
+                .display_order(0)
+                .args(proj_task_args())
+                .arg(
+                    Arg::new("args")
+                        .help(
+                            "Test filter (testthat only), or the arguments of the\n\
+                            project's own `test` script",
+                        )
+                        .value_name("FILTER")
+                        .num_args(0..)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("check")
+                .about(ABOUT_PROJ_CHECK)
+                .long_about(HELP_PROJ_CHECK)
+                .display_order(0)
+                .args(proj_task_args())
+                .arg(
+                    Arg::new("as-cran")
+                        .help("Check with `--as-cran`")
+                        .long("as-cran")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("manual")
+                        .help("Check the PDF manual as well, this needs LaTeX")
+                        .long("manual")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-vignettes")
+                        .help("Do not build or check the vignettes")
+                        .long("no-vignettes")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("output")
+                        .help(
+                            "Directory for the package tarball and the check results\n\
+                            (default: .rvenv/check in a project, a temporary directory\n\
+                            otherwise)",
+                        )
+                        .long("output")
+                        .short('o')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("args")
+                        .help(
+                            "Extra arguments for `R CMD check`, or the arguments of\n\
+                            the project's own `check` script, after `--`",
+                        )
+                        .num_args(0..)
+                        .last(true)
+                        .required(false),
+                ),
+        )
+        .subcommand(
             Command::new("status")
                 .about(ABOUT_PROJ_STATUS)
                 .long_about(HELP_PROJ_STATUS)
@@ -3802,8 +3891,8 @@ const RUN_VALUE_OPTS: [&str; 8] = [
 // Everything from that `--` onward is pulled out *here*, before clap ever
 // sees it, so it can never collide with rig's own flags (not even the
 // built-in `--help`/`--version`), and returned separately for `sc_run()` to
-// forward straight to the R process. `--` is not otherwise meaningful to
-// any rig command.
+// forward straight to the R process. Other commands get their `--` from
+// clap, e.g. `rig proj check -- <R CMD check args>`.
 fn split_run_args<I>(argv: I) -> (Vec<std::ffi::OsString>, Vec<String>)
 where
     I: IntoIterator<Item = std::ffi::OsString>,
@@ -3838,7 +3927,7 @@ where
     // count, the arguments of an app or a project script are not checked.
     let mut seen_positional = false;
     while let Some(arg) = iter.next() {
-        if arg.as_os_str() == OsStr::new("--") {
+        if is_run && arg.as_os_str() == OsStr::new("--") {
             return (
                 out,
                 iter.map(|a| a.to_string_lossy().into_owned()).collect(),
@@ -4404,6 +4493,52 @@ mod tests {
         let (out, r_args) = split(&["rig", "run", "-e", "1+1", "--", "--vanilla"]);
         assert_eq!(out, ["rig", "run", "-e", "1+1"]);
         assert_eq!(r_args, ["--vanilla"]);
+    }
+
+    #[test]
+    fn test_split_run_args_keeps_separator_of_other_commands() {
+        let (out, r_args) = split(&["rig", "proj", "check", "--", "--no-tests"]);
+        assert_eq!(out, ["rig", "proj", "check", "--", "--no-tests"]);
+        assert!(r_args.is_empty());
+    }
+
+    #[test]
+    fn test_proj_test_and_check_args() {
+        let m = rig_app()
+            .try_get_matches_from(["rig", "proj", "test", "-r", "4.4", "utils"])
+            .unwrap();
+        let t = m
+            .subcommand_matches("proj")
+            .unwrap()
+            .subcommand_matches("test")
+            .unwrap();
+        assert_eq!(t.get_one::<String>("r-version").unwrap(), "4.4");
+        let a: Vec<&String> = t.get_many::<String>("args").unwrap().collect();
+        assert_eq!(a, ["utils"]);
+
+        let m = rig_app()
+            .try_get_matches_from(["rig", "proj", "test", "--builtin", "--", "--fast"])
+            .unwrap();
+        let t = m
+            .subcommand_matches("proj")
+            .unwrap()
+            .subcommand_matches("test")
+            .unwrap();
+        assert!(t.get_flag("builtin"));
+        let a: Vec<&String> = t.get_many::<String>("args").unwrap().collect();
+        assert_eq!(a, ["--fast"]);
+
+        let m = rig_app()
+            .try_get_matches_from(["rig", "proj", "check", "--as-cran", "--", "--no-tests"])
+            .unwrap();
+        let c = m
+            .subcommand_matches("proj")
+            .unwrap()
+            .subcommand_matches("check")
+            .unwrap();
+        assert!(c.get_flag("as-cran"));
+        let a: Vec<&String> = c.get_many::<String>("args").unwrap().collect();
+        assert_eq!(a, ["--no-tests"]);
     }
 
     #[test]

@@ -139,6 +139,31 @@ they never resolve, download or change anything. `rig proj status` is the
 one to reach for after pulling changes to `rproj.toml`/`rproj.lock`, to see
 whether `rig proj sync` needs to run again.
 
+## Testing and checking
+
+```sh
+rig proj test           # run the test suite
+rig proj test utils     # only tests/testthat/test-utils.R
+rig proj check          # R CMD build + R CMD check
+```
+
+[`rig proj test`](reference/proj.qmd#rig-proj-test) runs the project's
+testthat or tinytest tests, or plain `tests/*.R` files, and [`rig proj
+check`](reference/proj.qmd#rig-proj-check) builds and checks a package
+project with `R CMD build` and `R CMD check`. Both run in the project
+environment, from the project directory, and sync the project first if
+needed, like `rig run`. Both also work for a package that only has a
+`DESCRIPTION` file, with the default R version. Their exit status is not
+zero if the tests or the check fail, so they work in CI.
+
+`rig proj check` leaves rig's own files (`rproj.toml`, `rproj.lock`,
+`.rvenv`, `.rvenvlib` and the project's `.Renviron`) out of the package it
+builds, so you do not need to add them to `.Rbuildignore`. The results go
+into `.rvenv/check`.
+
+A project can replace either task with its own script, see [Named
+scripts](#named-scripts).
+
 ## Interoperating with DESCRIPTION and renv
 
 A project's dependencies can move back and forth between `rproj.toml` and
@@ -177,6 +202,11 @@ inside the project. Extra arguments, e.g. `rig run report --format pdf`,
 are passed on to the script for `commandArgs(TRUE)` to pick up.
 
 `rig run --list` lists a project's declared scripts.
+
+A script named `test` or `check` also replaces rig's own `rig proj test` or
+`rig proj check` task. `rig proj test` then runs the script, from the
+project directory, and passes its arguments on to it. `--builtin` runs
+rig's own task instead.
 
 A declared name wins over a directory of the same name. Use `./name` to run
 an app in a directory whose name a script has taken instead. See

@@ -65,6 +65,7 @@ mod platform;
 mod ppm;
 mod proj;
 mod proj_repos;
+mod projtask;
 mod rds;
 mod renv;
 mod repos;
@@ -319,7 +320,14 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("audit", sub)) => retval = audit::sc_audit(sub, args)?,
         Some(("default", sub)) => sc_default(sub, args)?,
         Some(("list", sub)) => sc_list(sub, args)?,
-        Some(("proj", sub)) => sc_proj(sub, args)?,
+        // `test` and `check` return R's exit status, and they need `rig run`'s
+        // code, which is not part of the library build, so they are here
+        // instead of in `sc_proj`.
+        Some(("proj", sub)) => match sub.subcommand() {
+            Some(("test", s)) => retval = projtask::sc_proj_test(s)?,
+            Some(("check", s)) => retval = projtask::sc_proj_check(s)?,
+            _ => sc_proj(sub, args)?,
+        },
         Some(("rm", sub)) => sc_rm(sub)?,
         Some(("self", sub)) => sc_self(sub, args)?,
         Some(("system", sub)) => sc_system(sub, args)?,
