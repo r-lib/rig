@@ -898,6 +898,7 @@ SCRIPT
     # from a subdirectory, with a filter, syncs the project first
     cd R
     run rig proj test pass
+    echo "$output"
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "PASS 1"
     run rig proj test fail
