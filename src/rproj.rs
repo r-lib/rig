@@ -70,6 +70,46 @@ pub const RPROJ_MANIFEST_FILE: &str = "rproj.toml";
 /// export` uses its presence to overwrite such a file without `--force`.
 pub const DESCRIPTION_RIG_NOTE_FIELD: &str = "Config/rig/note";
 
+/// The `[tool.rig]` key that records the field order of the `DESCRIPTION`
+/// file `rig proj import` read, see [`Rproj::description_field_order`].
+pub const DESCRIPTION_FIELD_ORDER_KEY: &str = "description-field-order";
+
+/// Put the `(name, text)` fields of a generated `DESCRIPTION` into the
+/// recorded field `order`. Only the fields named in `order` move: they swap
+/// places among themselves, filling the positions they already have, in
+/// `order`'s order. Every other field, e.g. one added to `rproj.toml` after
+/// the import, keeps its position.
+pub(crate) fn apply_description_field_order(
+    fields: Vec<(String, String)>,
+    order: &[String],
+) -> Vec<(String, String)> {
+    let mut rank: HashMap<&str, usize> = HashMap::new();
+    for (i, name) in order.iter().enumerate() {
+        rank.entry(name.as_str()).or_insert(i);
+    }
+    let mut ranked: Vec<(usize, usize)> = fields
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (name, _))| rank.get(name.as_str()).map(|r| (*r, i)))
+        .collect();
+    ranked.sort();
+    // `sources[i]` is the index of the field that goes to position `i`.
+    let mut moved = ranked.into_iter().map(|(_, i)| i);
+    let sources: Vec<usize> = fields
+        .iter()
+        .enumerate()
+        .map(|(i, (name, _))| match rank.contains_key(name.as_str()) {
+            true => moved.next().unwrap_or(i),
+            false => i,
+        })
+        .collect();
+    let mut slots: Vec<Option<(String, String)>> = fields.into_iter().map(Some).collect();
+    sources
+        .into_iter()
+        .map(|i| slots[i].take().expect("each field is used once"))
+        .collect()
+}
+
 /// The dependency groups that map onto a `DESCRIPTION` dependency field
 /// instead of onto a `Config/Needs/*` field: `dev` is `Suggests` and
 /// `enhances` is `Enhances` (see [`Rproj::merge_description`]). Every other
@@ -1294,6 +1334,44 @@ impl Rproj {
         }
     }
 
+    /// The `description-field-order` setting of `[tool.rig]`: the order of
+    /// the fields of the `DESCRIPTION` file `rig proj import` read, which
+    /// [`Rproj::to_description`] restores. Empty if it is not set. A value
+    /// that is not a list of strings is ignored with a warning, since it only
+    /// affects the look of the generated `DESCRIPTION`.
+    pub fn description_field_order(&self) -> Vec<String> {
+        let Some(value) = self
+            .tool
+            .get("rig")
+            .and_then(|t| t.get(DESCRIPTION_FIELD_ORDER_KEY))
+        else {
+            return vec![];
+        };
+        let fields: Option<Vec<String>> = value
+            .as_array()
+            .and_then(|list| list.iter().map(|v| v.as_str().map(String::from)).collect());
+        fields.unwrap_or_else(|| {
+            warn!(
+                "Ignoring `{}` in `[tool.rig]`, it must be a list of DESCRIPTION field names",
+                DESCRIPTION_FIELD_ORDER_KEY
+            );
+            vec![]
+        })
+    }
+
+    /// Set `description-field-order` in `[tool.rig]`, see
+    /// [`Rproj::description_field_order`].
+    pub fn set_description_field_order(&mut self, fields: &[String]) {
+        let list = fields
+            .iter()
+            .map(|f| toml::Value::String(f.clone()))
+            .collect();
+        self.tool.entry("rig".to_string()).or_default().insert(
+            DESCRIPTION_FIELD_ORDER_KEY.to_string(),
+            toml::Value::Array(list),
+        );
+    }
+
     /// Set `prefer-binary` in `[tool.rig]`, from a `--prefer-binary=<n>`
     /// number, see [`prefer_binary_toml_value`].
     pub fn set_prefer_binary(&mut self, n: usize) {
@@ -2078,42 +2156,62 @@ impl Rproj {
     /// dropped (DESCRIPTION's `pkg (>= 1.2.3)` syntax has no room for a
     /// two-sided range, so only the lower bound, if any, survives).
     pub fn to_description(&self) -> Result<(String, Vec<String>), Box<dyn Error>> {
-        let mut out = String::new();
+        // Each field is collected as `(name, rendered text)` first, so that
+        // they can be put into the order recorded at `rig proj import`, see
+        // [`apply_description_field_order`].
+        let mut fields: Vec<(String, String)> = Vec::new();
         let mut dropped: Vec<String> = Vec::new();
 
-        writeln!(
-            out,
-            "{}: This file was created by rig, do not edit it manually",
-            DESCRIPTION_RIG_NOTE_FIELD
-        )?;
-        writeln!(out, "Package: {}", self.project.name)?;
+        fn push(fields: &mut Vec<(String, String)>, name: &str, text: String) {
+            fields.push((name.to_string(), text));
+        }
+        push(
+            &mut fields,
+            DESCRIPTION_RIG_NOTE_FIELD,
+            format!(
+                "{}: This file was created by rig, do not edit it manually",
+                DESCRIPTION_RIG_NOTE_FIELD
+            ),
+        );
+        push(
+            &mut fields,
+            "Package",
+            format!("Package: {}", self.project.name),
+        );
         if !self.project.is_package() {
-            writeln!(
-                out,
-                "Type: {}",
-                title_case(self.project.type_.as_deref().unwrap_or("package"))
-            )?;
+            push(
+                &mut fields,
+                "Type",
+                format!(
+                    "Type: {}",
+                    title_case(self.project.type_.as_deref().unwrap_or("package"))
+                ),
+            );
         }
         if let Some(title) = &self.project.title {
-            writeln!(out, "{}", fold_dcf_prose("Title", title, 75))?;
+            push(&mut fields, "Title", fold_dcf_prose("Title", title, 75));
         }
-        writeln!(out, "Version: {}", self.project.version)?;
+        push(
+            &mut fields,
+            "Version",
+            format!("Version: {}", self.project.version),
+        );
         if !self.project.authors.is_empty() {
-            writeln!(
-                out,
-                "Authors@R: {}",
-                format_authors_r(&self.project.authors)
-            )?;
+            push(
+                &mut fields,
+                "Authors@R",
+                format!("Authors@R: {}", format_authors_r(&self.project.authors)),
+            );
         }
         if let Some(description) = &self.project.description {
-            writeln!(
-                out,
-                "{}",
-                crate::textfmt::text_to_dcf_field("Description", description)
-            )?;
+            push(
+                &mut fields,
+                "Description",
+                crate::textfmt::text_to_dcf_field("Description", description),
+            );
         }
         if let Some(license) = &self.project.license {
-            writeln!(out, "License: {}", license)?;
+            push(&mut fields, "License", format!("License: {}", license));
         }
         let mut urls: Vec<&str> = vec![];
         if let Some(homepage) = self.project.urls.get("homepage") {
@@ -2123,10 +2221,14 @@ impl Rproj {
             urls.push(source);
         }
         if !urls.is_empty() {
-            writeln!(out, "URL: {}", urls.join(", "))?;
+            push(&mut fields, "URL", format!("URL: {}", urls.join(", ")));
         }
         if let Some(bugreports) = self.project.urls.get("bugreports") {
-            writeln!(out, "BugReports: {}", bugreports)?;
+            push(
+                &mut fields,
+                "BugReports",
+                format!("BugReports: {}", bugreports),
+            );
         }
         let pkg_deps = self.to_dep_version_specs_impl(true, false)?;
         for dep_type in RDepType::all() {
@@ -2149,7 +2251,11 @@ impl Rproj {
                     item
                 })
                 .collect();
-            writeln!(out, "{}:{}", dep_type, fold_dcf_list(&items))?;
+            push(
+                &mut fields,
+                &dep_type.to_string(),
+                format!("{}:{}", dep_type, fold_dcf_list(&items)),
+            );
         }
 
         let mut git_deps = self.description_git_dependencies();
@@ -2159,12 +2265,16 @@ impl Rproj {
                 .iter()
                 .map(|(name, table)| dep_table_to_pak_ref(name, table))
                 .collect();
-            writeln!(out, "Remotes:{}", fold_dcf_list(&items))?;
+            push(
+                &mut fields,
+                "Remotes",
+                format!("Remotes:{}", fold_dcf_list(&items)),
+            );
         }
 
         if let Some(build) = &self.build {
             for (field, value) in build.description_fields() {
-                writeln!(out, "{}: {}", field, value)?;
+                push(&mut fields, field, format!("{}: {}", field, value));
             }
         }
 
@@ -2180,11 +2290,9 @@ impl Rproj {
                 }
                 items.push(item);
             }
-            if items.is_empty() {
-                writeln!(out, "Config/Needs/{}:", group_name)?;
-            } else {
-                writeln!(out, "Config/Needs/{}:{}", group_name, fold_dcf_list(&items))?;
-            }
+            let name = format!("Config/Needs/{}", group_name);
+            let text = format!("{}:{}", name, fold_dcf_list(&items));
+            push(&mut fields, &name, text);
         }
 
         for (group_name, extra) in self.optional_dependencies.iter() {
@@ -2199,36 +2307,35 @@ impl Rproj {
                 }
                 items.push(item);
             }
-            if items.is_empty() {
-                writeln!(out, "Config/Needs/Optional/{}:", group_name)?;
-            } else {
-                writeln!(
-                    out,
-                    "Config/Needs/Optional/{}:{}",
-                    group_name,
-                    fold_dcf_list(&items)
-                )?;
-            }
+            let name = format!("Config/Needs/Optional/{}", group_name);
+            let text = format!("{}:{}", name, fold_dcf_list(&items));
+            push(&mut fields, &name, text);
         }
 
         for (group, table) in self.config.iter() {
             for (key, value) in table.iter() {
-                writeln!(
-                    out,
-                    "Config/{}/{}: {}",
-                    group,
-                    key,
-                    format_config_value(value)
-                )?;
+                let name = format!("Config/{}/{}", group, key);
+                let text = format!("{}: {}", name, format_config_value(value));
+                push(&mut fields, &name, text);
             }
         }
 
         // The `[description]` escape hatch has no structured place in
-        // DESCRIPTION's field order, so it goes last.
+        // DESCRIPTION's field order, so it goes last, unless the recorded
+        // field order says otherwise.
         for (key, value) in self.description.iter() {
-            writeln!(out, "{}: {}", key, format_config_value(value))?;
+            push(
+                &mut fields,
+                key,
+                format!("{}: {}", key, format_config_value(value)),
+            );
         }
 
+        let order = self.description_field_order();
+        let mut out = String::new();
+        for (_, text) in apply_description_field_order(fields, &order) {
+            writeln!(out, "{}", text)?;
+        }
         Ok((out, dropped))
     }
 
@@ -5028,6 +5135,75 @@ foo = "bar"
         assert!(desc.contains("Depends:\n    R (>= 4.1)\n"));
         assert!(desc.contains("Imports:\n    dplyr (>= 1.1.0),\n    rlang (>= 1.0)\n"));
         assert!(desc.contains("Suggests:\n    testthat (>= 3.0)\n"));
+    }
+
+    #[test]
+    fn apply_description_field_order_moves_only_recorded_fields() {
+        let fields = |names: &[&str]| -> Vec<(String, String)> {
+            names
+                .iter()
+                .map(|n| (n.to_string(), format!("{}: x", n)))
+                .collect()
+        };
+        let names = |fields: Vec<(String, String)>| -> Vec<String> {
+            fields.into_iter().map(|(n, _)| n).collect()
+        };
+        let order: Vec<String> = ["Version", "Package", "Imports", "Gone"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        // `Title` and `License` are not recorded, they stay where they are.
+        let got = apply_description_field_order(
+            fields(&["Package", "Title", "Version", "License", "Imports"]),
+            &order,
+        );
+        assert_eq!(
+            names(got),
+            vec!["Version", "Title", "Package", "License", "Imports"]
+        );
+        // No recorded order: unchanged.
+        let got = apply_description_field_order(fields(&["Package", "Title"]), &[]);
+        assert_eq!(names(got), vec!["Package", "Title"]);
+    }
+
+    #[test]
+    fn to_description_uses_the_recorded_field_order() {
+        let mut m = Rproj::minimal("mypkg");
+        m.project.title = Some("My Package".to_string());
+        m.project.license = Some("MIT".to_string());
+        m.description.insert(
+            "Encoding".to_string(),
+            toml::Value::String("UTF-8".to_string()),
+        );
+        m.set_description_field_order(&[
+            "Encoding".to_string(),
+            "Package".to_string(),
+            "Version".to_string(),
+            "Title".to_string(),
+        ]);
+        let (desc, _) = m.to_description().unwrap();
+        let keys: Vec<&str> = desc
+            .lines()
+            .filter(|l| !l.starts_with(' '))
+            .map(|l| l.split(':').next().unwrap())
+            .collect();
+        // Without the recorded order the fields would be `Config/rig/note`,
+        // `Package`, `Type`, `Title`, `Version`, `License`, `Depends`,
+        // `Encoding`. `Type`, `License` and `Depends` were not recorded, so
+        // they keep their positions, while the recorded ones move around them.
+        assert_eq!(
+            keys,
+            vec![
+                DESCRIPTION_RIG_NOTE_FIELD,
+                "Encoding",
+                "Type",
+                "Package",
+                "Version",
+                "License",
+                "Depends",
+                "Title",
+            ]
+        );
     }
 
     #[test]

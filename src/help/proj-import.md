@@ -57,6 +57,10 @@ package listed there is also `Suggests`-listed in the same `DESCRIPTION` file
 using a package conditionally if it's `Suggests`-listed), so it also ends up
 in `[dependency-groups.dev]`, same as any other `Suggests` entry.
 
+A full import records the order of the `DESCRIPTION` fields in
+`description-field-order` in the `[tool.rig]` table, and [`rig proj
+export`](#rig-proj-export) writes the fields in this order.
+
 ## Files
 
 A full import sets up a whole project, not just its manifest, so it creates

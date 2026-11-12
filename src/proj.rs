@@ -456,6 +456,14 @@ fn sc_proj_import(
         if build != Build::default() {
             manifest.build = Some(build);
         }
+        // Record the field order, so `rig proj export` can write the fields
+        // in the same order. rig's own note field is always written first.
+        let order: Vec<String> = paragraph
+            .iter()
+            .map(|(key, _)| key.to_string())
+            .filter(|key| key != DESCRIPTION_RIG_NOTE_FIELD)
+            .collect();
+        manifest.set_description_field_order(&order);
     }
 
     manifest.merge_description(&pkg);
