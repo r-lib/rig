@@ -211,9 +211,22 @@ impl Project {
 }
 
 /// One `authors = [...]` entry; generates a `person()` in `Authors@R`.
+/// The name fields follow R's `person()` signature: `given`, `family` and
+/// `middle` (`person()`'s `first` and `last` are stored as `given` and
+/// `family`).
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct Author {
-    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub given: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub middle: Option<String>,
+    /// A single combined name, as written by rig 0.11 before `given` and
+    /// `family` were separate. Only used when none of `given`, `family` and
+    /// `middle` is set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -245,13 +258,33 @@ impl Author {
     }
 
     /// Build one `person(...)` call for `Authors@R`, the inverse of
-    /// [`Author::from_authors_r`]'s per-call parsing. `name` is written as
-    /// the sole positional argument (`given`, with no `family`), since
-    /// [`Author`] only stores one combined name; that round-trips through
-    /// [`parse_person_call`], which treats a lone positional string as
-    /// `given` alone.
+    /// [`Author::from_authors_r`]'s per-call parsing. `given` and `family`
+    /// are written positionally, e.g. `person("Jane", "Doe", ...)`, and
+    /// `middle` by name. A manifest written by rig 0.11 only has the
+    /// combined `name`, see [`Author::legacy_name_parts`] for how that is
+    /// split.
     pub fn to_person_r(&self) -> String {
-        let mut parts = vec![format!("\"{}\"", escape_r_string(&self.name))];
+        let (given, family, middle) =
+            if self.given.is_some() || self.family.is_some() || self.middle.is_some() {
+                (self.given.clone(), self.family.clone(), self.middle.clone())
+            } else {
+                let (given, family) = self.legacy_name_parts();
+                (given, family, None)
+            };
+        let mut parts = vec![];
+        if let Some(given) = &given {
+            parts.push(format!("\"{}\"", escape_r_string(given)));
+        }
+        if let Some(family) = &family {
+            if given.is_some() {
+                parts.push(format!("\"{}\"", escape_r_string(family)));
+            } else {
+                parts.push(format!("family = \"{}\"", escape_r_string(family)));
+            }
+        }
+        if let Some(middle) = &middle {
+            parts.push(format!("middle = \"{}\"", escape_r_string(middle)));
+        }
         if let Some(email) = &self.email {
             parts.push(format!("email = \"{}\"", escape_r_string(email)));
         }
@@ -262,7 +295,11 @@ impl Author {
                 .map(|r| format!("\"{}\"", escape_r_string(r)))
                 .collect::<Vec<_>>()
                 .join(", ");
-            parts.push(format!("role = c({})", roles));
+            if self.roles.len() == 1 {
+                parts.push(format!("role = {}", roles));
+            } else {
+                parts.push(format!("role = c({})", roles));
+            }
         }
         let mut comment = vec![];
         if let Some(orcid) = &self.orcid {
@@ -277,8 +314,47 @@ impl Author {
         format!("person({})", parts.join(", "))
     }
 
+    /// Split the rig 0.11 combined `name` into `(given, family)`: the last
+    /// word is `family` and the rest is `given`. A one-word name, or one
+    /// that looks like an organization, is `given` alone. An organization's
+    /// name usually has a comma (`"Posit Software, PBC"`), or its only roles
+    /// are copyright holder and/or funder.
+    fn legacy_name_parts(&self) -> (Option<String>, Option<String>) {
+        let name = self.name.as_deref().unwrap_or("").trim();
+        if name.is_empty() {
+            return (None, None);
+        }
+        let is_organization = name.contains(',')
+            || (!self.roles.is_empty() && self.roles.iter().all(|r| r == "cph" || r == "fnd"));
+        match name.rsplit_once(char::is_whitespace) {
+            Some((given, family)) if !is_organization => {
+                (Some(given.trim_end().to_string()), Some(family.to_string()))
+            }
+            _ => (Some(name.to_string()), None),
+        }
+    }
+
+    /// The full name, `given`, `middle` and `family` joined with spaces (or
+    /// the rig 0.11 combined `name`).
+    #[cfg(test)]
+    pub fn full_name(&self) -> String {
+        let parts = [&self.given, &self.middle, &self.family]
+            .into_iter()
+            .flatten()
+            .map(|part| part.trim())
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>();
+        if parts.is_empty() {
+            self.name.clone().unwrap_or_default()
+        } else {
+            parts.join(" ")
+        }
+    }
+
     /// Fallback when `Authors@R` is absent: parses DESCRIPTION's
     /// `Maintainer: Name <email>` into a single author with role `cre`.
+    /// Like R's `as.person()`, the last word of the name is `family` and
+    /// the rest is `given`.
     pub fn from_maintainer(raw: &str) -> Option<Author> {
         let raw = raw.trim();
         let (name, email) = match (raw.find('<'), raw.find('>')) {
@@ -291,12 +367,16 @@ impl Author {
         if name.is_empty() {
             return None;
         }
+        let (given, family) = match name.rsplit_once(char::is_whitespace) {
+            Some((given, family)) => (Some(given.trim_end().to_string()), Some(family.to_string())),
+            None => (Some(name), None),
+        };
         Some(Author {
-            name,
+            given,
+            family,
             email,
             roles: vec!["cre".to_string()],
-            orcid: None,
-            ror: None,
+            ..Default::default()
         })
     }
 }
@@ -565,18 +645,17 @@ fn parse_person_call(args: &str) -> Result<Author, String> {
         }
     }
 
-    let name = [given, middle, family]
-        .into_iter()
-        .flatten()
-        .filter(|part| !part.trim().is_empty())
-        .collect::<Vec<_>>()
-        .join(" ");
-    if name.is_empty() {
+    let non_empty = |part: Option<String>| part.filter(|p| !p.trim().is_empty());
+    let (given, family, middle) = (non_empty(given), non_empty(family), non_empty(middle));
+    if given.is_none() && family.is_none() && middle.is_none() {
         return Err(format!("no name found in person({})", args));
     }
 
     Ok(Author {
-        name,
+        given,
+        family,
+        middle,
+        name: None,
         email,
         roles,
         orcid,
@@ -3599,7 +3678,10 @@ mod tests {
         m.project.license = Some("MIT + file LICENSE".to_string());
         m.project.keywords = Some(vec!["cli".to_string()]);
         m.project.authors = vec![Author {
-            name: "Gábor Csárdi".to_string(),
+            given: Some("Gábor".to_string()),
+            family: Some("Csárdi".to_string()),
+            middle: None,
+            name: None,
             email: Some("gabor@posit.co".to_string()),
             roles: vec!["aut".to_string(), "cre".to_string()],
             orcid: Some("0000-0001-7098-9676".to_string()),
@@ -4775,7 +4857,10 @@ foo = "bar"
         assert_eq!(
             authors,
             vec![Author {
-                name: "Jane Doe".to_string(),
+                given: Some("Jane".to_string()),
+                family: Some("Doe".to_string()),
+                middle: None,
+                name: None,
                 email: Some("jane@x.com".to_string()),
                 roles: vec!["aut".to_string(), "cre".to_string()],
                 orcid: None,
@@ -4791,8 +4876,8 @@ foo = "bar"
              person(\"John\", \"Smith\", role = \"ctb\")\n)",
         );
         assert_eq!(authors.len(), 2);
-        assert_eq!(authors[0].name, "Jane Doe");
-        assert_eq!(authors[1].name, "John Smith");
+        assert_eq!(authors[0].full_name(), "Jane Doe");
+        assert_eq!(authors[1].full_name(), "John Smith");
         assert_eq!(authors[1].roles, vec!["ctb".to_string()]);
     }
 
@@ -4814,7 +4899,10 @@ foo = "bar"
         assert_eq!(
             authors,
             vec![Author {
-                name: "Gábor Csárdi".to_string(),
+                given: Some("Gábor".to_string()),
+                family: Some("Csárdi".to_string()),
+                middle: None,
+                name: None,
                 email: Some("gabor@posit.co".to_string()),
                 roles: vec!["aut".to_string(), "cre".to_string()],
                 orcid: None,
@@ -4832,7 +4920,10 @@ foo = "bar"
         assert_eq!(
             authors,
             vec![Author {
-                name: "Jane Q Doe".to_string(),
+                given: Some("Jane".to_string()),
+                family: Some("Doe".to_string()),
+                middle: Some("Q".to_string()),
+                name: None,
                 email: Some("jane@x.com".to_string()),
                 roles: vec!["cre".to_string()],
                 orcid: Some("0000-0001-7098-9676".to_string()),
@@ -4851,7 +4942,10 @@ foo = "bar"
         assert_eq!(
             authors,
             vec![Author {
-                name: "Jane Q Doe".to_string(),
+                given: Some("Jane".to_string()),
+                family: Some("Doe".to_string()),
+                middle: Some("Q".to_string()),
+                name: None,
                 email: Some("jane@x.com".to_string()),
                 roles: vec!["aut".to_string()],
                 orcid: None,
@@ -4870,7 +4964,8 @@ foo = "bar"
     #[test]
     fn maintainer_parses_name_and_email() {
         let author = Author::from_maintainer("Jane Doe <jane@x.com>").unwrap();
-        assert_eq!(author.name, "Jane Doe");
+        assert_eq!(author.given, Some("Jane".to_string()));
+        assert_eq!(author.family, Some("Doe".to_string()));
         assert_eq!(author.email, Some("jane@x.com".to_string()));
         assert_eq!(author.roles, vec!["cre".to_string()]);
     }
@@ -4878,7 +4973,7 @@ foo = "bar"
     #[test]
     fn maintainer_without_email_still_parses() {
         let author = Author::from_maintainer("Jane Doe").unwrap();
-        assert_eq!(author.name, "Jane Doe");
+        assert_eq!(author.full_name(), "Jane Doe");
         assert_eq!(author.email, None);
     }
 
@@ -4889,7 +4984,10 @@ foo = "bar"
         m.project.description = Some("Does things.".to_string());
         m.project.license = Some("MIT".to_string());
         m.project.authors.push(Author {
-            name: "Jane Doe".to_string(),
+            given: Some("Jane".to_string()),
+            family: Some("Doe".to_string()),
+            middle: None,
+            name: None,
             email: Some("jane@x.com".to_string()),
             roles: vec!["aut".to_string(), "cre".to_string()],
             orcid: None,
@@ -4920,7 +5018,8 @@ foo = "bar"
         assert!(desc.contains("Type: Project\n"));
         assert!(desc.contains("Title: My Package\n"));
         assert!(desc.contains(
-            "Authors@R: person(\"Jane Doe\", email = \"jane@x.com\", role = c(\"aut\", \"cre\"))\n"
+            "Authors@R: person(\"Jane\", \"Doe\", email = \"jane@x.com\",\n    \
+             role = c(\"aut\", \"cre\"))\n"
         ));
         assert!(desc.contains("Description: Does things.\n"));
         assert!(desc.contains("License: MIT\n"));
@@ -5330,34 +5429,119 @@ foo = "bar"
         assert!(toml_text.contains("description = \"Does things.\""));
     }
 
-    fn author(name: &str, roles: &[&str]) -> Author {
+    fn author(given: &str, family: &str, roles: &[&str]) -> Author {
         Author {
-            name: name.to_string(),
-            email: None,
+            given: Some(given.to_string()),
+            family: Some(family.to_string()),
             roles: roles.iter().map(|r| r.to_string()).collect(),
-            orcid: None,
-            ror: None,
+            ..Default::default()
+        }
+    }
+
+    /// An author from a rig 0.11 manifest, with a single combined `name`.
+    fn legacy_author(name: &str, roles: &[&str]) -> Author {
+        Author {
+            name: Some(name.to_string()),
+            roles: roles.iter().map(|r| r.to_string()).collect(),
+            ..Default::default()
         }
     }
 
     #[test]
     fn to_description_writes_one_author_as_a_bare_call() {
         let mut m = Rproj::minimal("mypkg");
-        m.project.authors.push(author("Jane Doe", &["aut", "cre"]));
+        m.project
+            .authors
+            .push(author("Jane", "Doe", &["aut", "cre"]));
         let (desc, _) = m.to_description().unwrap();
-        assert!(desc.contains("Authors@R: person(\"Jane Doe\", role = c(\"aut\", \"cre\"))\n"));
+        assert!(desc.contains("Authors@R: person(\"Jane\", \"Doe\", role = c(\"aut\", \"cre\"))\n"));
+    }
+
+    #[test]
+    fn to_person_r_writes_given_family_and_middle() {
+        assert_eq!(
+            author("Gábor", "Csárdi", &["aut", "cre"]).to_person_r(),
+            "person(\"Gábor\", \"Csárdi\", role = c(\"aut\", \"cre\"))"
+        );
+        let mut a = author("Jane", "van Doe", &["aut"]);
+        a.middle = Some("Q".to_string());
+        assert_eq!(
+            a.to_person_r(),
+            "person(\"Jane\", \"van Doe\", middle = \"Q\", role = \"aut\")"
+        );
+        let org = Author {
+            given: Some("Posit Software, PBC".to_string()),
+            roles: vec!["cph".to_string(), "fnd".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(
+            org.to_person_r(),
+            "person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\"))"
+        );
+        let family_only = Author {
+            family: Some("Doe".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(family_only.to_person_r(), "person(family = \"Doe\")");
+    }
+
+    #[test]
+    fn to_person_r_splits_a_legacy_name_into_given_and_family() {
+        assert_eq!(
+            legacy_author("Gábor Csárdi", &["aut", "cre"]).to_person_r(),
+            "person(\"Gábor\", \"Csárdi\", role = c(\"aut\", \"cre\"))"
+        );
+        assert_eq!(
+            legacy_author("Jane Q Doe", &["aut"]).to_person_r(),
+            "person(\"Jane Q\", \"Doe\", role = \"aut\")"
+        );
+        assert_eq!(
+            legacy_author("Hadley", &["aut"]).to_person_r(),
+            "person(\"Hadley\", role = \"aut\")"
+        );
+        // Organizations are not split.
+        assert_eq!(
+            legacy_author("Posit Software, PBC", &["cph", "fnd"]).to_person_r(),
+            "person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\"))"
+        );
+        assert_eq!(
+            legacy_author("R Core Team", &["cph"]).to_person_r(),
+            "person(\"R Core Team\", role = \"cph\")"
+        );
+    }
+
+    #[test]
+    fn legacy_name_is_read_from_toml() {
+        let a: Author = toml::from_str("name = \"Jane Doe\"\nroles = [\"aut\"]\n").unwrap();
+        assert_eq!(a, legacy_author("Jane Doe", &["aut"]));
+        assert_eq!(a.full_name(), "Jane Doe");
+    }
+
+    #[test]
+    fn to_person_r_round_trips_through_the_parser() {
+        for a in [
+            author("Gábor", "Csárdi", &["aut", "cre"]),
+            author("Jane", "van Doe", &["ctb"]),
+        ] {
+            let r = a.to_person_r();
+            assert_eq!(Author::from_authors_r(&r), vec![a]);
+        }
     }
 
     #[test]
     fn to_description_writes_multiple_authors_one_per_line() {
         let mut m = Rproj::minimal("mypkg");
-        m.project.authors.push(author("Jane Doe", &["aut", "cre"]));
-        m.project.authors.push(author("Rich Contributor", &["ctb"]));
+        m.project
+            .authors
+            .push(author("Jane", "Doe", &["aut", "cre"]));
+        m.project
+            .authors
+            .push(author("Rich", "Contributor", &["ctb"]));
         let (desc, _) = m.to_description().unwrap();
         assert!(desc.contains(
             "Authors@R: c(\n    \
-             person(\"Jane Doe\", role = c(\"aut\", \"cre\")),\n    \
-             person(\"Rich Contributor\", role = c(\"ctb\"))\n  \
+             person(\"Jane\", \"Doe\", role = c(\"aut\", \"cre\")),\n    \
+             person(\"Rich\", \"Contributor\", role = \"ctb\")\n  \
              )\n"
         ));
     }
@@ -5366,13 +5550,18 @@ foo = "bar"
     fn to_description_wraps_a_long_person_call_across_lines() {
         let mut m = Rproj::minimal("mypkg");
         m.project.authors.push(Author {
-            name: "Salim Brüggemann".to_string(),
+            given: Some("Salim".to_string()),
+            family: Some("Brüggemann".to_string()),
+            middle: None,
+            name: None,
             email: Some("salim-b@pm.me".to_string()),
             roles: vec!["ctb".to_string()],
             orcid: Some("0000-0002-5329-5987".to_string()),
             ror: None,
         });
-        m.project.authors.push(author("Rich Contributor", &["ctb"]));
+        m.project
+            .authors
+            .push(author("Rich", "Contributor", &["ctb"]));
         let (desc, _) = m.to_description().unwrap();
 
         // The first author's call is too long for one line, so it wraps,
@@ -5380,9 +5569,9 @@ foo = "bar"
         // fits on a single line.
         assert!(desc.contains(
             "Authors@R: c(\n    \
-             person(\"Salim Brüggemann\", email = \"salim-b@pm.me\", role = c(\"ctb\"),\n           \
+             person(\"Salim\", \"Brüggemann\", email = \"salim-b@pm.me\", role = \"ctb\",\n           \
              comment = c(ORCID = \"0000-0002-5329-5987\")),\n    \
-             person(\"Rich Contributor\", role = c(\"ctb\"))\n  \
+             person(\"Rich\", \"Contributor\", role = \"ctb\")\n  \
              )\n"
         ));
     }

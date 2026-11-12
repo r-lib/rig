@@ -33,10 +33,13 @@ to merge dependencies into an existing file instead.
 | `KeepSource:`         | `[build].keep-source`          |
 
 `Authors@R` is parsed into `[project].authors`, one entry per `person()` call, in
-order; this is a best-effort parser for common `person()` usage (name, `email`,
-`role`, and an `ORCID`/`ROR` `comment`), not a full R parser, so unusual calls are
-skipped with a warning. If `Authors@R` is absent, the simpler `Maintainer:
-Name <email>` field is used instead, as a single author with role `cre`.
+order; this is a best-effort parser for common `person()` usage (`given`,
+`family`, `middle`, `email`, `role`, and an `ORCID`/`ROR` `comment`), not a
+full R parser, so unusual calls are skipped with a warning. Arguments are
+matched to `person()`'s signature, by name or by position, like R does, and
+`first` and `last` are stored as `given` and `family`. If `Authors@R` is
+absent, the simpler `Maintainer: Name <email>` field is used instead, as a
+single author with role `cre`; the last word of the name is the family name.
 
 `Config/Needs/<name>` depepdencies are parsed specially, an entry that is not
 a plain package name (with an optional version requirement) is kept

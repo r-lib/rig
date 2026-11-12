@@ -10,6 +10,9 @@
    - import packages that renv installed from GitHub, GitLab, Bitbucket or
      git as `git` dependencies.
 
+* `rig proj import` and `rig proj export` now does a better job at
+  parsing and writing the names of project authors.
+
 * New `rig audit` command: it checks the packages of a project's lock file
   and library, or of an R library, for known vulnerabilities and for
   versions that the repository blocks. `rig audit --fix` upgrades them to
