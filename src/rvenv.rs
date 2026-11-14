@@ -890,6 +890,57 @@ fn update_marked_block(path: &Path, block: &str) -> Result<(), Box<dyn Error>> {
     write_atomically(path, new.as_bytes())
 }
 
+// ------------------------------------------------------------ .Rbuildignore --
+
+pub const RBUILDIGNORE_FILE: &str = ".Rbuildignore";
+
+/// The `.Rbuildignore` patterns of rig's project files. None of them belong
+/// in a package tarball: `rproj.toml` and `rproj.lock` are rig's manifest
+/// and lock file, `.rvenv` and `.rvenvlib` the project environment, and
+/// `.Renviron` / `.Renviron.rig` set up that environment (the latter may
+/// also hold secrets).
+const RBUILDIGNORE_PATTERNS: [&str; 6] = [
+    r"^rproj\.toml$",
+    r"^rproj\.lock$",
+    r"^\.rvenv$",
+    r"^\.rvenvlib$",
+    r"^\.Renviron$",
+    r"^\.Renviron\.rig$",
+];
+
+/// Add rig's project files to `<root>/.Rbuildignore`, creating it if
+/// needed. Like `usethis::use_build_ignore()`, this appends each pattern
+/// that is not in the file yet, as its own line, and leaves the rest of the
+/// file alone. No block markers: R reads every line of `.Rbuildignore` as a
+/// regex, it has no comments. Returns whether the file changed.
+pub fn update_rbuildignore(root: &Path) -> Result<bool, Box<dyn Error>> {
+    let path = root.join(RBUILDIGNORE_FILE);
+    let text = if path.exists() {
+        fs::read_to_string(&path)?
+    } else {
+        String::new()
+    };
+    let existing: Vec<&str> = text.lines().map(str::trim).collect();
+    let missing: Vec<&str> = RBUILDIGNORE_PATTERNS
+        .iter()
+        .copied()
+        .filter(|p| !existing.contains(p))
+        .collect();
+    if missing.is_empty() {
+        return Ok(false);
+    }
+    let mut new = text.clone();
+    if !new.is_empty() && !new.ends_with('\n') {
+        new.push('\n');
+    }
+    for p in missing {
+        new.push_str(p);
+        new.push('\n');
+    }
+    write_atomically(&path, new.as_bytes())?;
+    Ok(true)
+}
+
 // -------------------------------------------------------------- shim package --
 
 /// The files of the shim package, relative to `<lib>/rvenv`, with their
@@ -1564,6 +1615,60 @@ mod tests {
     #[test]
     fn the_gitignore_block_ignores_renviron_rig() {
         assert!(root_gitignore_block().contains("\n/.Renviron.rig\n"));
+    }
+
+    #[test]
+    fn rbuildignore_is_created_when_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(update_rbuildignore(tmp.path()).unwrap());
+        let text = fs::read_to_string(tmp.path().join(".Rbuildignore")).unwrap();
+        assert_eq!(text, RBUILDIGNORE_PATTERNS.join("\n") + "\n");
+    }
+
+    #[test]
+    fn rbuildignore_keeps_user_patterns_and_adds_only_missing_ones() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".Rbuildignore");
+        fs::write(&path, "^.*\\.Rproj$\n^\\.rvenv$").unwrap();
+        assert!(update_rbuildignore(tmp.path()).unwrap());
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.starts_with("^.*\\.Rproj$\n^\\.rvenv$\n"));
+        assert_eq!(text.matches("^\\.rvenv$").count(), 1);
+        for p in RBUILDIGNORE_PATTERNS {
+            assert!(text.lines().any(|l| l == p), "{} missing", p);
+        }
+    }
+
+    #[test]
+    fn rbuildignore_update_is_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".Rbuildignore");
+        update_rbuildignore(tmp.path()).unwrap();
+        let first = fs::read_to_string(&path).unwrap();
+        assert!(!update_rbuildignore(tmp.path()).unwrap());
+        assert_eq!(fs::read_to_string(&path).unwrap(), first);
+    }
+
+    #[test]
+    fn rbuildignore_patterns_match_only_rig_files() {
+        let res: Vec<regex::Regex> = RBUILDIGNORE_PATTERNS
+            .iter()
+            .map(|p| regex::Regex::new(p).unwrap())
+            .collect();
+        let ignored = |f: &str| res.iter().any(|r| r.is_match(f));
+        for f in [
+            "rproj.toml",
+            "rproj.lock",
+            ".rvenv",
+            ".rvenvlib",
+            ".Renviron",
+            ".Renviron.rig",
+        ] {
+            assert!(ignored(f), "{} not ignored", f);
+        }
+        for f in ["R/rproj.R", "DESCRIPTION", "inst/.Renviron", "xrproj.toml"] {
+            assert!(!ignored(f), "{} ignored", f);
+        }
     }
 
     #[test]

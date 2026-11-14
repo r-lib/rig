@@ -20,6 +20,8 @@
    - `rig proj import` now also rewrites `DESCRIPTION` from the new
      `rproj.toml`, like `rig proj export --force`. Use `--keep-description`
      to leave `DESCRIPTION` unchanged.
+   - `rig proj import` now adds `rproj.toml`, `rproj.lock`, `.rvenv`,
+     `.rvenvlib`, `.Renviron` and `.Renviron.rig` to `.Rbuildignore`.
 
 * `rig proj renv import` improvements:
    - create both `rproj.toml` and `rproj.lock`, with the lock file having

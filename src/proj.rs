@@ -673,8 +673,15 @@ fn sc_proj_import(
 
     // A full import sets up a whole project, not just its manifest, so it
     // creates the same `.rvenv` layout as `rig proj init`.
+    // An imported project is an R package, so rig's own files must not end
+    // up in its tarball.
     if !dependencies_only {
         init_rvenv_for_manifest(args, &root, path)?;
+        if crate::rvenv::update_rbuildignore(&root)? {
+            let msg = format!("Updated {}", crate::rvenv::RBUILDIGNORE_FILE);
+            OUTPUT.success(&msg);
+            info!("{}", msg);
+        }
     }
 
     Ok(())

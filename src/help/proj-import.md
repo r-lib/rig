@@ -66,6 +66,11 @@ export`](#rig-proj-export) writes the fields in this order.
 A full import sets up a whole project, not just its manifest, so it creates
 the same files as [`rig proj init`](#rig-proj-init) .
 
+A full import also adds rig's project files (`rproj.toml`, `rproj.lock`,
+`.rvenv`, `.rvenvlib`, `.Renviron` and `.Renviron.rig`) to `.Rbuildignore`, so
+they are left out of the package tarball. It creates `.Rbuildignore` if needed,
+and only adds the patterns that are not in it yet.
+
 A full import also rewrites `DESCRIPTION` from the new `rproj.toml`, like
 `rig proj export --force` would, so the two files start out in sync. Use
 `--keep-description` to leave `DESCRIPTION` unchanged. `--dependencies` never
