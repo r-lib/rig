@@ -4,6 +4,10 @@
   broken connection, a timeout, or some 4xx and 5xx HTTP statuses.
   It tries each URL up to three times.
 
+* rig now respects servers that rate limit requests, e.g. the public Posit
+  Package Manager at p3m.dev. If a server answers with a `Retry-After`
+  header, or with 429 Too Many Requests.
+
 * Synced rig projects now read `.Renviron.rig` after `~/.Renviron`, for
   secrets that must not be committed (#518).
 
