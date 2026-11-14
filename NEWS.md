@@ -1,5 +1,9 @@
 # rig 0.11.2-dev (development version)
 
+* rig now retries package downloads that fail with a transient error, a
+  broken connection, a timeout, or some 4xx and 5xx HTTP statuses.
+  It tries each URL up to three times.
+
 * Synced rig projects now read `.Renviron.rig` after `~/.Renviron`, for
   secrets that must not be committed (#518).
 

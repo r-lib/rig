@@ -256,7 +256,7 @@ async fn download_if_newer(
     local_path: &PathBuf,
     etag: Option<&str>,
 ) -> Result<(bool, Option<String>), Box<dyn Error>> {
-    match download_if_newer_quiet(client, url, local_path, etag).await {
+    match download_if_newer_retrying(client, url, local_path, etag).await {
         Err(err) if err.downcast_ref::<UnexpectedStatus>().is_some() => {
             OUTPUT.error(&err.to_string());
             error!("{}", err);
@@ -282,6 +282,9 @@ impl UnexpectedStatus {
         match &self.body {
             Some(body) if is_blocked_message(body) => {
                 format!("{}, blocked by the repository: {}", self.status, body)
+            }
+            _ if self.status == StatusCode::TOO_MANY_REQUESTS => {
+                format!("{}{}", self.status, RATE_LIMIT_HINT)
             }
             _ => format!("{}{}", self.status, crate::auth::status_hint(self.status)),
         }
@@ -326,8 +329,40 @@ impl std::fmt::Display for UnexpectedStatus {
 
 impl Error for UnexpectedStatus {}
 
+/// How long to wait before each retry, before jitter.
+#[cfg(not(test))]
+pub(crate) const RETRY_DELAYS: [Duration; 2] = [Duration::from_millis(250), Duration::from_secs(1)];
+#[cfg(test)]
+pub(crate) const RETRY_DELAYS: [Duration; 2] = [Duration::ZERO, Duration::ZERO];
+
+/// User-facing hint about rate limiting.
+const RATE_LIMIT_HINT: &str = " (rate limited by the server, possibly together with other \
+     clients on the same network: try again later, or lower `concurrent-downloads` in the \
+     rig config or RIG_CONCURRENT_DOWNLOADS)";
+
+/// `base`, plus up to half of it again, so that downloads that fail together
+/// do not all retry at the same moment.
+pub(crate) fn retry_delay(base: Duration) -> Duration {
+    use rand::Rng;
+    base + base.mul_f64(rand::thread_rng().gen_range(0.0..0.5))
+}
+
+/// Whether a response status may pass if the request is repeated, as opposed
+/// to a definite answer about the URL: a request timeout, too many requests,
+/// a server error, a bad gateway, an unavailable server, a gateway timeout,
+/// and Cloudflare's web server down (521), connection timed out (522) and
+/// timeout (524). Other server errors, e.g. 501 Not Implemented, would get
+/// the same answer again.
+pub(crate) fn is_transient_status(status: StatusCode) -> bool {
+    matches!(
+        status.as_u16(),
+        408 | 429 | 500 | 502 | 503 | 504 | 521 | 522 | 524
+    )
+}
+
 /// [`download_if_newer`], which leaves it to the caller to report a response
-/// that is not a success, for a caller that has other URLs to try.
+/// that is not a success, for a caller that has other URLs to try. It tries
+/// once, see [`download_if_newer_retrying`].
 async fn download_if_newer_quiet(
     client: &reqwest::Client,
     url: &str,
@@ -368,6 +403,52 @@ async fn download_if_newer_quiet(
             status,
             body: error_body(resp).await,
         })),
+    }
+}
+
+/// [`download_if_newer_quiet`], which retries a failure that may pass on the
+/// same URL, after each of [`RETRY_DELAYS`] in turn. A failed attempt leaves
+/// no partial file behind, as the body is complete in memory before it is
+/// written.
+async fn download_if_newer_retrying(
+    client: &reqwest::Client,
+    url: &str,
+    local_path: &PathBuf,
+    etag: Option<&str>,
+) -> Result<(bool, Option<String>), Box<dyn Error>> {
+    let mut retries = 0;
+    loop {
+        let error = match download_if_newer_quiet(client, url, local_path, etag).await {
+            Err(error) => error,
+            result => return result,
+        };
+        // A failure of the connection, e.g. a timeout or a body that breaks
+        // off, or a status that may pass is worth another go. A request that
+        // cannot be built, a redirect that cannot be followed, a definite
+        // answer about the URL and a failure to write the file are not.
+        let transient = match error.downcast_ref::<UnexpectedStatus>() {
+            Some(unexpected) => is_transient_status(unexpected.status),
+            None => error
+                .downcast_ref::<reqwest::Error>()
+                .is_some_and(|e| !(e.is_builder() || e.is_redirect())),
+        };
+        let Some(base) = RETRY_DELAYS.get(retries) else {
+            return Err(error);
+        };
+        if !transient {
+            return Err(error);
+        }
+        let delay = retry_delay(*base);
+        retries += 1;
+        info!(
+            "Cannot download {}, will retry in {:?} ({} of {}): {}",
+            url,
+            delay,
+            retries,
+            RETRY_DELAYS.len(),
+            error
+        );
+        tokio::time::sleep(delay).await;
     }
 }
 
@@ -421,7 +502,7 @@ async fn download_first_available(
 
     for (i, url) in urls.iter().enumerate() {
         info!("Trying to download from {}", url);
-        match download_if_newer_quiet(client, url, local_path, etag).await {
+        match download_if_newer_retrying(client, url, local_path, etag).await {
             Ok((downloaded, etag)) => {
                 info!("Successfully downloaded from {}", url);
                 return Ok((downloaded, etag));
@@ -1276,6 +1357,153 @@ mod tests {
         assert!(!file.exists());
         // The caller reports the failure, with its own context.
         assert!(!OUTPUT.error_shown(&err), "{}", err);
+    }
+
+    /// A server that answers the n-th connection with the n-th of `replies`,
+    /// raw bytes written as they are, and then closes it; an empty reply
+    /// closes the connection without a word. Connections after the last reply
+    /// get the last one again. Returns the base URL and the connection count.
+    async fn scripted_server(
+        replies: Vec<Vec<u8>>,
+    ) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let count = std::sync::Arc::new(AtomicUsize::new(0));
+        let seen = count.clone();
+        tokio::spawn(async move {
+            loop {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let n = seen.fetch_add(1, Ordering::SeqCst);
+                let reply = replies[n.min(replies.len() - 1)].clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let _ = stream.read(&mut buf).await;
+                    let _ = stream.write_all(&reply).await;
+                    let _ = stream.shutdown().await;
+                });
+            }
+        });
+        (url, count)
+    }
+
+    #[test]
+    fn transient_statuses_are_the_ones_that_may_pass() {
+        for code in [408, 429, 500, 502, 503, 504, 521, 522, 524] {
+            assert!(is_transient_status(StatusCode::from_u16(code).unwrap()));
+        }
+        for code in [
+            301, 304, 400, 401, 403, 404, 410, 413, 451, 501, 505, 520, 523,
+        ] {
+            assert!(!is_transient_status(StatusCode::from_u16(code).unwrap()));
+        }
+    }
+
+    #[tokio::test]
+    async fn a_server_error_is_retried_on_the_same_url() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pkg.tar.gz"))
+            .respond_with(ResponseTemplate::new(503))
+            .up_to_n_times(2)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/pkg.tar.gz"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("content"))
+            .mount(&server)
+            .await;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("pkg.tar.gz");
+        let url = format!("{}/pkg.tar.gz", server.uri());
+        let client = reqwest::Client::new();
+        let (downloaded, _) = download_first_available(&client, &[&url], &file, None)
+            .await
+            .unwrap();
+
+        assert!(downloaded);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "content");
+        assert_eq!(server.received_requests().await.unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn a_failure_that_lasts_is_tried_three_times_and_then_the_next_url() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/down.tar.gz"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/up.tar.gz"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("content"))
+            .mount(&server)
+            .await;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("pkg.tar.gz");
+        let down = format!("{}/down.tar.gz", server.uri());
+        let up = format!("{}/up.tar.gz", server.uri());
+        let client = reqwest::Client::new();
+        download_first_available(&client, &[&down, &up], &file, None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "content");
+        let requests = server.received_requests().await.unwrap();
+        let hits = |p: &str| requests.iter().filter(|r| r.url.path() == p).count();
+        assert_eq!(hits("/down.tar.gz"), 3);
+        assert_eq!(hits("/up.tar.gz"), 1);
+    }
+
+    #[test]
+    fn retry_delays_are_jittered() {
+        let second = Duration::from_secs(1);
+        for _ in 0..100 {
+            let d = retry_delay(second);
+            assert!(d >= second && d < second.mul_f64(1.5), "{:?}", d);
+        }
+        assert_eq!(retry_delay(Duration::ZERO), Duration::ZERO);
+    }
+
+    #[tokio::test]
+    async fn a_lasting_rate_limit_suggests_fewer_concurrent_downloads() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(429))
+            .mount(&server)
+            .await;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("pkg.tar.gz");
+        let url = format!("{}/pkg.tar.gz", server.uri());
+        let client = reqwest::Client::new();
+        let err = download_first_available(&client, &[&url], &file, None)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("429 Too Many Requests"), "{}", err);
+        assert!(err.contains("concurrent-downloads"), "{}", err);
+        assert_eq!(server.received_requests().await.unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn a_broken_connection_or_body_is_retried() {
+        let truncated =
+            b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\npartial".to_vec();
+        let ok =
+            b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\nConnection: close\r\n\r\ncontent".to_vec();
+        let (server, count) = scripted_server(vec![vec![], truncated, ok]).await;
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("pkg.tar.gz");
+        let client = reqwest::Client::new();
+        download_first_available(&client, &[&format!("{}/pkg.tar.gz", server)], &file, None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "content");
+        assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 3);
     }
 
     #[tokio::test]
