@@ -39,14 +39,20 @@ pub const ADMIN_ETC_DIR: &str = "/opt/rig/etc";
 pub const ADMIN_FONTCONFIG_DIR: &str = "/opt/rig/fontconfig";
 
 // Portable R builds used for user-mode installation. These "distros" resolve to
-// relocatable `.tar.gz` files on the R-hub version server, picked by libc type.
-pub const USER_DISTRO_GLIBC: &str = "linux-manylinux-2.34";
+// relocatable `.tar.gz` files on the R-hub version server, picked by libc type
+// and version: glibc >= 2.34 gets the manylinux_2_34 build, glibc 2.28 to 2.33
+// the manylinux_2_28 build.
+pub const USER_DISTRO_GLIBC_2_34: &str = "linux-manylinux-2.34";
+pub const USER_DISTRO_GLIBC_2_28: &str = "linux-manylinux-2.28";
 pub const USER_DISTRO_MUSL: &str = "linux-musllinux-1.2";
 
 // Minimum libc versions the portable user-mode R builds support. These match
 // the manylinux/musllinux baselines the `.tar.gz` files are built against.
-pub const MIN_GLIBC_VERSION: &str = "2.34";
+pub const MIN_GLIBC_VERSION: &str = "2.28";
 pub const MIN_MUSL_VERSION: &str = "1.2";
+
+// The glibc version from which on the newer manylinux_2_34 build is used.
+pub const GLIBC_2_34: &str = "2.34";
 
 macro_rules! strvec {
     // match a list of expressions separated by comma:
@@ -203,7 +209,7 @@ fn version_at_least(version: &str, minimum: &str) -> bool {
 }
 
 /// Ensure the detected libc is one we have portable user-mode R builds for, and
-/// that it is recent enough. glibc must be >= 2.34, musl must be >= 1.2.
+/// that it is recent enough. glibc must be >= 2.28, musl must be >= 1.2.
 fn check_libc_supported(libc: &Libc) -> Result<(), Box<dyn Error>> {
     let minimum = match libc.kind {
         LibcType::Glibc => MIN_GLIBC_VERSION,
@@ -221,20 +227,27 @@ fn check_libc_supported(libc: &Libc) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// The portable R build platform for a libc: glibc >= 2.34 gets the
+/// manylinux_2_34 build, glibc 2.28 to 2.33 the manylinux_2_28 build, musl
+/// the musllinux build. Errors if the libc is too old.
+fn portable_platform_for(libc: &Libc) -> Result<&'static str, Box<dyn Error>> {
+    check_libc_supported(libc)?;
+    Ok(match libc.kind {
+        LibcType::Glibc if version_at_least(&libc.version, GLIBC_2_34) => USER_DISTRO_GLIBC_2_34,
+        LibcType::Glibc => USER_DISTRO_GLIBC_2_28,
+        LibcType::Musl => USER_DISTRO_MUSL,
+    })
+}
+
 /// The platform string used to resolve a user-mode (portable) R build, chosen
-/// from the system libc: glibc systems get the manylinux build, musl systems the
-/// musllinux build. Both resolve to a relocatable `.tar.gz`.
+/// from the system libc: glibc systems get a manylinux build, musl systems the
+/// musllinux build. All resolve to a relocatable `.tar.gz`.
 ///
 /// Errors if the libc type is unknown, or if it is too old for the portable
-/// builds (glibc < 2.34, musl < 1.2).
+/// builds (glibc < 2.28, musl < 1.2).
 pub fn user_mode_platform() -> Result<String, Box<dyn Error>> {
     let libc = detect_libc()?;
-    check_libc_supported(&libc)?;
-    let platform = match libc.kind {
-        LibcType::Glibc => USER_DISTRO_GLIBC,
-        LibcType::Musl => USER_DISTRO_MUSL,
-    };
-    Ok(platform.to_string())
+    Ok(portable_platform_for(&libc)?.to_string())
 }
 
 pub fn is_portable_platform(platform: &str) -> bool {
@@ -2725,9 +2738,42 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
     fn check_libc_supported_rejects_old_glibc() {
         let glibc = Libc {
             kind: LibcType::Glibc,
-            version: "2.31".to_string(),
+            version: "2.27".to_string(),
         };
         assert!(check_libc_supported(&glibc).is_err());
+        for v in ["2.28", "2.31"] {
+            let glibc = Libc {
+                kind: LibcType::Glibc,
+                version: v.to_string(),
+            };
+            assert!(check_libc_supported(&glibc).is_ok());
+        }
+    }
+
+    #[test]
+    fn portable_platform_for_picks_build() {
+        let glibc = |v: &str| Libc {
+            kind: LibcType::Glibc,
+            version: v.to_string(),
+        };
+        assert!(portable_platform_for(&glibc("2.27")).is_err());
+        for v in ["2.28", "2.31", "2.33"] {
+            assert_eq!(
+                portable_platform_for(&glibc(v)).unwrap(),
+                "linux-manylinux-2.28"
+            );
+        }
+        for v in ["2.34", "2.39", "3.0"] {
+            assert_eq!(
+                portable_platform_for(&glibc(v)).unwrap(),
+                "linux-manylinux-2.34"
+            );
+        }
+        let musl = Libc {
+            kind: LibcType::Musl,
+            version: "1.2.4".to_string(),
+        };
+        assert_eq!(portable_platform_for(&musl).unwrap(), "linux-musllinux-1.2");
     }
 
     #[test]

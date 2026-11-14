@@ -160,9 +160,28 @@ fn parse_platform_parts(platform: &str) -> Result<OsVersion, Box<dyn Error>> {
         }
         // A P3M target name, e.g. `jammy`.
         [name] if arch.is_some() => Ok(linux_platform(linux_arch(), Some(name), None)),
+        // A portable R build, e.g. `manylinux_2_28`, without an arch.
+        [name] if manylinux_version(name).is_some() => Ok(linux_platform(
+            linux_arch(),
+            Some("manylinux"),
+            manylinux_version(name).as_deref(),
+        )),
+        // `manylinux-2_28` is the same as `manylinux-2.28`.
+        ["manylinux", version] => Ok(linux_platform(
+            linux_arch(),
+            Some("manylinux"),
+            Some(&version.replace('_', ".")),
+        )),
         [distro, version] => Ok(linux_platform(linux_arch(), Some(distro), Some(version))),
         _ => bail!("Invalid platform string: '{}'", platform),
     }
+}
+
+/// The glibc version of a `manylinux_X_Y` name, as `X.Y`.
+fn manylinux_version(name: &str) -> Option<String> {
+    let (major, minor) = name.strip_prefix("manylinux_")?.split_once('_')?;
+    let numeric = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit());
+    (numeric(major) && numeric(minor)).then(|| format!("{}.{}", major, minor))
 }
 
 fn parse_triple(platform: &str, pieces: &[&str]) -> Result<OsVersion, Box<dyn Error>> {
@@ -585,6 +604,23 @@ mod tests {
         assert_eq!(result.os, "linux-gnu");
         assert_eq!(result.distro, None);
         assert_eq!(result.version, None);
+    }
+
+    #[test]
+    fn test_parse_platform_string_portable_manylinux() {
+        // A portable R build, in any spelling, without an arch.
+        for input in [
+            "linux-manylinux-2_28",
+            "linux-manylinux-2.28",
+            "manylinux-2_28",
+            "manylinux_2_28",
+            "linux-manylinux_2_28",
+        ] {
+            let result = parse_platform_string(input).unwrap();
+            assert_eq!(result.os, "linux-gnu", "{}", input);
+            assert_eq!(result.distro.as_deref(), Some("manylinux"), "{}", input);
+            assert_eq!(result.version.as_deref(), Some("2.28"), "{}", input);
+        }
     }
 
     #[test]
