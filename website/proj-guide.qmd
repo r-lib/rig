@@ -126,6 +126,17 @@ itself does not depend on, e.g. `devtools`, `usethis`, `roxygen2`, there
 with `rig pkg install -l tools <pkgs>`, so they don't end up in
 `rproj.toml`.
 
+## Project secrets
+
+In rig's usual workflow the project `.Renviron` is committed, so put
+secrets, e.g. API keys, in `.Renviron.rig` instead. It has the same format,
+`rig proj init` adds it to `.gitignore`, and R reads it after `~/.Renviron`
+in a synced project.
+
+Alternatively, add `.Renviron` itself to `.gitignore`; `rig proj sync`
+recreates rig's part of it. But then R in a fresh clone uses your own
+library until the first sync, without a warning.
+
 ## Inspecting a project
 
 ```sh

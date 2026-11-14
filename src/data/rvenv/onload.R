@@ -16,6 +16,57 @@ activated <- identical(
   venv
 )
 
+# Reads `<root>/.Renviron.rig`, the project's untracked environment file,
+# if it exists. The project `.Renviron` is committed, so it is no place for
+# secrets; this file is, and rig adds it to `.gitignore`. The shim package
+# has already re-read `~/.Renviron` by now, so this file overrides it.
+#
+# This is here and not in the shim package, so that it only happens in a
+# project that has an environment, i.e. after `rig proj sync`. A project
+# without one gets the session it would have outside the project. (It also
+# reaches projects with a shim from an older rig.)
+#
+# Only once per project: `RVENV_RENVIRON_RIG` records the project whose file
+# was read, and child processes inherit it, together with the variables the
+# file set. Reading it again in a child would undo whatever the parent
+# deliberately changed since, and double up self-referencing values like
+# `PATH=${PATH}:...`.
+#
+# The variables that set up the project library are rig's: if the file sets
+# them, they are put back and the user is told so.
+read_renviron_rig <- function(root) {
+  path <- file.path(root, ".Renviron.rig")
+  done <- normalizePath(
+    Sys.getenv("RVENV_RENVIRON_RIG"),
+    winslash = "/",
+    mustWork = FALSE
+  )
+  if (identical(done, root) || !file.exists(path)) return(invisible())
+
+  rig_vars <- c(
+    "R_LIBS_USER", "R_LIBS", "R_LIBS_SITE", "R_DEFAULT_PACKAGES",
+    "RVENV", "RVENV_R_LIBS_USER", "RVENV_UNSYNCED", "RVENV_RENVIRON_RIG"
+  )
+  old <- Sys.getenv(rig_vars, unset = NA)
+  readRenviron(path)
+  new <- Sys.getenv(rig_vars, unset = NA)
+  changed <- rig_vars[!mapply(identical, old, new)]
+  if (length(changed)) {
+    set <- changed[!is.na(old[changed])]
+    if (length(set)) do.call(Sys.setenv, as.list(old[set]))
+    unset <- changed[is.na(old[changed])]
+    if (length(unset)) Sys.unsetenv(unset)
+    packageStartupMessage(
+      "! Ignored ", paste(changed, collapse = ", "),
+      " in .Renviron.rig, rig sets these for the project."
+    )
+  }
+
+  Sys.setenv(RVENV_RENVIRON_RIG = root)
+  invisible()
+}
+read_renviron_rig(root)
+
 # Reads `.rvenv/rvenv.cfg`, written by `rig proj sync`, as a named list of
 # its `key = value` lines. `NULL` if the project has never been synced by a
 # rig new enough to write the file.
