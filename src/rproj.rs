@@ -2237,7 +2237,7 @@ impl Rproj {
                 .iter()
                 .filter(|d| d.types.contains(dep_type))
                 .collect();
-            entries.sort_by(|a, b| a.name.cmp(&b.name));
+            entries.sort_by(|a, b| cmp_pkg_names(&a.name, &b.name));
             if entries.is_empty() {
                 continue;
             }
@@ -2260,7 +2260,7 @@ impl Rproj {
 
         let mut git_deps = self.description_git_dependencies();
         if !git_deps.is_empty() {
-            git_deps.sort_by(|a, b| a.0.cmp(&b.0));
+            git_deps.sort_by(|a, b| cmp_pkg_names(&a.0, &b.0));
             let items: Vec<String> = git_deps
                 .iter()
                 .map(|(name, table)| dep_table_to_pak_ref(name, table))
@@ -2282,8 +2282,10 @@ impl Rproj {
             if DESCRIPTION_DEP_GROUPS.contains(&group_name.as_str()) {
                 continue;
             }
+            let mut deps: Vec<(&String, &Dependency)> = group.dependencies.iter().collect();
+            deps.sort_by(|a, b| cmp_pkg_names(a.0, b.0));
             let mut items: Vec<String> = Vec::new();
-            for (name, dep) in group.dependencies.iter() {
+            for (name, dep) in deps {
                 let (item, was_dropped) = format_group_entry(name, dep)?;
                 if was_dropped {
                     dropped.push(name.clone());
@@ -2299,8 +2301,10 @@ impl Rproj {
             if DESCRIPTION_DEP_GROUPS.contains(&group_name.as_str()) {
                 continue;
             }
+            let mut deps: Vec<(&String, &Dependency)> = extra.iter().collect();
+            deps.sort_by(|a, b| cmp_pkg_names(a.0, b.0));
             let mut items: Vec<String> = Vec::new();
-            for (name, dep) in extra.iter() {
+            for (name, dep) in deps {
                 let (item, was_dropped) = format_group_entry(name, dep)?;
                 if was_dropped {
                     dropped.push(name.clone());
@@ -2560,6 +2564,15 @@ fn description_operator(op: &VersionConstraintType) -> &'static str {
         VersionConstraintType::Greater => ">",
         VersionConstraintType::Less => "<",
     }
+}
+
+/// Order package names case insensitively, the way R users expect a
+/// `DESCRIPTION` dependency list to be sorted. Names that only differ in
+/// case fall back to a case sensitive comparison, so the order is stable.
+fn cmp_pkg_names(a: &str, b: &str) -> std::cmp::Ordering {
+    a.to_lowercase()
+        .cmp(&b.to_lowercase())
+        .then_with(|| a.cmp(b))
 }
 
 /// Format one dependency-group entry as a `Config/Needs/*` entry. An entry
@@ -5231,6 +5244,22 @@ foo = "bar"
     }
 
     #[test]
+    fn to_description_sorts_packages_case_insensitively() {
+        let mut m = Rproj::minimal("mypkg");
+        for name in ["rlang", "R6", "cli", "Rcpp", "data.table"] {
+            m.dependencies
+                .insert(name.to_string(), Dependency::Version("*".to_string()));
+        }
+        m.merge_config_needs(&needs(&[("website", "pkgdown, DT, bslib")]));
+
+        let (desc, _) = m.to_description().unwrap();
+        assert!(
+            desc.contains("Imports:\n    cli,\n    data.table,\n    R6,\n    Rcpp,\n    rlang\n")
+        );
+        assert!(desc.contains("Config/Needs/website:\n    bslib,\n    DT,\n    pkgdown\n"));
+    }
+
+    #[test]
     fn to_description_omits_absent_optional_fields() {
         let m = Rproj::minimal("bare");
         let (desc, dropped) = m.to_description().unwrap();
@@ -6177,13 +6206,14 @@ foo = "bar"
         assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), m);
 
         let (desc, _) = m.to_description().unwrap();
-        // Entries are sorted by package name, each written back verbatim as
-        // it came in (`ref_`), `jsonlite=...`'s redundant name override
-        // included. `bioc::S4Vectors` is a plain `S4Vectors` dependency.
+        // Entries are sorted case insensitively by package name, each
+        // written back verbatim as it came in (`ref_`), `jsonlite=...`'s
+        // redundant name override included. `bioc::S4Vectors` is a plain
+        // `S4Vectors` dependency.
         assert!(desc.contains(
-            "Config/Needs/website:\n    S4Vectors,\n    \
+            "Config/Needs/website:\n    \
              jsonlite=jeroen/jsonlite@v1.8.0,\n    pkgdown (>= 2.0),\n    \
-             tidyverse/tidytemplate\n"
+             S4Vectors,\n    tidyverse/tidytemplate\n"
         ));
     }
 
