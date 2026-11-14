@@ -178,7 +178,6 @@ pub async fn download_file(
         let unexpected = UnexpectedStatus {
             url: url.to_string(),
             status: resp.status(),
-            retry_after: None,
             body: error_body(resp).await,
         };
         OUTPUT.error(&format!("HTTP error at {}: {}", url, unexpected.reason()));
@@ -271,8 +270,6 @@ async fn download_if_newer(
 struct UnexpectedStatus {
     url: String,
     status: StatusCode,
-    /// How long the server asked the client to wait before trying again.
-    retry_after: Option<Duration>,
     /// The start of a short plain text body of the response, e.g. PPM's
     /// `package 'otel' blocked from being served (version 0.3.0, rule 9)`.
     body: Option<String>,
@@ -332,124 +329,35 @@ impl std::fmt::Display for UnexpectedStatus {
 
 impl Error for UnexpectedStatus {}
 
-/// How long to wait before each retry.
+/// How long to wait before each retry, before jitter.
 #[cfg(not(test))]
-const RETRY_DELAYS: [Duration; 2] = [Duration::from_millis(250), Duration::from_secs(1)];
+pub(crate) const RETRY_DELAYS: [Duration; 2] = [Duration::from_millis(250), Duration::from_secs(1)];
 #[cfg(test)]
-const RETRY_DELAYS: [Duration; 2] = [Duration::ZERO, Duration::ZERO];
-
-/// The longest a `Retry-After` header may make a retry wait.
-const MAX_RETRY_AFTER: Duration = Duration::from_secs(5 * 60);
-
-/// How long to stop asking a server that keeps rate limiting rig, if it does
-/// not say how long.
-const RATE_LIMIT_PAUSE: Duration = Duration::from_secs(60);
-
-/// The most a retry is delayed beyond its base delay or `Retry-After`, to
-/// spread out concurrent retries.
-const MAX_JITTER: Duration = Duration::from_secs(30);
-
-/// A wait before a retry this long or longer is shown to the user, so that
-/// rig does not look stuck.
-const ANNOUNCE_WAIT: Duration = Duration::from_secs(5);
+pub(crate) const RETRY_DELAYS: [Duration; 2] = [Duration::ZERO, Duration::ZERO];
 
 /// User-facing hint about rate limiting.
 const RATE_LIMIT_HINT: &str = " (rate limited by the server, possibly together with other \
      clients on the same network: try again later, or lower `concurrent-downloads` in the \
      rig config or RIG_CONCURRENT_DOWNLOADS)";
 
-/// How long to wait before a retry, with some jitter.
-///
-/// `None` if the server asked for a longer wait than [`MAX_RETRY_AFTER`]:
-/// retrying sooner than asked would only be turned away again.
-fn retry_delay(base: Duration, asked: Option<Duration>) -> Option<Duration> {
+/// `base`, plus up to half of it again, so that downloads that fail together
+/// do not all retry at the same moment.
+pub(crate) fn retry_delay(base: Duration) -> Duration {
     use rand::Rng;
-    let delay = match asked {
-        Some(asked) if asked > MAX_RETRY_AFTER => return None,
-        Some(asked) => base.max(asked),
-        None => base,
-    };
-    let jitter = delay.mul_f64(rand::thread_rng().gen_range(0.0..0.5));
-    Some(delay + jitter.min(MAX_JITTER))
+    base + base.mul_f64(rand::thread_rng().gen_range(0.0..0.5))
 }
 
-/// Tell the user (once) that downloads from the host of `url` wait `delay`
-/// before they are retried if that is long enough to notice.
-fn announce_wait(url: &str, delay: Duration, status: Option<StatusCode>) -> bool {
-    use std::collections::HashMap;
-    use std::sync::{LazyLock, Mutex};
-    use std::time::Instant;
-    static WAITS: LazyLock<Mutex<HashMap<String, Instant>>> = LazyLock::new(Default::default);
-
-    if delay < ANNOUNCE_WAIT {
-        return false;
-    }
-    let host = reqwest::Url::parse(url)
-        .ok()
-        .and_then(|u| u.host_str().map(str::to_string))
-        .unwrap_or_else(|| url.to_string());
-    let now = Instant::now();
-    let mut waits = WAITS.lock().unwrap();
-    if waits.get(&host).is_some_and(|until| now < *until) {
-        return false;
-    }
-    waits.insert(host.clone(), now + delay);
-    drop(waits);
-    let wait = format_wait(delay);
-    OUTPUT.warn(&match status {
-        Some(StatusCode::TOO_MANY_REQUESTS) => {
-            format!("{host} is rate limiting downloads, waiting {wait} before retrying")
-        }
-        Some(status) => format!("{host} answered {status}, waiting {wait} before retrying"),
-        None => format!("Cannot download from {host}, waiting {wait} before retrying"),
-    });
-    true
-}
-
-/// A wait for the user to read, e.g. `40 s` or `5 min`.
-fn format_wait(delay: Duration) -> String {
-    let secs = delay.as_secs_f64().round() as u64;
-    if secs < 120 {
-        format!("{} s", secs)
-    } else {
-        format!("{} min", (secs + 30) / 60)
-    }
-}
-
-/// Whether a response status is a failure of the server, or a request to
-/// slow down, which may pass, as opposed to a definite answer about the URL.
-fn is_transient_status(status: StatusCode) -> bool {
-    status == StatusCode::REQUEST_TIMEOUT
-        || status == StatusCode::TOO_MANY_REQUESTS
-        || status.is_server_error()
-}
-
-/// A `Retry-After` value, either a number of seconds or an HTTP date, as a
-/// delay from `now`. A date in the past means no wait.
-fn parse_retry_after(value: &str, now: jiff::Timestamp) -> Option<Duration> {
-    let value = value.trim();
-    if let Ok(secs) = value.parse::<u64>() {
-        return Some(Duration::from_secs(secs));
-    }
-    let at = parse_http_date(value)?;
-    let wait = now.duration_until(at);
-    Some(Duration::try_from(wait).unwrap_or(Duration::ZERO))
-}
-
-/// An HTTP date in any of the three forms HTTP allows: the usual
-/// `Sun, 06 Nov 1994 08:49:37 GMT`, and the obsolete RFC 850
-/// `Sunday, 06-Nov-94 08:49:37 GMT` and asctime `Sun Nov  6 08:49:37 1994`.
-/// All of them are in UTC.
-fn parse_http_date(value: &str) -> Option<jiff::Timestamp> {
-    static PARSER: jiff::fmt::rfc2822::DateTimeParser = jiff::fmt::rfc2822::DateTimeParser::new();
-    if let Ok(at) = PARSER.parse_timestamp(value) {
-        return Some(at);
-    }
-    ["%A, %d-%b-%y %H:%M:%S GMT", "%a %b %e %H:%M:%S %Y"]
-        .iter()
-        .find_map(|format| jiff::civil::DateTime::strptime(format, value).ok())
-        .and_then(|dt| dt.to_zoned(jiff::tz::TimeZone::UTC).ok())
-        .map(|zoned| zoned.timestamp())
+/// Whether a response status may pass if the request is repeated, as opposed
+/// to a definite answer about the URL: a request timeout, too many requests,
+/// a server error, a bad gateway, an unavailable server, a gateway timeout,
+/// and Cloudflare's web server down (521), connection timed out (522) and
+/// timeout (524). Other server errors, e.g. 501 Not Implemented, would get
+/// the same answer again.
+pub(crate) fn is_transient_status(status: StatusCode) -> bool {
+    matches!(
+        status.as_u16(),
+        408 | 429 | 500 | 502 | 503 | 504 | 521 | 522 | 524
+    )
 }
 
 /// [`download_if_newer`], which leaves it to the caller to report a response
@@ -493,20 +401,14 @@ async fn download_if_newer_quiet(
         status => Err(Box::new(UnexpectedStatus {
             url: url.to_string(),
             status,
-            retry_after: resp
-                .headers()
-                .get(reqwest::header::RETRY_AFTER)
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| parse_retry_after(v, jiff::Timestamp::now())),
             body: error_body(resp).await,
         })),
     }
 }
 
 /// [`download_if_newer_quiet`], which retries a failure that may pass on the
-/// same URL, after each of [`RETRY_DELAYS`] in turn, or after the
-/// `Retry-After` of the server if that is longer. A failed attempt leaves no
-/// partial file behind, as the body is complete in memory before it is
+/// same URL, after each of [`RETRY_DELAYS`] in turn. A failed attempt leaves
+/// no partial file behind, as the body is complete in memory before it is
 /// written.
 async fn download_if_newer_retrying(
     client: &reqwest::Client,
@@ -524,8 +426,7 @@ async fn download_if_newer_retrying(
         // off, or a status that may pass is worth another go. A request that
         // cannot be built, a redirect that cannot be followed, a definite
         // answer about the URL and a failure to write the file are not.
-        let unexpected = error.downcast_ref::<UnexpectedStatus>();
-        let transient = match unexpected {
+        let transient = match error.downcast_ref::<UnexpectedStatus>() {
             Some(unexpected) => is_transient_status(unexpected.status),
             None => error
                 .downcast_ref::<reqwest::Error>()
@@ -537,14 +438,7 @@ async fn download_if_newer_retrying(
         if !transient {
             return Err(error);
         }
-        let asked = unexpected.and_then(|u| u.retry_after);
-        let Some(delay) = retry_delay(*base, asked) else {
-            info!(
-                "Not retrying {}, the server asked to wait {:?}: {}",
-                url, asked, error
-            );
-            return Err(error);
-        };
+        let delay = retry_delay(*base);
         retries += 1;
         info!(
             "Cannot download {}, will retry in {:?} ({} of {}): {}",
@@ -554,7 +448,6 @@ async fn download_if_newer_retrying(
             RETRY_DELAYS.len(),
             error
         );
-        announce_wait(url, delay, unexpected.map(|u| u.status));
         tokio::time::sleep(delay).await;
     }
 }
@@ -605,27 +498,9 @@ async fn download_first_available(
     local_path: &PathBuf,
     etag: Option<&str>,
 ) -> Result<(bool, Option<String>), Box<dyn Error>> {
-    use std::collections::HashMap;
-    use std::sync::{LazyLock, Mutex};
-    use std::time::Instant;
-    // Servers that are still rate limiting rig after the retries, and until
-    // when. Any other request to them, for this or a concurrent download,
-    // would only add to the requests that count against the limit.
-    static LIMITED: LazyLock<Mutex<HashMap<String, Instant>>> = LazyLock::new(Default::default);
-
     let mut failures: Vec<String> = vec![];
 
     for (i, url) in urls.iter().enumerate() {
-        // A server's rate limit applies to its scheme, host and port.
-        let origin = reqwest::Url::parse(url)
-            .map(|u| u.origin().ascii_serialization())
-            .unwrap_or_else(|_| url.to_string());
-        let until = LIMITED.lock().unwrap().get(&origin).copied();
-        if until.is_some_and(|until| Instant::now() < until) {
-            info!("Not trying {}, {} is rate limiting downloads", url, origin);
-            failures.push(format!("{} (skipped, the server is rate limiting)", url));
-            continue;
-        }
         info!("Trying to download from {}", url);
         match download_if_newer_retrying(client, url, local_path, etag).await {
             Ok((downloaded, etag)) => {
@@ -639,19 +514,7 @@ async fn download_first_available(
                     debug!("Cannot download from {}: {}", url, e);
                 }
                 let reason = match e.downcast_ref::<UnexpectedStatus>() {
-                    Some(unexpected) => {
-                        if unexpected.status == StatusCode::TOO_MANY_REQUESTS {
-                            let wait = unexpected
-                                .retry_after
-                                .unwrap_or(RATE_LIMIT_PAUSE)
-                                .min(MAX_RETRY_AFTER);
-                            LIMITED
-                                .lock()
-                                .unwrap()
-                                .insert(origin, Instant::now() + wait);
-                        }
-                        unexpected.reason()
-                    }
+                    Some(unexpected) => unexpected.reason(),
                     None => e.to_string(),
                 };
                 failures.push(format!("{} ({})", url, reason));
@@ -1528,10 +1391,12 @@ mod tests {
 
     #[test]
     fn transient_statuses_are_the_ones_that_may_pass() {
-        for code in [408, 429, 500, 502, 503, 504] {
+        for code in [408, 429, 500, 502, 503, 504, 521, 522, 524] {
             assert!(is_transient_status(StatusCode::from_u16(code).unwrap()));
         }
-        for code in [301, 304, 400, 401, 403, 404, 410, 451] {
+        for code in [
+            301, 304, 400, 401, 403, 404, 410, 413, 451, 501, 505, 520, 523,
+        ] {
             assert!(!is_transient_status(StatusCode::from_u16(code).unwrap()));
         }
     }
@@ -1594,115 +1459,13 @@ mod tests {
     }
 
     #[test]
-    fn retry_delays_are_jittered_and_capped() {
+    fn retry_delays_are_jittered() {
         let second = Duration::from_secs(1);
-        let secs = Duration::from_secs;
         for _ in 0..100 {
-            let d = retry_delay(second, None).unwrap();
+            let d = retry_delay(second);
             assert!(d >= second && d < second.mul_f64(1.5), "{:?}", d);
-
-            let d = retry_delay(second, Some(secs(10))).unwrap();
-            assert!(d >= secs(10) && d < secs(15), "{:?}", d);
-
-            // A long wait is not stretched by more than MAX_JITTER.
-            let d = retry_delay(second, Some(secs(300))).unwrap();
-            assert!(d >= secs(300) && d <= secs(300) + MAX_JITTER, "{:?}", d);
         }
-        assert_eq!(retry_delay(Duration::ZERO, None), Some(Duration::ZERO));
-        assert_eq!(retry_delay(second, Some(MAX_RETRY_AFTER + second)), None);
-    }
-
-    #[test]
-    fn long_waits_are_announced_once_per_host() {
-        let url = "https://announce-test.invalid/cran/pkg.tar.gz";
-        let other = "https://announce-test-other.invalid/pkg.tar.gz";
-        let long = Duration::from_secs(60);
-        let limited = Some(StatusCode::TOO_MANY_REQUESTS);
-        assert!(!announce_wait(url, Duration::from_secs(1), limited));
-        assert!(announce_wait(url, long, limited));
-        assert!(!announce_wait(url, long, limited));
-        assert!(!announce_wait(
-            "https://announce-test.invalid/other",
-            long,
-            limited
-        ));
-        assert!(announce_wait(other, long, limited));
-    }
-
-    #[tokio::test]
-    async fn a_rate_limiting_server_is_not_asked_for_other_urls() {
-        let limited = MockServer::start().await;
-        // A wait far too long to be added to the time.
-        let forever = u64::MAX.to_string();
-        Mock::given(method("GET"))
-            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", forever))
-            .mount(&limited)
-            .await;
-        let other = MockServer::start().await;
-        Mock::given(method("GET"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("content"))
-            .mount(&other)
-            .await;
-
-        let tmp = tempfile::tempdir().unwrap();
-        let file = tmp.path().join("PACKAGES");
-        let client = reqwest::Client::new();
-        let gz = format!("{}/PACKAGES.gz", limited.uri());
-        let rds = format!("{}/PACKAGES.rds", limited.uri());
-        let err = download_first_available(&client, &[&gz, &rds], &file, None)
-            .await
-            .unwrap_err()
-            .to_string();
-        assert!(
-            err.contains("skipped, the server is rate limiting"),
-            "{}",
-            err
-        );
-        assert_eq!(limited.received_requests().await.unwrap().len(), 1);
-
-        // A later download skips the server too, but another server is
-        // still tried.
-        let fallback = format!("{}/PACKAGES", other.uri());
-        download_first_available(&client, &[&gz, &rds, &fallback], &file, None)
-            .await
-            .unwrap();
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), "content");
-        assert_eq!(limited.received_requests().await.unwrap().len(), 1);
-    }
-
-    #[test]
-    fn waits_are_formatted_for_people() {
-        assert_eq!(format_wait(Duration::from_millis(40_400)), "40 s");
-        assert_eq!(format_wait(Duration::from_secs(300)), "5 min");
-        assert_eq!(format_wait(Duration::from_secs(320)), "5 min");
-        assert_eq!(format_wait(Duration::from_secs(330)), "6 min");
-    }
-
-    #[test]
-    fn retry_after_is_read_as_seconds_or_a_date() {
-        let now: jiff::Timestamp = "2026-11-12T12:00:00Z".parse().unwrap();
-        let wait = |v| parse_retry_after(v, now);
-        assert_eq!(wait("30"), Some(Duration::from_secs(30)));
-        assert_eq!(wait(" 0 "), Some(Duration::ZERO));
-        assert_eq!(
-            wait("Thu, 12 Nov 2026 12:00:45 GMT"),
-            Some(Duration::from_secs(45))
-        );
-        assert_eq!(
-            wait("Thursday, 12-Nov-26 12:00:45 GMT"),
-            Some(Duration::from_secs(45))
-        );
-        assert_eq!(
-            wait("Thu Nov 12 12:00:45 2026"),
-            Some(Duration::from_secs(45))
-        );
-        assert_eq!(
-            parse_http_date("Sun Nov  6 08:49:37 1994"),
-            "1994-11-06T08:49:37Z".parse().ok()
-        );
-        assert_eq!(wait("Thu, 12 Nov 2026 11:59:00 GMT"), Some(Duration::ZERO));
-        assert_eq!(wait("soon"), None);
-        assert_eq!(wait("-5"), None);
+        assert_eq!(retry_delay(Duration::ZERO), Duration::ZERO);
     }
 
     #[tokio::test]
@@ -1723,12 +1486,6 @@ mod tests {
             .to_string();
         assert!(err.contains("429 Too Many Requests"), "{}", err);
         assert!(err.contains("concurrent-downloads"), "{}", err);
-        assert_eq!(server.received_requests().await.unwrap().len(), 3);
-
-        // Without a Retry-After, the server is still left alone for a while.
-        assert!(download_first_available(&client, &[&url], &file, None)
-            .await
-            .is_err());
         assert_eq!(server.received_requests().await.unwrap().len(), 3);
     }
 

@@ -1,5 +1,9 @@
 # rig 0.11.2-dev (development version)
 
+* rig now retries package downloads that fail with a transient error, a
+  broken connection, a timeout, or some 4xx and 5xx HTTP statuses.
+  It tries each URL up to three times.
+
 * `rig proj import` improvements:
    - `rig proj import` now does a better job at parsing author names and
      `rig proj export` at writing them back in the same form,
@@ -181,9 +185,6 @@
 
 * Compiled source packages from private Posit Package Manager instances are now
   cached correctly.
-
-* rig now retries package downloads that seem to fail with a transient error,
-  and respects servers that rate-limit requests.
 
 # rig 0.11.0
 

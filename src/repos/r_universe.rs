@@ -121,9 +121,6 @@ lazy_static::lazy_static! {
     static ref API_CACHE: Mutex<HashMap<String, Option<ApiPackage>>> = Mutex::new(HashMap::new());
 }
 
-/// How many times to ask the API about a package, if the request fails.
-const API_TRIES: u32 = 3;
-
 /// What one request to the API found.
 enum ApiAnswer {
     Found(ApiPackage),
@@ -143,7 +140,7 @@ async fn ask_api(client: &reqwest::Client, url: &str) -> ApiAnswer {
         }
     };
     let status = resp.status();
-    if status.is_server_error() || status.as_u16() == 429 {
+    if crate::download::is_transient_status(status) {
         debug!("{} returned HTTP status {}", url, status);
         return ApiAnswer::Failed;
     }
@@ -174,15 +171,19 @@ async fn fetch_api_package(client: &reqwest::Client, url: &str) -> Option<ApiPac
     if let Some(cached) = API_CACHE.lock().unwrap().get(url) {
         return cached.clone();
     }
-    for attempt in 1..=API_TRIES {
+    use crate::download::{retry_delay, RETRY_DELAYS};
+    let mut delays = RETRY_DELAYS.iter();
+    loop {
         let result = match ask_api(client, url).await {
             ApiAnswer::Found(api) => Some(api),
             ApiAnswer::Missing => None,
-            ApiAnswer::Failed if attempt < API_TRIES => {
-                tokio::time::sleep(std::time::Duration::from_millis(250 * attempt as u64)).await;
-                continue;
-            }
-            ApiAnswer::Failed => return None,
+            ApiAnswer::Failed => match delays.next() {
+                Some(base) => {
+                    tokio::time::sleep(retry_delay(*base)).await;
+                    continue;
+                }
+                None => return None,
+            },
         };
         API_CACHE
             .lock()
@@ -190,7 +191,6 @@ async fn fetch_api_package(client: &reqwest::Client, url: &str) -> Option<ApiPac
             .insert(url.to_string(), result.clone());
         return result;
     }
-    None
 }
 
 /// Where each file of `requests` was built from, in the same order. `None`
