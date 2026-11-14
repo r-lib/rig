@@ -244,6 +244,10 @@ fn renviron_block() -> String {
 # R_DEFAULT_PACKAGES replaces R's default package list rather than adding to
 # it, so the whole list has to be spelled out.
 #
+# This file is committed to version control, so do not put secrets in it.
+# Put them in .Renviron.rig instead, which `rig proj init` adds to
+# .gitignore, and R reads at startup in a synced project, after ~/.Renviron.
+#
 # Note that `R --vanilla` ignores this file entirely.
 RVENV_R_LIBS_USER=\"${{R_LIBS_USER}}\"
 R_LIBS_USER=.rvenvlib
@@ -259,6 +263,9 @@ R_DEFAULT_PACKAGES=rvenv,datasets,utils,grDevices,graphics,stats,methods
 /// needs before the first `rig proj sync` lives in `.rvenvlib` instead, which
 /// is tracked. `.rvenvlib` has its own `.gitignore`, see
 /// [`shim_gitignore_body`].
+///
+/// `.Renviron.rig` is the project's untracked environment file, for secrets
+/// and other per-machine settings, which `.rvenv/onload.R` reads at startup.
 fn root_gitignore_block() -> String {
     format!(
         "\
@@ -267,6 +274,8 @@ fn root_gitignore_block() -> String {
 # be deleted and rebuilt at any time. The committed rvenv shim package lives
 # in .rvenvlib instead.
 /.rvenv/
+# Project environment variables that must not be committed, e.g. secrets.
+/.Renviron.rig
 {}
 ",
         BLOCK_START, BLOCK_END
@@ -1550,6 +1559,11 @@ mod tests {
         // The shim package lives outside .rvenv entirely, so there is no
         // exception to carve out.
         assert!(!root.contains("!/.rvenv"));
+    }
+
+    #[test]
+    fn the_gitignore_block_ignores_renviron_rig() {
+        assert!(root_gitignore_block().contains("\n/.Renviron.rig\n"));
     }
 
     #[test]
