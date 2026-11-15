@@ -89,9 +89,21 @@ pub fn sc_pkg_install(
         .collect();
     let dev = args.get_flag("dev");
     let (mut deps, git_deps, cran_names, dev_packages) = requested_deps(&names)?;
-    // The packages named on the command line, by their real names, before
-    // `--dev` adds their dev dependencies to `deps`.
-    let named: HashSet<String> = deps.dependencies.iter().map(|d| d.name.clone()).collect();
+    // `--no-install-self` leaves out the local packages (paths) named on the
+    // command line, by their real names. Packages named by repository name,
+    // git/GitHub reference or URL are always installed.
+    let no_install_self = args.get_flag("no-install-project");
+    let local_named: HashSet<String> = git_deps
+        .iter()
+        .filter(|(_, table)| table.path.is_some())
+        .map(|(name, _)| name.clone())
+        .collect();
+    if no_install_self && local_named.is_empty() {
+        let msg = "--no-install-self needs a local package, e.g. `.`, \
+            a package directory or a package file";
+        OUTPUT.error(msg);
+        bail!(msg);
+    }
     let exclude_newer =
         match exclude_newer_arg(args)?.map_or_else(config_exclude_newer, |s| Ok(Some(s)))? {
             Some(spec) => {
@@ -175,8 +187,8 @@ pub fn sc_pkg_install(
     // provenance hashes. `rig pkg install` builds one in memory and never
     // writes it.
     let mut lockfile = RprojLockTarget::from_solution(&registry, &solution);
-    if args.get_flag("no-install-project") {
-        lockfile.packages = drop_named_packages(lockfile.packages, &named);
+    if no_install_self {
+        lockfile.packages = drop_named_packages(lockfile.packages, &local_named);
     }
 
     // A library that does not exist yet holds nothing; rig creates it below,
@@ -500,13 +512,13 @@ fn add_dev_deps_of_package(
     Ok(())
 }
 
-/// `--no-install-self`: leave the packages named on the command line out
-/// of the solution, keeping only their dependencies -- the same thing
+/// `--no-install-self`: leave the local packages named on the command line
+/// out of the solution, keeping only their dependencies -- the same thing
 /// `rig proj sync --no-install-project` does for a project's own package.
 ///
-/// A named package still stays if some package that stays depends on it,
-/// e.g. `rig pkg install --no-install-self cli pkgA` where `pkgA` imports
-/// `cli`, or a `--dev` dependency that imports the named package. That is
+/// A local package still stays if some package that stays depends on it,
+/// e.g. a `--dev` dependency that imports it, or a git/GitHub package named
+/// on the command line next to it that does. That is
 /// iterated to a fixpoint, since a named package kept that way can in turn
 /// depend on another named package.
 fn drop_named_packages(

@@ -140,9 +140,9 @@ looks like.
 
 ## Installing only the dependencies
 
-`--no-install-self` installs the dependencies of the named packages, but not
-the named packages themselves, e.g. to set up a library for working on a
-package from its source directory:
+`--no-install-self` installs the dependencies of the local packages (paths)
+named on the command line, but not the local packages themselves, e.g. to set
+up a library for working on a package from its source directory:
 
 ```
 rig pkg install --no-install-self --dev .
@@ -151,7 +151,7 @@ rig pkg install --no-install-self --dev .
 `--no-install-project` is an alias of `--no-install-self`, for consistency with
 `rig proj sync`.
 
-A named package is still installed if another package that is being
+A local package is still installed if another package that is being
 installed depends on it.
 
 ## Dev dependencies

@@ -14,6 +14,9 @@
 * Synced rig projects now read `.Renviron.rig` after `~/.Renviron`, for
   secrets that must not be committed (#518).
 
+* `rig pkg install --no-install-self` now only skips the local packages
+  (paths) named on the command line.
+
 * `rig proj import` improvements:
    - `rig proj import` now does a better job at parsing author names and
      `rig proj export` at writing them back in the same form,

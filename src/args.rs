@@ -2664,9 +2664,9 @@ pub fn rig_app() -> Command {
                 .arg(
                     Arg::new("no-install-project")
                         .help(
-                            "Do not install the packages named on the command line, only\n\
-                            their dependencies. A named package is still installed if\n\
-                            another package that is installed depends on it.",
+                            "Do not install the local packages (paths) named on the command\n\
+                            line, only their dependencies. A local package is still\n\
+                            installed if another package that is installed depends on it.",
                         )
                         .long("no-install-self")
                         .visible_alias("no-install-project")
