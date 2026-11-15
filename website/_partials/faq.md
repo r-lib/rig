@@ -253,26 +253,76 @@
 <summary>Which domains does rig download files from?</summary>
 >
 > Here is the list of domains that you need to enable in your proxy.
-> Note that some of these, in particular the GitHub ones,  might
-> trigger redirects.
+> Downloads from GitHub releases redirect to
+> `release-assets.githubusercontent.com` or
+> `objects.githubusercontent.com`, so allow these as well.
 >
-> - https://api.r-hub.io/rversions for resolving R versions, i.e. this is
->   needed for `rig install`, `rig available`, etc.
-> - `rig install` downloads pak from https://r-lib.github.io/p/pak
->   unless requested otherwise.
-> - `rig install` sets https://cloud.r-project.org as the default CRAN
->   mirror, unless requested otherwise.
-> - `rig install` sets https://packagemanager.posit.co as the Posit
->   Package Manager CRAN mirror on supported Linux systems, unless
->   requested otherwise.
-> - `rig install` downloads the EPEL package from
->   https://dl.fedoraproject.org/pub/epel on RHEL systems.
-> - `rig rtools` downloads Rtools from the following URLs on Windows:
->   * https://github.com/r-hub/rtools44/releases,
->   * https://github.com/r-hub/rtools43/releases,
->   * https://github.com/r-hub/rtools42/releases,
->   * https://cloud.r-project.org/bin/windows/Rtools
-> - `rig add` downloads https://curl.se/ca/cacert.pem (the CA bundle), if
->   there is no system CA bundle, and the fallback fonts from
+> **Resolving R and Rtools versions**
+>
+> - https://api.r-hub.io/rversions, needed for `rig add`, `rig available`,
+>   `rig resolve`, `rig rtools`, etc.
+>
+> **Installing R (`rig add`)**
+>
+> - https://github.com/r-hub/R/releases for R builds on macOS, Windows,
+>   and the portable Linux builds.
+> - https://mac.cran.dev for R-devel builds on macOS.
+> - https://cdn.posit.co/r for the distribution-specific Linux builds.
+> - https://cran.rstudio.com/bin/windows for R-devel builds on Windows.
+> - https://r-lib.github.io/p/pak for installing pak, unless requested
+>   otherwise.
+> - https://curl.se/ca/cacert.pem (the CA bundle), if there is no system
+>   CA bundle, and the fallback fonts from
 >   https://github.com/r-lib/rig/releases for the portable Linux R builds.
+> - https://dl.fedoraproject.org/pub/epel for the EPEL package on RHEL
+>   systems.
+>
+> **Package repositories**
+>
+> rig downloads package metadata and packages from every repository that
+> is enabled for an R installation or project. The default repositories
+> are:
+>
+> - https://cloud.r-project.org and https://cran-archive.r-project.org
+>   (CRAN).
+> - https://packagemanager.posit.co and https://p3m.dev (Posit Public
+>   Package Manager), on platforms that it has binary packages for.
+> - https://cran.r-universe.dev on Windows on ARM.
+>
+> If you enable other repositories, e.g. Bioconductor
+> (https://bioconductor.org), R-universe (`*.r-universe.dev`), or your
+> own, then you need to allow those too.
+>
+> **Package management (`rig pkg`, `rig proj`, `rig run`)**
+>
+> - https://ppm.r-pkg.org and https://ppm-bioc.r-pkg.org for extended
+>   CRAN and Bioconductor package metadata.
+> - https://search.r-pkg.org for `rig pkg search`.
+> - https://rspm-sync.rstudio.com for `rig pkg info` on older package
+>   versions.
+> - https://codeload.github.com for the system requirements database
+>   (https://github.com/r-hub/r-system-requirements) on Linux.
+> - The git hosts of packages that you install from git, e.g.
+>   https://github.com, https://gitlab.com or https://bitbucket.org.
+> - Installing system requirements on Linux uses your system's package
+>   manager, and might also need extra package sources, e.g. EPEL or
+>   RPM Fusion on RHEL, or https://sh.rustup.rs for Rust.
+>
+> **Posit Package Manager (`rig ppm`)**
+>
+> - https://packagemanager.posit.co, for build logs, status and
+>   platform information.
+>
+> **Rtools (`rig rtools`, Windows only)**
+>
+> - https://github.com/r-hub/rtools/releases for most Rtools versions.
+> - https://github.com/r-hub/rtools45/releases,
+>   https://github.com/r-hub/rtools44/releases,
+>   https://github.com/r-hub/rtools43/releases and
+>   https://github.com/r-hub/rtools42/releases for the latest builds of
+>   Rtools 4.2 to 4.5.
+>
+> **Updating rig (`rig self update`)**
+>
+> - https://github.com/r-lib/rig/releases.
 </details>
