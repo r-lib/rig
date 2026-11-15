@@ -1,6 +1,7 @@
 #![cfg(target_os = "linux")]
 
-use globset::{Glob, GlobMatcher};
+use globset::Glob;
+use lazy_static::lazy_static;
 use regex::Regex;
 use std::error::Error;
 use std::ffi::OsStr;
@@ -39,14 +40,20 @@ pub const ADMIN_ETC_DIR: &str = "/opt/rig/etc";
 pub const ADMIN_FONTCONFIG_DIR: &str = "/opt/rig/fontconfig";
 
 // Portable R builds used for user-mode installation. These "distros" resolve to
-// relocatable `.tar.gz` files on the R-hub version server, picked by libc type.
-pub const USER_DISTRO_GLIBC: &str = "linux-manylinux-2.34";
+// relocatable `.tar.gz` files on the R-hub version server, picked by libc type
+// and version: glibc >= 2.34 gets the manylinux_2_34 build, glibc 2.28 to 2.33
+// the manylinux_2_28 build.
+pub const USER_DISTRO_GLIBC_2_34: &str = "linux-manylinux-2.34";
+pub const USER_DISTRO_GLIBC_2_28: &str = "linux-manylinux-2.28";
 pub const USER_DISTRO_MUSL: &str = "linux-musllinux-1.2";
 
 // Minimum libc versions the portable user-mode R builds support. These match
 // the manylinux/musllinux baselines the `.tar.gz` files are built against.
-pub const MIN_GLIBC_VERSION: &str = "2.34";
+pub const MIN_GLIBC_VERSION: &str = "2.28";
 pub const MIN_MUSL_VERSION: &str = "1.2";
+
+// The glibc version from which on the newer manylinux_2_34 build is used.
+pub const GLIBC_2_34: &str = "2.34";
 
 macro_rules! strvec {
     // match a list of expressions separated by comma:
@@ -203,7 +210,7 @@ fn version_at_least(version: &str, minimum: &str) -> bool {
 }
 
 /// Ensure the detected libc is one we have portable user-mode R builds for, and
-/// that it is recent enough. glibc must be >= 2.34, musl must be >= 1.2.
+/// that it is recent enough. glibc must be >= 2.28, musl must be >= 1.2.
 fn check_libc_supported(libc: &Libc) -> Result<(), Box<dyn Error>> {
     let minimum = match libc.kind {
         LibcType::Glibc => MIN_GLIBC_VERSION,
@@ -221,20 +228,27 @@ fn check_libc_supported(libc: &Libc) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// The portable R build platform for a libc: glibc >= 2.34 gets the
+/// manylinux_2_34 build, glibc 2.28 to 2.33 the manylinux_2_28 build, musl
+/// the musllinux build. Errors if the libc is too old.
+fn portable_platform_for(libc: &Libc) -> Result<&'static str, Box<dyn Error>> {
+    check_libc_supported(libc)?;
+    Ok(match libc.kind {
+        LibcType::Glibc if version_at_least(&libc.version, GLIBC_2_34) => USER_DISTRO_GLIBC_2_34,
+        LibcType::Glibc => USER_DISTRO_GLIBC_2_28,
+        LibcType::Musl => USER_DISTRO_MUSL,
+    })
+}
+
 /// The platform string used to resolve a user-mode (portable) R build, chosen
-/// from the system libc: glibc systems get the manylinux build, musl systems the
-/// musllinux build. Both resolve to a relocatable `.tar.gz`.
+/// from the system libc: glibc systems get a manylinux build, musl systems the
+/// musllinux build. All resolve to a relocatable `.tar.gz`.
 ///
 /// Errors if the libc type is unknown, or if it is too old for the portable
-/// builds (glibc < 2.34, musl < 1.2).
+/// builds (glibc < 2.28, musl < 1.2).
 pub fn user_mode_platform() -> Result<String, Box<dyn Error>> {
     let libc = detect_libc()?;
-    check_libc_supported(&libc)?;
-    let platform = match libc.kind {
-        LibcType::Glibc => USER_DISTRO_GLIBC,
-        LibcType::Musl => USER_DISTRO_MUSL,
-    };
-    Ok(platform.to_string())
+    Ok(portable_platform_for(&libc)?.to_string())
 }
 
 pub fn is_portable_platform(platform: &str) -> bool {
@@ -876,20 +890,56 @@ fn shim_bundled_xcursor(dest: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-const USER_LIBS: &[(&str, &str)] = &[
-    ("libX11-*.so.6", "libX11.so.6"),
-    ("libXext-*.so.6", "libXext.so.6"),
-    ("libXrender-*.so.1", "libXrender.so.1"),
-    ("libICE-*.so.6", "libICE.so.6"),
-    ("libSM-*.so.6", "libSM.so.6"),
-    ("libgobject-2-*.0.so.0", "libgobject-2.0.so.0"),
-    ("libglib-2-*.0.so.0", "libglib-2.0.so.0"),
-    ("libXau-*.so.6", "libXau.so.6"),
-    ("libxcb-*.so.1", "libxcb.so.1"),
-    ("libuuid-*.so.1", "libuuid.so.1"),
-    ("libpcre-*.so.1", "libpcre.so.1"),
-    ("libffi-*.so.8", "libffi.so.8"),
+// Bundled libraries that packages may link to. Each one is copied to the rig
+// library directory, next to a link named after its original soname (the
+// bundled name without the hash, see `unhashed_lib_name()`).
+const USER_LIBS: &[&str] = &[
+    "libX11-*.so.6",
+    "libXext-*.so.6",
+    "libXrender-*.so.1",
+    "libICE-*.so.6",
+    "libSM-*.so.6",
+    "libgobject-2-*.0.so.0",
+    "libglib-2-*.0.so.0",
+    "libXau-*.so.6",
+    "libxcb-*.so.1",
+    "libuuid-*.so.1",
+    "libpcre-*.so.1",
+    // libffi.so.8 on manylinux_2_34, libffi.so.6 on manylinux_2_28.
+    "libffi-*.so.*",
 ];
+
+// Bundled libraries that `USER_LIBS` need, but that packages do not link to.
+// These are copied without a link, and only if the build has them. The copies
+// in the rig library directory are found on `LD_LIBRARY_PATH` before the
+// bundled libraries, so everything they need must be copied as well.
+const USER_LIB_DEPS: &[&str] = &[
+    // On manylinux_2_28 glib and gobject need gnutls, and these are gnutls
+    // and its dependencies.
+    "libgnutls-*.so.30",
+    "libp11-kit-*.so.0",
+    "libidn2-*.so.0",
+    "libunistring-*.so.2",
+    "libtasn1-*.so.6",
+    "libnettle-*.so.6",
+    "libhogweed-*.so.4",
+    "libgmp-*.so.10",
+];
+
+// The bundled libraries have a hash in their names, e.g.
+// `libglib-2-0c0a03eb.0.so.0` for `libglib-2.0.so.0`, or
+// `libtcl8-4f242853.6.so` for `libtcl8.6.so`. Returns the name without the
+// hash, or `None` if `name` is not a bundled library.
+fn unhashed_lib_name(name: &str) -> Option<String> {
+    lazy_static! {
+        static ref HASHED: Regex = Regex::new(r"^(lib.*)-[0-9a-f]{8}(\..*)$").unwrap();
+    }
+    if !name.contains(".so") {
+        return None;
+    }
+    let caps = HASHED.captures(name)?;
+    Some(format!("{}{}", &caps[1], &caps[2]))
+}
 
 pub fn get_user_lib_dir() -> Result<PathBuf, Box<dyn Error>> {
     match get_r_install_dir()? {
@@ -904,24 +954,27 @@ pub fn get_user_lib_dir() -> Result<PathBuf, Box<dyn Error>> {
     }
 }
 
-fn user_lib_globs() -> Result<Vec<GlobMatcher>, Box<dyn Error>> {
-    let mut globs = Vec::with_capacity(USER_LIBS.len());
-    for (pattern, _) in USER_LIBS {
-        globs.push(Glob::new(pattern)?.compile_matcher());
-    }
-    Ok(globs)
-}
-
+// rig's files in the library directory are the bundled libraries, with a hash
+// in their names, and the links pointing to them.
 fn prune_user_libs(libdir: &Path) -> Result<(), Box<dyn Error>> {
     if !libdir.exists() {
         return Ok(());
     }
-    let globs = user_lib_globs()?;
     for entry in std::fs::read_dir(libdir)? {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().to_string();
-        let ours = USER_LIBS.iter().any(|(_, soname)| *soname == name)
-            || globs.iter().any(|glob| glob.is_match(&name));
+        let ours = if entry.file_type()?.is_symlink() {
+            std::fs::read_link(entry.path())
+                .ok()
+                .and_then(|target| {
+                    target
+                        .file_name()
+                        .map(|t| unhashed_lib_name(&t.to_string_lossy()).is_some())
+                })
+                .unwrap_or(false)
+        } else {
+            unhashed_lib_name(&name).is_some()
+        };
         if !ours {
             debug!("Keeping {} in {}", name, libdir.display());
             continue;
@@ -947,39 +1000,47 @@ fn copy_user_libs(libs: &Path, libdir: &Path) -> Result<(), Box<dyn Error>> {
         .collect();
     names.sort();
 
-    for (pattern, soname) in USER_LIBS {
+    let copy = |name: &str| -> Result<(), Box<dyn Error>> {
+        let from = libs.join(name);
+        let to = libdir.join(name);
+        debug!("Copying {} -> {}", from.display(), to.display());
+        std::fs::copy(&from, &to)?;
+        Ok(())
+    };
+
+    for pattern in USER_LIBS {
         let glob = Glob::new(pattern)?.compile_matcher();
         let found = match names.iter().find(|name| glob.is_match(name.as_str())) {
             Some(name) => name,
             None => {
                 OUTPUT.warn(&format!(
-                    "No {} in {}, {} will not be available",
+                    "No {} in {}, it will not be available to packages",
                     pattern,
                     libs.display(),
-                    soname
                 ));
-                warn!(
-                    "No {} in {}, not copying {}",
-                    pattern,
-                    libs.display(),
-                    soname
-                );
+                warn!("No {} in {}, not copying it", pattern, libs.display());
                 continue;
             }
         };
 
-        let from = libs.join(found);
-        let to = libdir.join(found);
-        debug!("Copying {} -> {}", from.display(), to.display());
-        std::fs::copy(&from, &to)?;
-
-        let link = libdir.join(soname);
-        if link.symlink_metadata().is_ok() {
-            std::fs::remove_file(&link)?;
+        copy(found)?;
+        if let Some(soname) = unhashed_lib_name(found) {
+            let link = libdir.join(&soname);
+            if link.symlink_metadata().is_ok() {
+                std::fs::remove_file(&link)?;
+            }
+            debug!("Linking {} -> {}", link.display(), found);
+            // A relative target, so the directory can be moved as a whole.
+            symlink(found, &link)?;
         }
-        debug!("Linking {} -> {}", link.display(), found);
-        // A relative target, so the directory can be moved as a whole.
-        symlink(found, &link)?;
+    }
+
+    for pattern in USER_LIB_DEPS {
+        let glob = Glob::new(pattern)?.compile_matcher();
+        match names.iter().find(|name| glob.is_match(name.as_str())) {
+            Some(name) => copy(name)?,
+            None => debug!("No {} in {}, not copying it", pattern, libs.display()),
+        }
     }
     Ok(())
 }
@@ -2725,9 +2786,42 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
     fn check_libc_supported_rejects_old_glibc() {
         let glibc = Libc {
             kind: LibcType::Glibc,
-            version: "2.31".to_string(),
+            version: "2.27".to_string(),
         };
         assert!(check_libc_supported(&glibc).is_err());
+        for v in ["2.28", "2.31"] {
+            let glibc = Libc {
+                kind: LibcType::Glibc,
+                version: v.to_string(),
+            };
+            assert!(check_libc_supported(&glibc).is_ok());
+        }
+    }
+
+    #[test]
+    fn portable_platform_for_picks_build() {
+        let glibc = |v: &str| Libc {
+            kind: LibcType::Glibc,
+            version: v.to_string(),
+        };
+        assert!(portable_platform_for(&glibc("2.27")).is_err());
+        for v in ["2.28", "2.31", "2.33"] {
+            assert_eq!(
+                portable_platform_for(&glibc(v)).unwrap(),
+                "linux-manylinux-2.28"
+            );
+        }
+        for v in ["2.34", "2.39", "3.0"] {
+            assert_eq!(
+                portable_platform_for(&glibc(v)).unwrap(),
+                "linux-manylinux-2.34"
+            );
+        }
+        let musl = Libc {
+            kind: LibcType::Musl,
+            version: "1.2.4".to_string(),
+        };
+        assert_eq!(portable_platform_for(&musl).unwrap(), "linux-musllinux-1.2");
     }
 
     #[test]
@@ -2941,6 +3035,89 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
         "libR.so",
     ];
 
+    const USER_SONAMES: &[&str] = &[
+        "libX11.so.6",
+        "libXext.so.6",
+        "libXrender.so.1",
+        "libICE.so.6",
+        "libSM.so.6",
+        "libgobject-2.0.so.0",
+        "libglib-2.0.so.0",
+        "libXau.so.6",
+        "libxcb.so.1",
+        "libuuid.so.1",
+        "libpcre.so.1",
+        "libffi.so.8",
+    ];
+
+    #[test]
+    fn unhashed_lib_name_drops_the_hash() {
+        assert_eq!(
+            unhashed_lib_name("libglib-2-0c0a03eb.0.so.0").unwrap(),
+            "libglib-2.0.so.0"
+        );
+        assert_eq!(
+            unhashed_lib_name("libX11-ffd00a49.so.6").unwrap(),
+            "libX11.so.6"
+        );
+        assert_eq!(
+            unhashed_lib_name("libtcl8-4f242853.6.so").unwrap(),
+            "libtcl8.6.so"
+        );
+        assert!(unhashed_lib_name("libX11.so.6").is_none());
+        assert!(unhashed_lib_name("libR.so").is_none());
+        assert!(unhashed_lib_name("libfoo-deadbeef.txt").is_none());
+    }
+
+    #[test]
+    fn copy_user_libs_copies_the_bundled_dependencies() {
+        // As on manylinux_2_28, where glib and gobject need gnutls, which
+        // needs more, and libffi is libffi.so.6.
+        let deps = [
+            "libgnutls-0dfbd7c2.so.30",
+            "libp11-kit-7399a377.so.0",
+            "libidn2-182231e4.so.0",
+            "libunistring-b06ee2c2.so.2",
+            "libtasn1-08ea8261.so.6",
+            "libnettle-f5e0b331.so.6",
+            "libhogweed-f5fcda90.so.4",
+            "libgmp-cd120a4c.so.10",
+        ];
+        let mut bundled = vec![
+            "libglib-2-0c0a03eb.0.so.0",
+            "libgobject-2-84143ced.0.so.0",
+            "libffi-84473cb8.so.6",
+            "libcurl-47016d6f.so.4",
+            "libR.so",
+        ];
+        bundled.extend(deps);
+        let dir = tempfile::tempdir().unwrap();
+        let libs = write_bundled_libs(dir.path(), &bundled);
+
+        let libdir = tempfile::tempdir().unwrap();
+        let libdir = libdir.path();
+        copy_user_libs(&libs, libdir).unwrap();
+
+        for name in deps {
+            assert!(libdir.join(name).is_file(), "{} was not copied", name);
+        }
+        assert_eq!(
+            std::fs::read_link(libdir.join("libffi.so.6")).unwrap(),
+            PathBuf::from("libffi-84473cb8.so.6")
+        );
+        // Packages do not link to the dependencies, so no links for them.
+        assert!(libdir.join("libgnutls.so.30").symlink_metadata().is_err());
+        assert!(!libdir.join("libcurl-47016d6f.so.4").exists());
+        assert!(!libdir.join("libR.so").exists());
+
+        // A later install prunes the dependencies, too.
+        let dir2 = tempfile::tempdir().unwrap();
+        let libs2 = write_bundled_libs(dir2.path(), &["libX11-6f69f3d8.so.6"]);
+        copy_user_libs(&libs2, libdir).unwrap();
+        assert!(!libdir.join("libgnutls-0dfbd7c2.so.30").exists());
+        assert!(libdir.join("libffi.so.6").symlink_metadata().is_err());
+    }
+
     #[test]
     fn copy_user_libs_copies_and_links_the_bundled_libraries() {
         let dir = tempfile::tempdir().unwrap();
@@ -2950,7 +3127,7 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
 
         copy_user_libs(&libs, libdir).unwrap();
 
-        for (_, soname) in USER_LIBS {
+        for soname in USER_SONAMES {
             let link = libdir.join(soname);
             let target = std::fs::read_link(&link).unwrap();
             // A relative link, and it must resolve, or nothing can load it.

@@ -979,6 +979,22 @@ fn rversions_platform(platform: &str) -> Option<(String, &'static str)> {
     Some((api, arch))
 }
 
+/// A manylinux platform in any common spelling, as the R versions API platform,
+/// e.g. `linux-manylinux-2.28`, and the arch, if one was given. Accepts
+/// `manylinux-2.28`, `manylinux-2_28` and `manylinux_2_28`, each with an
+/// optional `linux-` prefix and an optional arch suffix, e.g. `-x86_64` or
+/// `-arm64`. `None` for anything else.
+fn manylinux_platform(platform: &str) -> Option<(String, Option<&'static str>)> {
+    let rest = platform.strip_prefix("linux-").unwrap_or(platform);
+    let (rest, arch) = match rest.rsplit_once('-') {
+        Some((head, last)) if normalize_arch(last).is_some() => (head, normalize_arch(last)),
+        _ => (rest, None),
+    };
+    let re = Regex::new(r"^manylinux[-_]([0-9]+)[._]([0-9]+)$").ok()?;
+    let caps = re.captures(rest)?;
+    Some((format!("linux-manylinux-{}.{}", &caps[1], &caps[2]), arch))
+}
+
 /// The platform the user gave, with `--platform` or `RIG_PLATFORM`, if any.
 fn requested_platform(args: &ArgMatches) -> Option<String> {
     if args.try_contains_id("platform").is_ok() {
@@ -1007,15 +1023,19 @@ pub fn get_platform(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
     if args.try_contains_id("platform").is_ok() {
         let platform = args.get_one::<String>("platform");
         if let Some(x) = platform {
-            let x = rversions_platform(x).map_or_else(|| x.to_string(), |(api, _)| api);
+            let x = match manylinux_platform(x) {
+                Some((api, _)) => api,
+                None => rversions_platform(x).map_or_else(|| x.to_string(), |(api, _)| api),
+            };
             return finalize_platform(x);
         }
     };
 
     if let Ok(rp) = env::var("RIG_PLATFORM") {
-        let rp = match rversions_platform(&rp) {
-            Some((api, _)) => api,
-            None => normalize_rig_platform(&rp),
+        let rp = match (manylinux_platform(&rp), rversions_platform(&rp)) {
+            (Some((api, _)), _) => api,
+            (None, Some((api, _))) => api,
+            (None, None) => normalize_rig_platform(&rp),
         };
         debug!("Using RIG_PLATFORM: {}.", rp);
         return finalize_platform(rp);
@@ -1067,10 +1087,13 @@ pub fn get_arch(platform: &str, args: &ArgMatches) -> String {
     // default.
     let explicit_arch = arch.is_some()
         && args.value_source("arch") != Some(clap::parser::ValueSource::DefaultValue);
-    let platform_arch = requested_platform(args).and_then(|p| rversions_platform(&p));
+    let platform_arch = requested_platform(args).and_then(|p| match manylinux_platform(&p) {
+        Some((_, a)) => a,
+        None => rversions_platform(&p).map(|(_, a)| a),
+    });
     let arch = match (arch, platform_arch) {
         (Some(x), _) if explicit_arch => x.to_string(),
-        (_, Some((_, a))) => a.to_string(),
+        (_, Some(a)) => a.to_string(),
         (Some(x), None) => x.to_string(),
         (None, None) => env::consts::ARCH.to_string(),
     };
@@ -1350,6 +1373,43 @@ fn sc_available_rtools_versions(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn manylinux_platform_spellings() {
+        for (input, api, arch) in [
+            ("linux-manylinux-2_28", "linux-manylinux-2.28", None),
+            ("linux-manylinux-2.28", "linux-manylinux-2.28", None),
+            ("manylinux-2.34", "linux-manylinux-2.34", None),
+            ("manylinux_2_28", "linux-manylinux-2.28", None),
+            ("linux-manylinux_2_34", "linux-manylinux-2.34", None),
+            (
+                "manylinux_2_28-arm64",
+                "linux-manylinux-2.28",
+                Some("aarch64"),
+            ),
+            (
+                "linux-manylinux-2.34-x86_64",
+                "linux-manylinux-2.34",
+                Some("x86_64"),
+            ),
+        ] {
+            assert_eq!(
+                manylinux_platform(input),
+                Some((api.to_string(), arch)),
+                "{}",
+                input
+            );
+        }
+        for input in [
+            "linux-ubuntu-22.04",
+            "manylinux",
+            "manylinux_2_28_x",
+            "linux-musllinux-1.2",
+            "x86_64-unknown-linux-gnu",
+        ] {
+            assert_eq!(manylinux_platform(input), None, "{}", input);
+        }
+    }
 
     // Apply `f` to the parsed `contents`, and return the new contents, or
     // `None` if `f` did not change anything.

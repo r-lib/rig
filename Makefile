@@ -183,6 +183,30 @@ linux-test-all: $(TEST_IMAGES)
 		exit 1; \
 	fi
 
+# User-mode tests: same containers, but rig runs as a regular user, in user
+# mode, from ~/.local. No Red Hat subscription is needed for these.
+define GEN_USER_TESTS
+linux-user-test-$(variant):
+	mkdir -p tests/results
+	rm -f tests/results/user-`echo $(variant) | tr / -`.fail \
+	      tests/results/user-`echo $(variant) | tr / -`.success
+	docker run -t --rm $(DOCKER_ARCH) $(DOCKER_DNS) \
+		-v $(PWD):/work `echo $(variant) | tr - :` \
+		bash -c /work/tests/test-linux-user-docker.sh && \
+	touch tests/results/user-`echo $(variant) | tr / -`.success || \
+	touch tests/results/user-`echo $(variant) | tr / -`.fail
+.PHONY: linux-user-test-$(variant)
+USER_TEST_IMAGES += linux-user-test-$(variant)
+endef
+$(foreach variant, $(VARIANTS), $(eval $(GEN_USER_TESTS)))
+
+linux-user-test-all: $(USER_TEST_IMAGES)
+	if ls tests/results | grep -q '^user-.*fail'; then \
+		echo Some tests failed; \
+		ls tests/results; \
+		exit 1; \
+	fi
+
 # -------------------------------------------------------------------------
 
 macos: release
@@ -405,7 +429,7 @@ coverage-ci:
 
 .PHONY: release clean all macos macos-tarball win win-zip linux Rig.app \
 	shell-linux linux-in-docker linux-amd64-in-docker linux-arm64-in-docker \
-	linux-test-all coverage coverage-ci
+	linux-test-all linux-user-test-all coverage coverage-ci
 
 clean:
 	cargo clean

@@ -101,6 +101,7 @@ jobs:
     name: Linux test setup x86_64
     outputs:
       containers: ${{ steps.matrix-setup-x86_64.outputs.containers }}
+      all-containers: ${{ steps.matrix-setup-x86_64.outputs.all-containers }}
 
     steps:
     - name: Checkout
@@ -110,6 +111,8 @@ jobs:
       id: matrix-setup-x86_64
       run: |
         containers=$(make print-linux-variants-json)
+        # User mode needs no Red Hat subscription, so it can use every container.
+        echo "all-containers=$containers" >> $GITHUB_OUTPUT
         if [ -z "$REDHAT_ORG" ] && [ "$FORK_PR" = "true" ]; then
           echo "REDHAT_ORG is not available in a pull request from a fork, leaving out the redhat/* containers"
           containers=$(echo "$containers" | jq -c 'map(select(startswith("redhat/") | not))')
@@ -158,6 +161,39 @@ jobs:
         REDHAT_ACTIVATION_KEY_RHEL9: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL9 }}
         REDHAT_ACTIVATION_KEY_RHEL10: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL10 }}
 
+  linux-user-tests-x86_64:
+    needs: linux-tests-x86_64-setup
+    strategy:
+      fail-fast: false
+      matrix:
+        container: ${{ fromJson(needs.linux-tests-x86_64-setup.outputs.all-containers) }}
+    runs-on: ubuntu-latest
+    name: ${{ matrix.container }} (user mode, x86_64)
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Download build from artifacts
+      uses: actions/download-artifact@v8
+      with:
+        name: rig-linux-x86_64
+        path: .
+
+    - name: Uncompress rig build
+      run: |
+        mkdir build
+        tar xzf rig-linux-*.tar.gz -C build
+        find build
+
+    - name: Test
+      run: |
+        make linux-user-test-${{ matrix.container }}
+        if ls tests/results | grep -q fail; then
+            echo Some tests failed;
+            exit 1;
+        fi
+
   linux-build-aarch64:
     if: ${{ github.event.inputs.inplinuxaarch64 == '' || github.event.inputs.inplinuxaarch64 == 'yes' }}
     runs-on: ubuntu-24.04-arm
@@ -196,6 +232,7 @@ jobs:
     name: Linux test setup aarch64
     outputs:
       containers: ${{ steps.matrix-setup-aarch64.outputs.containers }}
+      all-containers: ${{ steps.matrix-setup-aarch64.outputs.all-containers }}
 
     steps:
     - name: Checkout
@@ -205,6 +242,8 @@ jobs:
       id: matrix-setup-aarch64
       run: |
         containers=$(make print-linux-variants-json)
+        # User mode needs no Red Hat subscription, so it can use every container.
+        echo "all-containers=$containers" >> $GITHUB_OUTPUT
         if [ -z "$REDHAT_ORG" ] && [ "$FORK_PR" = "true" ]; then
           echo "REDHAT_ORG is not available in a pull request from a fork, leaving out the redhat/* containers"
           containers=$(echo "$containers" | jq -c 'map(select(startswith("redhat/") | not))')
@@ -253,6 +292,41 @@ jobs:
         REDHAT_ACTIVATION_KEY_RHEL8: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL8 }}
         REDHAT_ACTIVATION_KEY_RHEL9: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL9 }}
         REDHAT_ACTIVATION_KEY_RHEL10: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL10 }}
+
+  linux-user-tests-aarch64:
+    needs: linux-tests-aarch64-setup
+    strategy:
+      fail-fast: false
+      matrix:
+        container: ${{ fromJson(needs.linux-tests-aarch64-setup.outputs.all-containers) }}
+    runs-on: ubuntu-24.04-arm
+    name: ${{ matrix.container }} (user mode, aarch64)
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Download build from artifacts
+      uses: actions/download-artifact@v8
+      with:
+        name: rig-linux-aarch64
+        path: .
+
+    - name: Uncompress rig build
+      run: |
+        mkdir build
+        tar xzf rig-linux-*.tar.gz -C build
+        find build
+
+    - name: Test
+      run: |
+        make linux-user-test-${{ matrix.container }}
+        if ls tests/results | grep -q fail; then
+            echo Some tests failed;
+            exit 1;
+        fi
+      env:
+        DOCKER_DEFAULT_PLATFORM: "linux/arm64"
 
   macos:
     if: ${{ github.event.inputs.inpmacos == '' || github.event.inputs.inpmacos == 'yes' }}
