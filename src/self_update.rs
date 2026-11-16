@@ -40,19 +40,24 @@ fn detect_plat_arch() -> Result<(String, String), Box<dyn Error>> {
         bail!("unsupported operating system");
     };
 
-    let arch = match std::env::consts::ARCH {
-        "aarch64" | "arm64" => {
-            if plat == "macos" {
-                "arm64"
-            } else {
-                "aarch64"
-            }
-        }
-        "x86_64" => "x86_64",
-        other => bail!("unsupported architecture: {}", other),
-    };
+    let arch = arch_token(plat, std::env::consts::ARCH)?;
 
     Ok((plat.to_string(), arch.to_string()))
+}
+
+// Linux assets use `aarch64`, macOS and Windows assets use `arm64`.
+fn arch_token(plat: &str, arch: &str) -> Result<&'static str, Box<dyn Error>> {
+    match arch {
+        "aarch64" | "arm64" => {
+            if plat == "linux" {
+                Ok("aarch64")
+            } else {
+                Ok("arm64")
+            }
+        }
+        "x86_64" => Ok("x86_64"),
+        other => bail!("unsupported architecture: {}", other),
+    }
 }
 
 fn asset_name(plat: &str, arch: &str, vtoken: &str) -> String {
@@ -250,6 +255,15 @@ mod tests {
     }
 
     #[test]
+    fn arch_token_matches_install_scripts() {
+        assert_eq!(arch_token("macos", "aarch64").unwrap(), "arm64");
+        assert_eq!(arch_token("windows", "aarch64").unwrap(), "arm64");
+        assert_eq!(arch_token("linux", "aarch64").unwrap(), "aarch64");
+        assert_eq!(arch_token("windows", "x86_64").unwrap(), "x86_64");
+        assert!(arch_token("linux", "riscv64").is_err());
+    }
+
+    #[test]
     fn asset_name_matches_install_scripts() {
         assert_eq!(
             asset_name("macos", "arm64", "0.10.0"),
@@ -262,6 +276,14 @@ mod tests {
         assert_eq!(
             asset_name("windows", "x86_64", "0.10.0"),
             "rig-windows-x86_64-0.10.0.zip"
+        );
+        assert_eq!(
+            asset_name("windows", "arm64", "latest"),
+            "rig-windows-arm64-latest.zip"
+        );
+        assert_eq!(
+            asset_name("linux", "aarch64", "0.10.0"),
+            "rig-linux-aarch64-0.10.0.tar.gz"
         );
     }
 
