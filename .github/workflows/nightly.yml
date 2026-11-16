@@ -204,9 +204,14 @@ jobs:
         path: dist
         merge-multiple: true
 
-    - name: Checksums
+    # `rig self update --nightly` reads VERSION to decide whether there is a
+    # new build, without downloading the archive.
+    - name: Version file and checksums
       working-directory: dist
+      env:
+        VERSION: ${{ needs.setup.outputs.version }}
       run: |
+        echo "$VERSION" > VERSION
         sha256sum rig-*-nightly.* > SHA256SUMS
         cat SHA256SUMS
 

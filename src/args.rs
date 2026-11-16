@@ -813,6 +813,14 @@ pub fn rig_app() -> Command {
                 .long("pre-release")
                 .num_args(0)
                 .required(false),
+        )
+        .arg(
+            Arg::new("nightly")
+                .help("Update to the latest nightly development build")
+                .long("nightly")
+                .num_args(0)
+                .required(false)
+                .conflicts_with("pre-release"),
         );
 
     let cmd_self_uninstall = Command::new("uninstall")
