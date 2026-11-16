@@ -1,0 +1,280 @@
+name: Nightly build
+
+# Builds rig from the default branch every night and publishes the result to
+# the rolling `nightly` GitHub prerelease. Each run replaces the assets and
+# moves the `nightly` tag to the built commit, so the download URLs stay the
+# same:
+#
+#   https://github.com/r-lib/rig/releases/download/nightly/<asset>
+#
+# Assets use the same names as the `latest` release, with `nightly` as the
+# version token, e.g. `rig-linux-x86_64-nightly.tar.gz`,
+# `rig-macos-arm64-nightly.tar.gz`, `rig-windows-x86_64-nightly.zip`.
+#
+# Builds are not signed or notarized. Tests are not run here; test.yaml runs
+# on every push to main and on its own schedule.
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Build even if main has not changed since the last nightly.
+        type: boolean
+        default: true
+  schedule:
+    - cron: '0 8 * * *'
+
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+env:
+  RUST_BACKTRACE: 1
+
+jobs:
+
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+      sha: ${{ steps.check.outputs.sha }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Check for new commits and compute version
+      id: check
+      env:
+        FORCE: ${{ github.event.inputs.force }}
+      run: |
+        sha="$(git rev-parse HEAD)"
+        short="$(git rev-parse --short=7 HEAD)"
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+        prev="$(git ls-remote origin refs/tags/nightly | cut -f1)"
+        if [ "$FORCE" = "true" ] || [ "$prev" != "$sha" ]; then
+          echo "build=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "build=false" >> "$GITHUB_OUTPUT"
+          echo "No new commits since the last nightly ($sha), skipping."
+        fi
+
+        # 0.11.2-dev -> 0.11.2-dev.20261115.g1a2b3c4
+        # 0.11.1     -> 0.11.1-nightly.20261115.g1a2b3c4
+        base="$(grep -m1 '^version' Cargo.toml | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/')"
+        stamp="$(date -u +%Y%m%d).g${short}"
+        case "$base" in
+          *-*) version="${base}.${stamp}" ;;
+          *)   version="${base}-nightly.${stamp}" ;;
+        esac
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "Nightly version: $version"
+
+  linux:
+    needs: setup
+    if: needs.setup.outputs.build == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - { runner: ubuntu-latest,    arch: x86_64 }
+          - { runner: ubuntu-24.04-arm, arch: aarch64 }
+    runs-on: ${{ matrix.config.runner }}
+    name: Linux ${{ matrix.config.arch }}
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        ref: ${{ needs.setup.outputs.sha }}
+
+    - name: Stamp version
+      run: perl -0pi -e 's/^version = "[^"]*"/version = "${{ needs.setup.outputs.version }}"/m' Cargo.toml
+
+    - name: Build rig
+      run: make linux-in-docker
+
+    - name: Rename asset
+      run: |
+        mkdir -p dist
+        cp "rig-linux-${{ matrix.config.arch }}-${{ needs.setup.outputs.version }}.tar.gz" \
+          "dist/rig-linux-${{ matrix.config.arch }}-nightly.tar.gz"
+
+    - uses: actions/upload-artifact@v7
+      with:
+        name: nightly-linux-${{ matrix.config.arch }}
+        path: dist/*
+
+  macos:
+    needs: setup
+    if: needs.setup.outputs.build == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - { runner: macos-latest,    arch: arm64 }
+          - { runner: macos-15-intel,  arch: x86_64 }
+    runs-on: ${{ matrix.config.runner }}
+    name: macOS ${{ matrix.config.arch }}
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        ref: ${{ needs.setup.outputs.sha }}
+
+    - name: Install rust
+      run: |
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rust.sh
+        sh rust.sh -y
+
+    - name: Stamp version
+      run: perl -0pi -e 's/^version = "[^"]*"/version = "${{ needs.setup.outputs.version }}"/m' Cargo.toml
+
+    - name: Build rig
+      run: make macos-tarball
+
+    - name: Rename asset
+      run: |
+        mkdir -p dist
+        cp "rig-${{ needs.setup.outputs.version }}-macos.tar.gz" \
+          "dist/rig-macos-${{ matrix.config.arch }}-nightly.tar.gz"
+
+    - uses: actions/upload-artifact@v7
+      with:
+        name: nightly-macos-${{ matrix.config.arch }}
+        path: dist/*
+
+  windows:
+    needs: setup
+    if: needs.setup.outputs.build == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          # `arch` is what the Makefile uses, `asset` is the token in the
+          # published file name (install.ps1 uses `arm64` on Windows).
+          - { runner: windows-2022,    arch: x86_64,  asset: x86_64 }
+          - { runner: windows-11-arm,  arch: aarch64, asset: arm64 }
+    runs-on: ${{ matrix.config.runner }}
+    name: Windows ${{ matrix.config.arch }}
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        ref: ${{ needs.setup.outputs.sha }}
+
+    - name: Install rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install make
+      run: choco install make
+
+    - name: Install curl
+      run: choco install curl
+
+    - name: Stamp version
+      run: perl -0pi -e 's/^version = "[^"]*"/version = "${{ needs.setup.outputs.version }}"/m' Cargo.toml
+      shell: bash
+
+    - name: Build rig
+      run: make win-zip ARCH=${{ matrix.config.arch }}
+      shell: bash
+
+    - name: Rename asset
+      run: |
+        mkdir -p dist
+        cp "rig-windows-${{ matrix.config.arch }}-${{ needs.setup.outputs.version }}.zip" \
+          "dist/rig-windows-${{ matrix.config.asset }}-nightly.zip"
+      shell: bash
+
+    - uses: actions/upload-artifact@v7
+      with:
+        name: nightly-windows-${{ matrix.config.arch }}
+        path: dist/*
+
+  publish:
+    needs: [setup, linux, macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+
+    - uses: actions/download-artifact@v8
+      with:
+        pattern: nightly-*
+        path: dist
+        merge-multiple: true
+
+    - name: Checksums
+      working-directory: dist
+      run: |
+        sha256sum rig-*-nightly.* > SHA256SUMS
+        cat SHA256SUMS
+
+    - name: Update nightly release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SHA: ${{ needs.setup.outputs.sha }}
+        VERSION: ${{ needs.setup.outputs.version }}
+      run: |
+        last="$(git describe --tags --abbrev=0 --match 'v*' "$SHA" 2>/dev/null || true)"
+        {
+          echo "Automated build of \`main\` at ${SHA}."
+          echo
+          echo "Version: \`${VERSION}\`. Built: $(date -u +'%Y-%m-%d %H:%M UTC')."
+          echo
+          echo "These builds are not signed or notarized and are not meant for production use."
+          if [ -n "$last" ]; then
+            echo
+            echo "Changes since ${last}: https://github.com/${GITHUB_REPOSITORY}/compare/${last}...${SHA}"
+          fi
+        } > notes.md
+
+        # Swap in the new build with as little downtime as possible.
+        # Download URLs (`releases/download/<tag>/<file>`) resolve through the
+        # release that owns the tag, and a tag can belong to only one release.
+        # So we publish the complete new build as `nightly-staging`, then
+        # delete the old `nightly` release and move the new release over to
+        # the `nightly` tag. Between those two API calls `nightly` returns
+        # 404, but `nightly-staging` works, and the install scripts fall back
+        # to it. If anything fails before the delete, the old release stays.
+        api="repos/${GITHUB_REPOSITORY}/releases"
+        staging="nightly-staging"
+
+        # 1. Clean up after an earlier run that failed half-way. If `nightly`
+        #    exists, a leftover `nightly-staging` is not needed and can go.
+        #    If `nightly` does not exist, the earlier run failed between
+        #    steps 4 and 5 below, and `nightly-staging` is the only build:
+        #    finish that swap instead of deleting it. (The `nightly` git tag
+        #    already points at its commit, step 3 ran before the failure.)
+        stale_id="$(gh api "$api/tags/$staging" --jq .id 2>/dev/null || true)"
+        if [ -n "$stale_id" ]; then
+          if gh api "$api/tags/nightly" > /dev/null 2>&1; then
+            gh api -X DELETE "$api/$stale_id"
+          else
+            gh api -X PATCH "$api/$stale_id" -f tag_name=nightly > /dev/null
+          fi
+        fi
+        git push origin ":refs/tags/$staging" 2>/dev/null || true
+
+        # 2. Publish the new build as `nightly-staging`. With files given,
+        #    `gh release create` uploads to a draft first and publishes it
+        #    only after every upload succeeded.
+        gh release create "$staging" --prerelease --latest=false \
+          --target "$SHA" --title "Nightly build" --notes-file notes.md dist/*
+        new_id="$(gh api "$api/tags/$staging" --jq .id)"
+
+        # 3. Point the `nightly` git tag at the built commit. This does not
+        #    change which files `nightly` serves, they belong to the release.
+        git tag -f nightly "$SHA"
+        git push -f origin refs/tags/nightly
+
+        # 4. Delete the old release (this keeps the tag), and
+        # 5. move the new release over to the `nightly` tag.
+        old_id="$(gh api "$api/tags/nightly" --jq .id 2>/dev/null || true)"
+        if [ -n "$old_id" ]; then
+          gh api -X DELETE "$api/$old_id"
+        fi
+        gh api -X PATCH "$api/$new_id" -f tag_name=nightly > /dev/null
+
+        # 6. The `nightly-staging` git tag is no longer used by any release.
+        git push origin ":refs/tags/$staging"
