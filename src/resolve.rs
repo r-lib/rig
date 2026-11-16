@@ -90,7 +90,7 @@ pub fn validate_version_arg(str: &str) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
     let msg = format!(
-        "Unknown value \"{}\". Accepted values: version numbers, \"devel\", \"next\", \"release\", \"oldrel/n\", a URL, or a path to an renv.lock file.",
+        "Unknown value \"{}\". Accepted values: version numbers, \"devel\", \"next\", \"release\", \"oldrel/n\" (or \"oldrel-n\"), a URL, or a path to an renv.lock file.",
         str
     );
     OUTPUT.error(&msg);
