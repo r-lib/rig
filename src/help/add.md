@@ -43,7 +43,8 @@ The desired R version can be specified in various ways:
 - `rig add x.y.z` adds a specific version.
 - `rig add x.y` adds the latest release within the `x.y` minor branch.
 - `rig add oldrel/n` adds the latest release within the `n`th previous minor
-  branch (`oldrel` is the same as `oldrel/1`).
+  branch (`oldrel` is the same as `oldrel/1`, and `oldrel-n` is the same as
+  `oldrel/n`).
 - `rig add <url>` uses a build from `<url>`.
 - `rig add renv.lock` (or a path to one, e.g. `rig add path/to/renv.lock`) adds
   the R version recorded in an [renv](https://rstudio.github.io/renv/) lock file.

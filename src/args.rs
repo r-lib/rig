@@ -46,6 +46,18 @@ fn pak_version_values() -> clap::builder::PossibleValuesParser {
     ])
 }
 
+// The R version argument of `rig add` and `rig resolve`. Accepts `oldrel-n`
+// as a synonym of `oldrel/n`, and normalizes it to `oldrel/n`, so the rest of
+// the code only needs to handle one form.
+fn normalize_rversion_arg(s: &str) -> Result<String, std::convert::Infallible> {
+    if let Some(n) = s.strip_prefix("oldrel-") {
+        if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) {
+            return Ok(format!("oldrel/{}", n));
+        }
+    }
+    Ok(s.to_string())
+}
+
 // `--exclude-newer` of the commands that solve dependencies. A plain string:
 // this file is also compiled into the build script, so it cannot use
 // `crate::exclude_newer` to parse it. `exclude_newer::exclude_newer_arg()` does.
@@ -501,6 +513,7 @@ pub fn rig_app() -> Command {
         .arg(
             Arg::new("str")
                 .help("R version to install")
+                .value_parser(normalize_rversion_arg)
                 .default_value("release"),
         )
         .arg(
@@ -1281,6 +1294,7 @@ pub fn rig_app() -> Command {
         .arg(
             Arg::new("str")
                 .help("symbolic version string to resolve")
+                .value_parser(normalize_rversion_arg)
                 .required(true),
         )
         .arg(
