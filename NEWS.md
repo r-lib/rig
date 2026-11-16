@@ -1,5 +1,7 @@
 # rig 0.11.2-dev (development version)
 
+* `rig self update` now works on Windows on ARM.
+
 * rig now supports manylinux_2_28 R builds, which requires glibc 2.28,
   so now it works on RHEL 8, Rocky Linux 8, Ubuntu 20.04, etc. (#402, #517).
 
