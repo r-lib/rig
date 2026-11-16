@@ -1,5 +1,8 @@
 # rig 0.11.2-dev (development version)
 
+* rig now has nightly builds, published as the `nightly` GitHub release.
+  Install them with `rig self update --nightly`.
+
 * `rig self update` now works on Windows on ARM.
 
 * rig now supports manylinux_2_28 R builds, which requires glibc 2.28,
