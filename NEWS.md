@@ -3,6 +3,11 @@
 * rig now has nightly builds, published as the `nightly` GitHub release.
   Install them with `rig self update --nightly`.
 
+* rig's code in the system `Rprofile` now only creates the user library
+  if `R_LIBS_USER` is an absolute path. Previously it created a directory
+  called `'NULL'` on Windows in R CMD check, where `R_LIBS_USER` is set to
+  `'NULL'`, with the quotes.
+
 * `rig self update` now works on Windows on ARM.
 
 * rig now supports manylinux_2_28 R builds, which requires glibc 2.28,

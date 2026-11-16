@@ -394,12 +394,18 @@ pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
         {
             escalate("updating user library configuration")?;
         }
+        // We only touch the user library if it is an absolute path. Other
+        // tools set R_LIBS_USER to values that are not real libraries, and
+        // we must not create directories for them. E.g. R CMD check uses
+        // R_LIBS_USER='NULL', and on Windows the child R process sees the
+        // quotes as well, so without this check we would create a directory
+        // called 'NULL' in the working directory.
         let newlines = r#"
 ## rig R_LIBS_USER start
 invisible(local({
   userlibs <- strsplit(Sys.getenv("R_LIBS_USER"), .Platform$path.sep)[[1]]
   if (length(userlibs) == 0) return()
-  if (userlibs[[1]] == "NULL") return()
+  if (!grepl("^(/|\\\\|~|[A-Za-z]:[/\\\\])", userlibs[[1]])) return()
   userlib1 <- userlibs[1]
   dir.create(userlib1, recursive = TRUE, showWarnings = FALSE)
   deffile <- file.path(userlib1, "___default", fsep = "/")
