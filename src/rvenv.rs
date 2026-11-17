@@ -267,6 +267,17 @@ VSCODE_R_SESS_PKG_PATH=\"\"
     )
 }
 
+/// The comment line in rig's `.gitignore` block that says that
+/// `rproj.lock` is committed. Every block
+/// has this line or [`GITIGNORE_LOCK_IGNORED`]. rig reads it back when
+/// it rewrites the block, so the choice survives, see
+/// [`update_root_gitignore`].
+const GITIGNORE_LOCK_COMMITTED: &str = "# rig: commit rproj.lock: yes";
+
+/// The comment line in rig's `.gitignore` block that says that
+/// `rproj.lock` is ignored, as `rig proj import` sets it up for R packages. See [`GITIGNORE_LOCK_COMMITTED`].
+const GITIGNORE_LOCK_IGNORED: &str = "# rig: commit rproj.lock: no (R package)";
+
 /// The block rig manages in the project's root `.gitignore`. Everything in
 /// `.rvenv` is machine-specific; the pre-built rvenv package a fresh clone
 /// needs before the first `rig proj sync` lives in `.rvenvlib` instead, which
@@ -275,19 +286,35 @@ VSCODE_R_SESS_PKG_PATH=\"\"
 ///
 /// `.Renviron.rig` is the project's untracked environment file, for secrets
 /// and other per-machine settings, which `.rvenv/onload.R` reads at startup.
-fn root_gitignore_block() -> String {
+///
+/// With `ignore_lock` the block also ignores `rproj.lock`, the default for
+/// R packages. A package is checked against many versions of its
+/// dependencies, so it should not commit a lock file. A fresh clone runs
+/// `rig proj sync`, which locks first if there is no `rproj.lock`.
+fn root_gitignore_block(ignore_lock: bool) -> String {
+    let (mode, extra) = if ignore_lock {
+        (
+            GITIGNORE_LOCK_IGNORED,
+            "\
+# Not committed for this R package, run `rig proj sync` after cloning.
+/rproj.lock
+",
+        )
+    } else {
+        (GITIGNORE_LOCK_COMMITTED, "")
+    };
     format!(
         "\
 {}
+{}
 # Everything in .rvenv is machine-specific output of `rig proj sync`; it can
-# be deleted and rebuilt at any time. The committed rvenv shim package lives
-# in .rvenvlib instead.
+# be deleted and rebuilt at any time.
 /.rvenv/
 # Project environment variables that must not be committed, e.g. secrets.
 /.Renviron.rig
-{}
+{}{}
 ",
-        BLOCK_START, BLOCK_END
+        BLOCK_START, mode, extra, BLOCK_END
     )
 }
 
@@ -834,8 +861,51 @@ fn marked_block(path: &Path, text: &str) -> Result<Option<(usize, usize)>, Box<d
 /// their ignore rules. Same fenced-block approach as
 /// `library_update_rprofile` uses for `Rprofile.site`. Running this twice is
 /// a no-op.
-pub fn update_root_gitignore(root: &Path) -> Result<(), Box<dyn Error>> {
-    update_marked_block(&root.join(RVENV_GITIGNORE_FILE), &root_gitignore_block())
+///
+/// `ignore_lock` says whether the block ignores `rproj.lock`,
+/// `.Renviron` and `.rvenvlib`, see [`root_gitignore_block`]. `None` keeps
+/// what the existing block says, see [`gitignore_ignores_lock`], and a
+/// new block commits them.
+pub fn update_root_gitignore(root: &Path, ignore_lock: Option<bool>) -> Result<(), Box<dyn Error>> {
+    let ignore = match ignore_lock {
+        Some(x) => x,
+        None => gitignore_ignores_lock(root)?,
+    };
+    update_marked_block(
+        &root.join(RVENV_GITIGNORE_FILE),
+        &root_gitignore_block(ignore),
+    )
+}
+
+/// Whether rig's block in the root `.gitignore` ignores `rproj.lock`,
+/// `.Renviron` and `.rvenvlib`, i.e. it has the
+/// [`GITIGNORE_LOCK_IGNORED`] comment. False if there is no
+/// `.gitignore`, no block, or a block from an older rig, without a mode
+/// comment.
+pub fn gitignore_ignores_lock(root: &Path) -> Result<bool, Box<dyn Error>> {
+    let path = root.join(RVENV_GITIGNORE_FILE);
+    if !path.exists() {
+        return Ok(false);
+    }
+    let text = fs::read_to_string(&path)?;
+    let Some((start, end)) = marked_block(&path, &text)? else {
+        return Ok(false);
+    };
+    Ok(text
+        .lines()
+        .skip(start)
+        .take(end - start)
+        .any(|l| l.trim() == GITIGNORE_LOCK_IGNORED))
+}
+
+/// Set up rig's block in the root `.gitignore` for an R package: ignore
+/// `rproj.lock`. Used by `rig proj import`.
+/// Returns whether the file changed.
+pub fn set_package_gitignore(root: &Path) -> Result<bool, Box<dyn Error>> {
+    let path = root.join(RVENV_GITIGNORE_FILE);
+    let before = fs::read_to_string(&path).ok();
+    update_root_gitignore(root, Some(true))?;
+    Ok(fs::read_to_string(&path).ok() != before)
 }
 
 /// Create the project's `.Renviron`, or add rig's block to it.
@@ -1030,7 +1100,7 @@ pub fn rvenv_init(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let renviron = root.join(RVENV_RENVIRON_FILE);
     update_project_renviron(root)?;
 
-    update_root_gitignore(root)?;
+    update_root_gitignore(root, None)?;
 
     // The project library itself is not created here: `rig proj sync` makes
     // it, and until then there is nothing to put in it.
@@ -1622,7 +1692,7 @@ mod tests {
 
     #[test]
     fn the_gitignore_block_ignores_all_of_rvenv() {
-        let root = root_gitignore_block();
+        let root = root_gitignore_block(false);
         assert!(root.contains("\n/.rvenv/\n"));
         // The shim package lives outside .rvenv entirely, so there is no
         // exception to carve out.
@@ -1631,7 +1701,79 @@ mod tests {
 
     #[test]
     fn the_gitignore_block_ignores_renviron_rig() {
-        assert!(root_gitignore_block().contains("\n/.Renviron.rig\n"));
+        assert!(root_gitignore_block(false).contains("\n/.Renviron.rig\n"));
+    }
+
+    #[test]
+    fn the_gitignore_block_says_whether_the_lock_file_is_committed() {
+        let commit = root_gitignore_block(false);
+        assert!(commit.contains(&format!("\n{}\n", GITIGNORE_LOCK_COMMITTED)));
+        assert!(!commit.contains(GITIGNORE_LOCK_IGNORED));
+        assert!(!commit.lines().any(|l| l == "/rproj.lock"));
+
+        let ignore = root_gitignore_block(true);
+        assert!(ignore.contains(&format!("\n{}\n", GITIGNORE_LOCK_IGNORED)));
+        assert!(!ignore.contains(GITIGNORE_LOCK_COMMITTED));
+        assert!(ignore.lines().any(|l| l == "/rproj.lock"));
+
+        // `.Renviron` and `.rvenvlib` are committed either way.
+        for block in [&commit, &ignore] {
+            for p in [".Renviron", ".rvenvlib"] {
+                assert!(
+                    !block.lines().any(|l| !l.starts_with('#')
+                        && l.contains(p)
+                        && !l.contains(".Renviron.rig")),
+                    "{} ignored",
+                    p
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn package_gitignore_survives_a_rewrite() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".gitignore");
+        fs::write(&path, "*.log\n").unwrap();
+        assert!(!gitignore_ignores_lock(tmp.path()).unwrap());
+        assert!(set_package_gitignore(tmp.path()).unwrap());
+        assert!(gitignore_ignores_lock(tmp.path()).unwrap());
+        let once = fs::read_to_string(&path).unwrap();
+        assert!(once.starts_with("*.log\n"));
+        assert!(once.contains("\n/rproj.lock\n"));
+        assert_eq!(once.matches(BLOCK_START).count(), 1);
+
+        // Idempotent.
+        assert!(!set_package_gitignore(tmp.path()).unwrap());
+        assert_eq!(fs::read_to_string(&path).unwrap(), once);
+
+        // `rvenv_init()` rewrites the block keeping the mode, e.g. in a
+        // fresh clone, where `.rvenvlib` is missing.
+        rvenv_init(tmp.path()).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), once);
+
+        // Switching back drops the pattern.
+        update_root_gitignore(tmp.path(), Some(false)).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("\n/rproj.lock\n"));
+        assert!(!gitignore_ignores_lock(tmp.path()).unwrap());
+    }
+
+    #[test]
+    fn old_gitignore_block_without_mode_commits_the_lock_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".gitignore");
+        fs::write(
+            &path,
+            format!("{}\n/.rvenv/\n/.Renviron.rig\n{}\n", BLOCK_START, BLOCK_END),
+        )
+        .unwrap();
+        assert!(!gitignore_ignores_lock(tmp.path()).unwrap());
+        update_root_gitignore(tmp.path(), None).unwrap();
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            root_gitignore_block(false)
+        );
     }
 
     #[test]
@@ -1691,9 +1833,9 @@ mod tests {
     #[test]
     fn gitignore_is_created_when_missing() {
         let tmp = tempfile::tempdir().unwrap();
-        update_root_gitignore(tmp.path()).unwrap();
+        update_root_gitignore(tmp.path(), None).unwrap();
         let text = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
-        assert_eq!(text, root_gitignore_block());
+        assert_eq!(text, root_gitignore_block(false));
     }
 
     #[test]
@@ -1701,7 +1843,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join(".gitignore");
         fs::write(&path, "*.Rproj\n.Rhistory\n").unwrap();
-        update_root_gitignore(tmp.path()).unwrap();
+        update_root_gitignore(tmp.path(), None).unwrap();
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.starts_with("*.Rproj\n.Rhistory\n"));
         assert!(text.contains("/.rvenv/"));
@@ -1712,9 +1854,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join(".gitignore");
         fs::write(&path, "*.log\n").unwrap();
-        update_root_gitignore(tmp.path()).unwrap();
+        update_root_gitignore(tmp.path(), None).unwrap();
         let once = fs::read_to_string(&path).unwrap();
-        update_root_gitignore(tmp.path()).unwrap();
+        update_root_gitignore(tmp.path(), None).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), once);
     }
 
@@ -1730,7 +1872,7 @@ mod tests {
             ),
         )
         .unwrap();
-        update_root_gitignore(tmp.path()).unwrap();
+        update_root_gitignore(tmp.path(), None).unwrap();
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.starts_with("before\n"));
         assert!(text.ends_with("after\n"));
@@ -1743,7 +1885,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join(".gitignore");
         fs::write(&path, format!("{}\nno end marker\n", BLOCK_START)).unwrap();
-        assert!(update_root_gitignore(tmp.path()).is_err());
+        assert!(update_root_gitignore(tmp.path(), None).is_err());
     }
 
     #[test]
@@ -1885,7 +2027,7 @@ mod tests {
     #[test]
     fn a_gitignore_is_never_a_conflict() {
         let tmp = tempfile::tempdir().unwrap();
-        update_root_gitignore(tmp.path()).unwrap();
+        update_root_gitignore(tmp.path(), None).unwrap();
         assert!(existing_targets(tmp.path()).unwrap().is_empty());
 
         let path = tmp.path().join(".gitignore");

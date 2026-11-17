@@ -674,11 +674,18 @@ fn sc_proj_import(
     // A full import sets up a whole project, not just its manifest, so it
     // creates the same `.rvenv` layout as `rig proj init`.
     // An imported project is an R package, so rig's own files must not end
-    // up in its tarball.
+    // up in its tarball, and its lock file is not committed either.
     if !dependencies_only {
         init_rvenv_for_manifest(args, &root, path)?;
         if crate::rvenv::update_rbuildignore(&root)? {
             let msg = format!("Updated {}", crate::rvenv::RBUILDIGNORE_FILE);
+            OUTPUT.success(&msg);
+            info!("{}", msg);
+        }
+        // R packages should not commit `rproj.lock`, see
+        // `root_gitignore_block()`.
+        if crate::rvenv::set_package_gitignore(&root)? {
+            let msg = format!("Updated {}", crate::rvenv::RVENV_GITIGNORE_FILE);
             OUTPUT.success(&msg);
             info!("{}", msg);
         }

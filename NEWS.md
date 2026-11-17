@@ -38,6 +38,9 @@
      to leave `DESCRIPTION` unchanged.
    - `rig proj import` now adds `rproj.toml`, `rproj.lock`, `.rvenv`,
      `.rvenvlib`, `.Renviron` and `.Renviron.rig` to `.Rbuildignore`.
+   - `rig proj import` now adds `rproj.lock` to `.gitignore`. A package is
+     checked against many versions of its dependencies, so it should not
+     commit a lock file.
 
 * `rig proj renv import` improvements:
    - create both `rproj.toml` and `rproj.lock`, with the lock file having

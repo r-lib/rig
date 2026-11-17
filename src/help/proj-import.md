@@ -71,6 +71,14 @@ A full import also adds rig's project files (`rproj.toml`, `rproj.lock`,
 they are left out of the package tarball. It creates `.Rbuildignore` if needed,
 and only adds the patterns that are not in it yet.
 
+Unlike [`rig proj init`](#rig-proj-init), a full import also adds
+`rproj.lock` to rig's block in `.gitignore`, so it is not committed. A
+package is checked against many versions of its dependencies, so it should
+not commit a lock file. After cloning the package, run [`rig proj
+sync`](#rig-proj-sync), which creates `rproj.lock` first if there is none.
+[`rig run`](run.qmd) syncs the project itself if needed, so it works in a
+fresh clone right away.
+
 A full import also rewrites `DESCRIPTION` from the new `rproj.toml`, like
 `rig proj export --force` would, so the two files start out in sync. Use
 `--keep-description` to leave `DESCRIPTION` unchanged. `--dependencies` never
