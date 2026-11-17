@@ -161,3 +161,71 @@ if (!is.null(cfg[["r-minor"]]) && !identical(cfg[["r-minor"]], running)) {
   # One warning per project is enough; child processes are quiet.
   if (!activated) warn_unsynced(venv, lib)
 }
+
+# The VS Code R extension (vscode-R) starts its session watcher, the `sess`
+# package, from its own R profile. That runs before R loads the `rvenv`
+# package, so the library path is still only `.rvenvlib`, and `sess` would
+# fail to load its dependencies, e.g. `ps`. The project `.Renviron` turns the
+# watcher off for that first run, by emptying the two variables below, and
+# keeps their values in `RVENV_` copies. Now that the library paths are set
+# up, this puts them back and runs the extension's profile again.
+#
+# The first run must not even try: the extension's terminal waits for the
+# outcome before it sends code to R, and a failed attempt makes it give up,
+# even if this second run succeeds right after.
+#
+# The variables are put back in every process, so that R processes started
+# from this one see the same environment, but the profile is only run again
+# in the first interactive R that has them. `RVENV_VSCODE_SESS` marks that it
+# is done, and child processes inherit that.
+#
+# The profile first sources the user's own profile, named in
+# `R_PROFILE_USER_OLD`, or `.Rprofile` / `~/.Rprofile` if that is empty. That
+# already happened, so here it names a file that does not exist, which the
+# profile skips, without falling back to the others.
+restore_vscode_sess_env <- function() {
+  vars <- c("VSCODE_R_SESS_STARTUP_FILE", "VSCODE_R_SESS_PKG_PATH")
+  for (var in vars) {
+    saved <- Sys.getenv(paste0("RVENV_", var), unset = NA)
+    if (is.na(saved)) next
+    if (nzchar(saved)) {
+      do.call(Sys.setenv, structure(list(saved), names = var))
+    } else {
+      Sys.unsetenv(var)
+    }
+    Sys.unsetenv(paste0("RVENV_", var))
+  }
+}
+
+start_vscode_sess <- function() {
+  if (!interactive() || "sess" %in% loadedNamespaces()) return(invisible())
+  if (!nzchar(Sys.getenv("VSCODE_R_SESS_STARTUP_FILE"))) return(invisible())
+  if (nzchar(Sys.getenv("RVENV_VSCODE_SESS"))) return(invisible())
+  helper <- Sys.getenv("VSCODE_R_SESS_ATTACH_HELPER", unset = "")
+  profile <- file.path(dirname(helper), "profile.R")
+  if (!nzchar(helper) || !file.exists(profile)) return(invisible())
+  Sys.setenv(RVENV_VSCODE_SESS = Sys.getpid())
+
+  vars <- c("R_PROFILE_USER", "R_PROFILE_USER_OLD")
+  old <- Sys.getenv(vars, unset = NA, names = TRUE)
+  on.exit({
+    set <- old[!is.na(old)]
+    if (length(set)) do.call(Sys.setenv, as.list(set))
+    if (any(is.na(old))) Sys.unsetenv(vars[is.na(old)])
+  }, add = TRUE)
+  Sys.setenv(R_PROFILE_USER_OLD = file.path(tempdir(), "rvenv-no-profile"))
+
+  tryCatch(
+    sys.source(profile, envir = new.env(parent = globalenv())),
+    error = function(e) {
+      packageStartupMessage(
+        "rvenv could not start the vscode-R session watcher: ",
+        conditionMessage(e)
+      )
+    }
+  )
+  invisible()
+}
+
+restore_vscode_sess_env()
+start_vscode_sess()

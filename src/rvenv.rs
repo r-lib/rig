@@ -244,6 +244,11 @@ fn renviron_block() -> String {
 # R_DEFAULT_PACKAGES replaces R's default package list rather than adding to
 # it, so the whole list has to be spelled out.
 #
+# The two VSCODE_R_SESS_ variables turn off the session watcher of the VS Code
+# R extension in its R profile, which runs before the project library is set
+# up, so the watcher could not load its packages. `.rvenv/onload.R` puts them
+# back from the RVENV_ copies, and starts the watcher.
+#
 # This file is committed to version control, so do not put secrets in it.
 # Put them in .Renviron.rig instead, which `rig proj init` adds to
 # .gitignore, and R reads at startup in a synced project, after ~/.Renviron.
@@ -252,6 +257,10 @@ fn renviron_block() -> String {
 RVENV_R_LIBS_USER=\"${{R_LIBS_USER}}\"
 R_LIBS_USER=.rvenvlib
 R_DEFAULT_PACKAGES=rvenv,datasets,utils,grDevices,graphics,stats,methods
+RVENV_VSCODE_R_SESS_STARTUP_FILE=\"${{VSCODE_R_SESS_STARTUP_FILE}}\"
+VSCODE_R_SESS_STARTUP_FILE=\"\"
+RVENV_VSCODE_R_SESS_PKG_PATH=\"${{VSCODE_R_SESS_PKG_PATH}}\"
+VSCODE_R_SESS_PKG_PATH=\"\"
 {}
 ",
         BLOCK_START, BLOCK_END
@@ -1596,6 +1605,14 @@ mod tests {
         // restore it for a project that has no library yet. Quoted, because
         // R drops unquoted backslashes, which breaks Windows paths.
         assert!(body.contains("\nRVENV_R_LIBS_USER=\"${R_LIBS_USER}\"\nR_LIBS_USER="));
+        // The VS Code session watcher is turned off until `onload.R`, which
+        // restores these from the RVENV_ copies, recorded first.
+        for var in ["VSCODE_R_SESS_STARTUP_FILE", "VSCODE_R_SESS_PKG_PATH"] {
+            assert!(body.contains(&format!(
+                "\nRVENV_{var}=\"${{{var}}}\"\n{var}=\"\"\n",
+                var = var
+            )));
+        }
         // The shim package has to come first, and the rest of R's default
         // package list has to be spelled out.
         assert!(body.contains(
