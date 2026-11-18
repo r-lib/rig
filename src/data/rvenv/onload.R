@@ -45,7 +45,9 @@ read_renviron_rig <- function(root) {
 
   rig_vars <- c(
     "R_LIBS_USER", "R_LIBS", "R_LIBS_SITE", "R_DEFAULT_PACKAGES",
-    "RVENV", "RVENV_R_LIBS_USER", "RVENV_UNSYNCED", "RVENV_RENVIRON_RIG"
+    "RVENV", "RVENV_R_LIBS_USER", "RVENV_UNSYNCED", "RVENV_RENVIRON_RIG",
+    "RVENV_CHILD_R_LIBS_USER", "RVENV_CHILD_VSCODE_R_SESS_STARTUP_FILE",
+    "RVENV_CHILD_VSCODE_R_SESS_PKG_PATH"
   )
   old <- Sys.getenv(rig_vars, unset = NA)
   readRenviron(path)
@@ -60,7 +62,7 @@ read_renviron_rig <- function(root) {
       "! Ignored ", paste(changed, collapse = ", "),
       " in .Renviron.rig, rig sets these for the project."
     )
-  }
+}
 
   Sys.setenv(RVENV_RENVIRON_RIG = root)
   invisible()
@@ -110,11 +112,31 @@ warn_wrong_r_version <- function(want, running) {
 # This must be an `if`/`else`, not an early `return()`: this file is run with
 # `source()`, where a top-level `return()` only ends the current expression,
 # and the activation code below it would still run.
+# For child processes set R_DEFAULT_PACKAGES to the default, so .Renviron
+# does not override it to load rvenv.
+set_child_env <- function(libs) {
+  libs <- libs[nzchar(libs)]
+  pkgs <- setdiff(getOption("defaultPackages"), "rvenv")
+  Sys.setenv(
+    R_DEFAULT_PACKAGES = if (length(pkgs)) {
+      paste(pkgs, collapse = ",")
+    } else {
+      "NULL"
+    },
+    RVENV_CHILD_R_LIBS_USER = if (length(libs)) {
+      paste(libs, collapse = .Platform$path.sep)
+    } else {
+      "NULL"
+    }
+  )
+  invisible()
+}
+
 cfg <- read_rvenv_cfg(venv)
 running <- r_minor_version()
 if (!is.null(cfg[["r-minor"]]) && !identical(cfg[["r-minor"]], running)) {
   restore_r_libs_user(libname, lib)
-  Sys.unsetenv("R_DEFAULT_PACKAGES")
+  set_child_env(Sys.getenv("R_LIBS_USER"))
   warned <- identical(
     normalizePath(Sys.getenv("RVENV_UNSYNCED"), winslash = "/", mustWork = FALSE),
     venv
@@ -156,7 +178,7 @@ if (!is.null(cfg[["r-minor"]]) && !identical(cfg[["r-minor"]], running)) {
     .libPaths(paths)
   }
 
-  Sys.unsetenv("R_DEFAULT_PACKAGES")
+  set_child_env(paths)
 
   # One warning per project is enough; child processes are quiet.
   if (!activated) warn_unsynced(venv, lib)
@@ -194,6 +216,12 @@ restore_vscode_sess_env <- function() {
       Sys.unsetenv(var)
     }
     Sys.unsetenv(paste0("RVENV_", var))
+  }
+  # Child R processes do not load `rvenv`, see `set_child_env()`, so they
+  # take these from the RVENV_CHILD_ copies, via the project `.Renviron`.
+  for (var in vars) {
+    child <- structure(list(Sys.getenv(var)), names = paste0("RVENV_CHILD_", var))
+    do.call(Sys.setenv, child)
   }
 }
 

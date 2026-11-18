@@ -447,7 +447,7 @@ teardown() {
     [[ -f .rvenvlib/rvenv/DESCRIPTION ]]
     grep -q '^name = "myproj"$' rproj.toml
     grep -q '^R = ">= 4.1"$' rproj.toml
-    grep -q '^R_LIBS_USER=.rvenvlib$' .Renviron
+    grep -q '^R_LIBS_USER="${RVENV_CHILD_R_LIBS_USER:-.rvenvlib}"$' .Renviron
     grep -q '^/.rvenv/$' .gitignore
     grep -q '^Package: rvenv$' .rvenvlib/rvenv/DESCRIPTION
     # The project library is `rig proj sync`'s to create

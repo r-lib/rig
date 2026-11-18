@@ -249,18 +249,21 @@ fn renviron_block() -> String {
 # up, so the watcher could not load its packages. `.rvenv/onload.R` puts them
 # back from the RVENV_ copies, and starts the watcher.
 #
+# For child processes set R_DEFAULT_PACKAGES to the default, so .Renviron
+# does not override it to load rvenv.
+#
 # This file is committed to version control, so do not put secrets in it.
 # Put them in .Renviron.rig instead, which `rig proj init` adds to
 # .gitignore, and R reads at startup in a synced project, after ~/.Renviron.
 #
 # Note that `R --vanilla` ignores this file entirely.
 RVENV_R_LIBS_USER=\"${{R_LIBS_USER}}\"
-R_LIBS_USER=.rvenvlib
-R_DEFAULT_PACKAGES=rvenv,datasets,utils,grDevices,graphics,stats,methods
+R_LIBS_USER=\"${{RVENV_CHILD_R_LIBS_USER:-.rvenvlib}}\"
+R_DEFAULT_PACKAGES=${{R_DEFAULT_PACKAGES:-rvenv,datasets,utils,grDevices,graphics,stats,methods}}
 RVENV_VSCODE_R_SESS_STARTUP_FILE=\"${{VSCODE_R_SESS_STARTUP_FILE}}\"
-VSCODE_R_SESS_STARTUP_FILE=\"\"
+VSCODE_R_SESS_STARTUP_FILE=\"${{RVENV_CHILD_VSCODE_R_SESS_STARTUP_FILE}}\"
 RVENV_VSCODE_R_SESS_PKG_PATH=\"${{VSCODE_R_SESS_PKG_PATH}}\"
-VSCODE_R_SESS_PKG_PATH=\"\"
+VSCODE_R_SESS_PKG_PATH=\"${{RVENV_CHILD_VSCODE_R_SESS_PKG_PATH}}\"
 {}
 ",
         BLOCK_START, BLOCK_END
@@ -1669,24 +1672,29 @@ mod tests {
         assert!(body.starts_with(&format!("{}\n", BLOCK_START)));
         assert!(body.ends_with(&format!("\n{}\n", BLOCK_END)));
         // Not the project library: this is the library the shim itself is
-        // loaded from, the shim switches to the project library.
-        assert!(body.contains("\nR_LIBS_USER=.rvenvlib\n"));
+        // loaded from, the shim switches to the project library. Child R
+        // processes of an R that loaded the shim get the parent's library
+        // path from RVENV_CHILD_R_LIBS_USER instead.
+        assert!(body.contains("\nR_LIBS_USER=\"${RVENV_CHILD_R_LIBS_USER:-.rvenvlib}\"\n"));
         // Recorded before R_LIBS_USER is overwritten, so that the shim can
         // restore it for a project that has no library yet. Quoted, because
         // R drops unquoted backslashes, which breaks Windows paths.
         assert!(body.contains("\nRVENV_R_LIBS_USER=\"${R_LIBS_USER}\"\nR_LIBS_USER="));
         // The VS Code session watcher is turned off until `onload.R`, which
-        // restores these from the RVENV_ copies, recorded first.
+        // restores these from the RVENV_ copies, recorded first. In child R
+        // processes they keep the parent's values, from the RVENV_CHILD_
+        // copies.
         for var in ["VSCODE_R_SESS_STARTUP_FILE", "VSCODE_R_SESS_PKG_PATH"] {
             assert!(body.contains(&format!(
-                "\nRVENV_{var}=\"${{{var}}}\"\n{var}=\"\"\n",
+                "\nRVENV_{var}=\"${{{var}}}\"\n{var}=\"${{RVENV_CHILD_{var}}}\"\n",
                 var = var
             )));
         }
         // The shim package has to come first, and the rest of R's default
-        // package list has to be spelled out.
+        // package list has to be spelled out. Only if it is not set yet:
+        // the shim sets it without `rvenv` for child R processes.
         assert!(body.contains(
-            "\nR_DEFAULT_PACKAGES=rvenv,datasets,utils,grDevices,graphics,stats,methods\n"
+            "\nR_DEFAULT_PACKAGES=${R_DEFAULT_PACKAGES:-rvenv,datasets,utils,grDevices,graphics,stats,methods}\n"
         ));
     }
 
@@ -1942,7 +1950,7 @@ mod tests {
         assert!(text.starts_with("BEFORE=1\n"));
         assert!(text.ends_with("AFTER=1\n"));
         assert!(!text.contains("stale"));
-        assert!(text.contains("\nR_LIBS_USER=.rvenvlib\n"));
+        assert!(text.contains("\nR_LIBS_USER=\"${RVENV_CHILD_R_LIBS_USER:-.rvenvlib}\"\n"));
         assert_eq!(text.matches(BLOCK_START).count(), 1);
     }
 
