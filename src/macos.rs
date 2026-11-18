@@ -504,6 +504,22 @@ fn patch_user_scripts(source_dir: &Path, home_dir: &Path) -> Result<(), Box<dyn 
         let re = Regex::new(r"/Library/Frameworks/R\.framework/Resources")?;
         debug!("Patching fontconfig in {}", fonts.display());
         replace_in_file(&fonts, &re, &home_escaped)?;
+
+        // The fontconfig in cairo.so has the admin-mode framework path
+        // compiled in as its default config location, so point it at our
+        // copy, unless the user set FONTCONFIG_FILE themselves.
+        let mut content = std::fs::read_to_string(&renviron)?;
+        if !content.lines().any(|l| l.starts_with("FONTCONFIG_FILE=")) {
+            if !content.is_empty() && !content.ends_with('\n') {
+                content.push('\n');
+            }
+            content.push_str(&format!(
+                "FONTCONFIG_FILE=${{FONTCONFIG_FILE-{}/fontconfig/fonts/fonts.conf}}\n",
+                home_dir.display()
+            ));
+            debug!("Adding FONTCONFIG_FILE to {}", renviron.display());
+            std::fs::write(&renviron, content)?;
+        }
     } else {
         debug!(
             "Skipping fonts.conf patch; {} does not exist",
@@ -2916,6 +2932,27 @@ mod tests {
         // Surrounding lines untouched.
         assert!(content.contains("R_PAPERSIZE=letter"));
         assert!(content.contains("R_BROWSER=open"));
+    }
+
+    #[test]
+    fn patch_user_scripts_sets_fontconfig_file() {
+        let dir = tempfile::tempdir().unwrap();
+        write_fake_makeconf(dir.path(), "LIBR = -framework R\n");
+        write_fake_renviron(dir.path(), "R_QPDF=qpdf");
+        write_fake_fonts_conf(dir.path(), "<fontconfig></fontconfig>\n");
+        write_fake_libpc(dir.path(), STUB_LIBPC);
+        let home_dir = Path::new("/opt/r/4.6.2");
+
+        patch_user_scripts(dir.path(), home_dir).unwrap();
+        let content = fs::read_to_string(dir.path().join("etc/Renviron")).unwrap();
+        assert!(content.contains(
+            "\nFONTCONFIG_FILE=${FONTCONFIG_FILE-/opt/r/4.6.2/fontconfig/fonts/fonts.conf}\n"
+        ));
+
+        // Patching again does not add a second line.
+        patch_user_scripts(dir.path(), home_dir).unwrap();
+        let content = fs::read_to_string(dir.path().join("etc/Renviron")).unwrap();
+        assert_eq!(content.matches("FONTCONFIG_FILE=").count(), 1);
     }
 
     #[test]
