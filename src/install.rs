@@ -574,6 +574,69 @@ fn stage_local_source(src: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
     stage_local_source_entries(src, dst, true)
 }
 
+/// A path from the raw bytes `git ls-files -z` prints. Git allows a file name
+/// that is not UTF-8 on Unix.
+fn path_from_git(bytes: &[u8]) -> Result<PathBuf, Box<dyn Error>> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        Ok(PathBuf::from(std::ffi::OsStr::from_bytes(bytes)))
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(PathBuf::from(std::str::from_utf8(bytes)?))
+    }
+}
+
+/// Stage a package directory that is, or is inside, a git checkout, from the
+/// files git specifically tracks. Returns `false` if git does not track the
+/// package in `src`, e.g. because it is not in a git checkout, or only in the
+/// work tree of an unrelated repository.
+fn stage_tracked_source(src: &Path, dst: &Path) -> Result<bool, Box<dyn Error>> {
+    if !src.ancestors().any(|dir| dir.join(".git").exists()) {
+        return Ok(false);
+    }
+    let output = std::process::Command::new("git")
+        .args(["ls-files", "-z", "--cached"])
+        .current_dir(src)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()?;
+    if !output.status.success() {
+        return Ok(false);
+    }
+    let tracked = output
+        .stdout
+        .split(|b| *b == 0)
+        .filter(|p| !p.is_empty())
+        .map(path_from_git)
+        .collect::<Result<Vec<_>, _>>()?;
+    if !tracked.iter().any(|rel| rel == Path::new("DESCRIPTION")) {
+        return Ok(false);
+    }
+
+    std::fs::create_dir_all(dst)?;
+    for rel in tracked {
+        let from = src.join(&rel);
+        let to = dst.join(&rel);
+        let file_type = match std::fs::symlink_metadata(&from) {
+            Ok(meta) => meta.file_type(),
+            Err(_) => continue,
+        };
+        if file_type.is_dir() {
+            continue;
+        }
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        if file_type.is_symlink() {
+            recreate_symlink(&from, &to)?;
+        } else if reflink_copy::reflink(&from, &to).is_err() {
+            std::fs::copy(&from, &to)?;
+        }
+    }
+    Ok(true)
+}
+
 fn stage_local_source_entries(src: &Path, dst: &Path, top: bool) -> Result<(), Box<dyn Error>> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
@@ -897,26 +960,41 @@ where
         .canonicalize()
         .map_err(|err| format!("cannot find {}: {}", package_path.display(), err))?;
 
-    // A `local::` source directory is the user's own checkout: build a copy
-    // of it in rig's cache instead of the original, so `R CMD INSTALL` never
-    // leaves compiled artifacts (`.o`/`.so`, a generated `src/Makevars`,
-    // `config.log`, ...) behind in the user's source tree. A tarball/zip or
-    // an already-built binary is unaffected -- R (or rig's own unpacker)
-    // already extracts those into a throwaway location on its own.
+    // `R CMD INSTALL` builds a source directory in place and leaves the
+    // compiled artifacts (`.o`/`.so`, a generated `src/Makevars`, `config.log`,
+    // ...) behind, we want to build directories from a copy -- either a regular
+    // copy (for a local directory), or a copy of tracked sources (for a git
+    // checkout).
+    //
+    // A tarball/zip or an already-built binary is unaffected -- R (or rig's
+    // own unpacker) already extracts those into a throwaway location.
     let is_local = pkg.remote.get(REMOTE_TYPE_FIELD).map(String::as_str) == Some("local");
-    let package_path_abs = if is_local && package_path_abs.is_dir() {
-        let staged = crate::cache::local_pkg_build_dir(&package_path_abs)?;
+    let package_path_abs = if package_path_abs.is_dir() {
+        let staged = if is_local {
+            crate::cache::local_pkg_build_dir(&package_path_abs)?
+        } else {
+            run_dir.path().join(package_name)
+        };
         if staged.exists() {
             std::fs::remove_dir_all(&staged)
                 .map_err(|err| format!("cannot remove {}: {}", staged.display(), err))?;
         }
         debug!(
-            "Staging local package {} from {} to {} for an out-of-tree build",
+            "Staging package {} from {} to {} for an out-of-tree build",
             package_name,
             package_path_abs.display(),
             staged.display()
         );
-        stage_local_source(&package_path_abs, &staged).map_err(|err| {
+        let copied = if is_local {
+            stage_local_source(&package_path_abs, &staged)
+        } else {
+            match stage_tracked_source(&package_path_abs, &staged) {
+                Ok(true) => Ok(()),
+                Ok(false) => stage_local_source(&package_path_abs, &staged),
+                Err(err) => Err(err),
+            }
+        };
+        copied.map_err(|err| {
             let msg = format!(
                 "Failed to install {}: could not copy {} to {}: {}",
                 package_name,
@@ -1888,9 +1966,10 @@ mod tests {
     // Building a source package
 
     /// A stand-in for `R` that handles `R CMD INSTALL ... -l <lib> <pkg>` by
-    /// running the shell snippet `body` with `$lib` set to the `-l` library and
-    /// `$args` to all arguments, so that tests can see what rig asks of a
-    /// build without a real R.
+    /// running the shell snippet `body` with `$lib` set to the `-l` library,
+    /// `$pkg` to the package (the last argument) and `$args` to all
+    /// arguments, so that tests can see what rig asks of a build without a
+    /// real R.
     #[cfg(unix)]
     fn fake_r(dir: &Path, body: &str) -> String {
         use std::os::unix::fs::PermissionsExt;
@@ -1900,6 +1979,7 @@ mod tests {
 args="$*"
 while [ $# -gt 0 ]; do
   if [ "$1" = "-l" ]; then lib="$2"; fi
+  pkg="$1"
   shift
 done
 {}
@@ -2249,6 +2329,123 @@ exit 1"#,
         assert_eq!(
             build_r_libs(lib, Some("/other")),
             format!("{}{}/other", build_r_libs(lib, None), sep)
+        );
+    }
+
+    /// A `git` source package at `checkout`, and an empty library.
+    #[cfg(unix)]
+    fn git_source_setup(tmp: &Path, checkout: &Path) -> (PackageInfo, PathBuf) {
+        let (mut pkg, lib) = source_setup(tmp);
+        pkg.file_path = checkout.to_path_buf();
+        pkg.remote
+            .insert(REMOTE_TYPE_FIELD.to_string(), "git".to_string());
+        (pkg, lib)
+    }
+
+    /// An `R` that builds the directory it is given, recording where it built
+    /// from and whether it found an object file there.
+    #[cfg(unix)]
+    fn fake_r_building_a_directory(dir: &Path) -> String {
+        fake_r(
+            dir,
+            r#"test -f "$pkg/src/foo.c" || exit 1
+if test -f "$pkg/src/foo.o"; then o=yes; else o=no; fi
+touch "$pkg/src/foo.o"
+mkdir -p "$lib/foo"
+cp "$pkg/DESCRIPTION" "$lib/foo/DESCRIPTION"
+echo "$pkg" > "$lib/foo/built-from"
+echo "$o" > "$lib/foo/had-object""#,
+        )
+    }
+
+    /// A git checkout in the cache is shared by every build of its commit, so
+    /// a build must not leave its object files in it.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_source_directory_is_built_from_a_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let checkout = tmp.path().join("checkout");
+        std::fs::create_dir_all(checkout.join("src")).unwrap();
+        std::fs::write(checkout.join("DESCRIPTION"), DESC).unwrap();
+        std::fs::write(checkout.join("src/foo.c"), "").unwrap();
+        let (pkg, lib) = git_source_setup(tmp.path(), &checkout);
+        let r = fake_r_building_a_directory(tmp.path());
+
+        r_cmd_install::<fn(&str)>(&pkg, &lib, &r, None)
+            .await
+            .unwrap();
+
+        assert!(!checkout.join("src/foo.o").exists());
+        let built_from = std::fs::read_to_string(lib.join("foo/built-from")).unwrap();
+        assert_ne!(
+            Path::new(built_from.trim()),
+            checkout.canonicalize().unwrap()
+        );
+        assert!(!Path::new(built_from.trim()).exists());
+    }
+
+    /// A package that is not tracked by the repository it happens to be in
+    /// (e.g. a cache directory inside a project) is copied as it is.
+    #[test]
+    fn an_untracked_directory_in_a_repository_is_copied_whole() {
+        let tmp = tempfile::tempdir().unwrap();
+        let status = std::process::Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(tmp.path())
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let src = tmp.path().join("cache/pkg");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("DESCRIPTION"), DESC).unwrap();
+
+        let dst = tmp.path().join("staged");
+        assert!(!stage_tracked_source(&src, &dst).unwrap());
+        assert!(!dst.exists());
+    }
+
+    /// A checkout an earlier rig built in place holds object files, which a
+    /// new build must not start from.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn artifacts_in_a_git_checkout_are_not_built_from() {
+        let tmp = tempfile::tempdir().unwrap();
+        let checkout = tmp.path().join("checkout");
+        std::fs::create_dir_all(checkout.join("src")).unwrap();
+        std::fs::write(checkout.join("DESCRIPTION"), DESC).unwrap();
+        std::fs::write(checkout.join("src/foo.c"), "").unwrap();
+        for args in [
+            vec!["init", "--quiet"],
+            vec!["add", "."],
+            vec![
+                "-c",
+                "user.name=rig",
+                "-c",
+                "user.email=rig@example.com",
+                "commit",
+                "--quiet",
+                "-m",
+                "init",
+            ],
+        ] {
+            let status = std::process::Command::new("git")
+                .args(&args)
+                .current_dir(&checkout)
+                .status()
+                .unwrap();
+            assert!(status.success());
+        }
+        std::fs::write(checkout.join("src/foo.o"), "stale").unwrap();
+        let (pkg, lib) = git_source_setup(tmp.path(), &checkout);
+        let r = fake_r_building_a_directory(tmp.path());
+
+        r_cmd_install::<fn(&str)>(&pkg, &lib, &r, None)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(lib.join("foo/had-object")).unwrap(),
+            "no\n"
         );
     }
 
