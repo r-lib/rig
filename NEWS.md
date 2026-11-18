@@ -10,6 +10,11 @@
 
 * `rig self update` now works on Windows on ARM.
 
+* In user mode on macOS, `rig add` now sets `FONTCONFIG_FILE` in R's
+  `etc/Renviron`, so cairo graphics devices, e.g. `svg()` work correctly.
+  Reinstall R versions installed with an older rig to get the fix, e.g.
+  with `rig add --reinstall` (#439, #524).
+
 * rig now supports manylinux_2_28 R builds, which requires glibc 2.28,
   so now it works on RHEL 8, Rocky Linux 8, Ubuntu 20.04, etc. (#402, #517).
 
