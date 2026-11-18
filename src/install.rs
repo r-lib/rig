@@ -254,12 +254,58 @@ fn stage_cached_package(
     // without the package. It is as small as we can make it, and `rig pkg
     // install` recovers on the next run: a package without a DESCRIPTION is not
     // installed as far as `rig pkg list` is concerned.
-    let target = library_path.join(&pkg.name);
+    move_into_library(staging, library_path, &pkg.name)
+}
+
+/// Replace the `name` package in `library_path` with the complete package
+/// directory at `staged`.
+fn move_into_library(staged: &Path, library_path: &Path, name: &str) -> Result<(), Box<dyn Error>> {
+    let target = library_path.join(name);
     if target.exists() {
         std::fs::remove_dir_all(&target)?;
     }
-    std::fs::rename(staging, &target)?;
+    std::fs::rename(staged, &target)?;
     Ok(())
+}
+
+/// An temporary library for `R CMD INSTALL` to build into.
+struct BuildLibrary(PathBuf);
+
+impl BuildLibrary {
+    fn create(library_path: &Path, name: &str) -> Result<BuildLibrary, Box<dyn Error>> {
+        // A leading `.` keeps `rig pkg list` from reading it as a package.
+        let path = library_path.join(format!(".rig-build-{}-{}", name, std::process::id()));
+        if path.exists() {
+            std::fs::remove_dir_all(&path)
+                .map_err(|err| format!("cannot remove {}: {}", path.display(), err))?;
+        }
+        std::fs::create_dir(&path)
+            .map_err(|err| format!("cannot create {}: {}", path.display(), err))?;
+        Ok(BuildLibrary(path))
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for BuildLibrary {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// `R_LIBS` for an `R CMD INSTALL` that builds into a [`BuildLibrary`]: the
+/// real library first, so that the package's dependencies are found there,
+/// then whatever `R_LIBS` already was. `R CMD INSTALL` puts its `-l` library
+/// in front of this itself.
+fn build_r_libs(library_path: &Path, current: Option<&str>) -> String {
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    let lib = crate::utils::r_path(library_path).display().to_string();
+    match current {
+        Some(current) if !current.is_empty() => format!("{}{}{}", lib, sep, current),
+        _ => lib,
+    }
 }
 
 /// Populate `dst`, which must not exist yet, with everything under `src`,
@@ -573,6 +619,9 @@ fn drop_fields(text: &str, fields: &[&str]) -> String {
 
 /// Install a source package with `R CMD INSTALL`, and record the provenance in
 /// the result.
+///
+/// The package is built into a [`BuildLibrary`] and only then replaces any
+/// previous install in `library_path`, the same way a built package does.
 async fn r_cmd_install<F>(
     pkg: &PackageInfo,
     library_path: &Path,
@@ -656,14 +705,20 @@ where
         package_path_abs
     };
 
-    let library_path_r = crate::utils::r_path(&library_path_abs);
+    // Build into an empty library and move the package into the real one only
+    // once it is complete.
+    let build_lib = BuildLibrary::create(&library_path_abs, package_name)?;
+    let build_lib_r = crate::utils::r_path(build_lib.path());
+    let r_libs = build_r_libs(&library_path_abs, std::env::var("R_LIBS").ok().as_deref());
+
     let package_path_r = crate::utils::r_path(&package_path_abs);
     let status = Command::new(r_binary)
         .arg("CMD")
         .arg("INSTALL")
         .arg("-l")
-        .arg(&library_path_r)
+        .arg(&build_lib_r)
         .arg(&package_path_r)
+        .env("R_LIBS", &r_libs)
         .current_dir(run_dir.path())
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_file_stderr))
@@ -676,9 +731,18 @@ where
         // package built, and not what rig recorded in it. The provenance fields
         // are added on every install anyway, including on the installs that come
         // out of this cache.
-        cache_build(pkg, library_path).await;
+        cache_build(pkg, build_lib.path()).await;
 
-        patch_description(&library_path.join(package_name), pkg)?;
+        let built = build_lib.path().join(package_name);
+        patch_description(&built, pkg)?;
+        move_into_library(&built, &library_path_abs, package_name).map_err(|err| {
+            format!(
+                "cannot move {} into {}: {}",
+                built.display(),
+                library_path.display(),
+                err
+            )
+        })?;
 
         // User output: Use custom print function if provided, otherwise use OUTPUT
         let msg = format!("Installed {} {}", package_name, pkg.version);
@@ -706,7 +770,7 @@ where
         } else {
             format!("\n  Missing system packages: {}", missing.join(", "))
         };
-        if let Some(long) = crate::utils::long_path_hint(&[&library_path_r, &package_path_r]) {
+        if let Some(long) = crate::utils::long_path_hint(&[&build_lib_r, &package_path_r]) {
             hint.push_str(&long);
         }
         OUTPUT.error(&format!(
@@ -1592,6 +1656,112 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(src.join("DESCRIPTION")).unwrap(),
             "Package: foo\n"
+        );
+    }
+
+    // ----------------------------------------------------------------
+    // Building a source package
+
+    /// A stand-in for `R` that handles `R CMD INSTALL -l <lib> <pkg>` by
+    /// running the shell snippet `body` with `$lib` set, so that tests can see
+    /// what rig asks of a build without a real R.
+    #[cfg(unix)]
+    fn fake_r(dir: &Path, body: &str) -> String {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join("R");
+        std::fs::write(&path, format!("#!/bin/sh\nlib=\"$4\"\n{}\n", body)).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path.display().to_string()
+    }
+
+    /// A source package `foo` and an empty library, both under `tmp`.
+    #[cfg(unix)]
+    fn source_setup(tmp: &Path) -> (PackageInfo, PathBuf) {
+        let tarball = tmp.join("foo_1.0.0.tar.gz");
+        std::fs::write(&tarball, "").unwrap();
+        let mut pkg = info("foo", &tarball, Some("abc"), &[]);
+        pkg.binary = false;
+        let lib = tmp.join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        (pkg, lib.canonicalize().unwrap())
+    }
+
+    #[cfg(unix)]
+    fn leftovers(lib: &Path) -> Vec<String> {
+        std::fs::read_dir(lib)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .filter(|name| name.starts_with(".rig-build"))
+            .collect()
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_source_package_is_built_in_its_own_library_then_moved_in() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (pkg, lib) = source_setup(tmp.path());
+        let r = fake_r(
+            tmp.path(),
+            r#"mkdir -p "$lib/foo"
+printf 'Package: foo\nVersion: 1.0.0\n' > "$lib/foo/DESCRIPTION"
+echo "$lib" > "$lib/foo/built-in"
+echo "$R_LIBS" > "$lib/foo/r-libs""#,
+        );
+
+        r_cmd_install::<fn(&str)>(&pkg, &lib, &r, None)
+            .await
+            .unwrap();
+
+        let built_in = std::fs::read_to_string(lib.join("foo/built-in")).unwrap();
+        let built_in = Path::new(built_in.trim());
+        assert_eq!(built_in.parent(), Some(lib.as_path()));
+        assert_ne!(built_in, lib);
+        let r_libs = std::fs::read_to_string(lib.join("foo/r-libs")).unwrap();
+        assert_eq!(r_libs.trim().split(':').next(), lib.to_str());
+        let desc = std::fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
+        assert!(desc.contains("RemoteHash: abc\n"), "{}", desc);
+        assert!(leftovers(&lib).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failed_source_build_leaves_the_previous_install_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (pkg, lib) = source_setup(tmp.path());
+        std::fs::create_dir_all(lib.join("foo")).unwrap();
+        std::fs::write(
+            lib.join("foo/DESCRIPTION"),
+            "Package: foo\nVersion: 0.9.0\n",
+        )
+        .unwrap();
+        let r = fake_r(
+            tmp.path(),
+            r#"mkdir -p "$lib/foo"
+echo partial > "$lib/foo/DESCRIPTION"
+exit 1"#,
+        );
+
+        assert!(r_cmd_install::<fn(&str)>(&pkg, &lib, &r, None)
+            .await
+            .is_err());
+
+        let desc = std::fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
+        assert_eq!(desc, "Package: foo\nVersion: 0.9.0\n");
+        assert!(leftovers(&lib).is_empty());
+    }
+
+    #[test]
+    fn build_r_libs_puts_the_library_first() {
+        let lib = Path::new("/lib");
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        assert_eq!(
+            build_r_libs(lib, None),
+            crate::utils::r_path(lib).display().to_string()
+        );
+        assert_eq!(build_r_libs(lib, Some("")), build_r_libs(lib, None));
+        assert_eq!(
+            build_r_libs(lib, Some("/other")),
+            format!("{}{}/other", build_r_libs(lib, None), sep)
         );
     }
 
