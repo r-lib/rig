@@ -8494,8 +8494,9 @@ mod tests {
         assert!(info.built.is_some());
     }
 
-    /// An `R` that installs what `R CMD INSTALL -l LIB TARBALL` is given by
-    /// writing a built package, and logs every install it does.
+    /// An `R` that installs what `R CMD INSTALL ... -l LIB TARBALL` is given
+    /// by writing a built package, and logs every install it does. The library
+    /// is the argument after `-l`, the tarball the last argument.
     #[cfg(unix)]
     fn fake_r(dir: &Path) -> (String, PathBuf) {
         use std::os::unix::fs::PermissionsExt;
@@ -8505,11 +8506,16 @@ mod tests {
             &r,
             format!(
                 "#!/bin/sh\n\
-                 name=$(basename \"$5\" | cut -d_ -f1)\n\
+                 while [ $# -gt 0 ]; do\n\
+                 \x20 if [ \"$1\" = \"-l\" ]; then lib=\"$2\"; fi\n\
+                 \x20 pkg=\"$1\"\n\
+                 \x20 shift\n\
+                 done\n\
+                 name=$(basename \"$pkg\" | cut -d_ -f1)\n\
                  echo \"$name\" >> '{}'\n\
-                 mkdir -p \"$4/$name/libs\"\n\
-                 printf 'Package: %s\\nVersion: 1.0.0\\nBuilt: R 4.4.0\\n' \"$name\" > \"$4/$name/DESCRIPTION\"\n\
-                 echo compiled > \"$4/$name/libs/$name.so\"\n",
+                 mkdir -p \"$lib/$name/libs\"\n\
+                 printf 'Package: %s\\nVersion: 1.0.0\\nBuilt: R 4.4.0\\n' \"$name\" > \"$lib/$name/DESCRIPTION\"\n\
+                 echo compiled > \"$lib/$name/libs/$name.so\"\n",
                 log.display()
             ),
         )
