@@ -242,56 +242,92 @@ fn install_from_cache(
 /// are on the same filesystem. The leading `.` keeps `.old` from clashing with
 /// a package called `old`.
 ///
-/// If the new package cannot be moved in, the old one is moved back. If that
-/// fails too, `temp_lib` is kept, so that the old package is not deleted with
-/// it, and the error says where it is.
+/// Another process (e.g. another rig installing into the same library) may
+/// move its own copy of the package in between the two renames. Then the
+/// second rename fails, because the target exists again, and this tries again:
+/// it moves that copy aside too (to `.old-1`, `.old-2`, ...), and then moves
+/// its own in. So the install that finishes last wins, without a lock.
+///
+/// If the new package cannot be moved in, the most recent old one is moved
+/// back, unless another process has already put its own copy in place. If
+/// moving it back fails, `temp_lib` is kept, so that the old package is not
+/// deleted with it, and the error says where it is.
 fn move_into_library(
     temp_lib: &TempLibrary,
     library_path: &Path,
     name: &str,
 ) -> Result<(), Box<dyn Error>> {
+    const ATTEMPTS: usize = 3;
     let staged = temp_lib.path().join(name);
-    let aside = temp_lib.path().join(".old");
     let target = library_path.join(name);
-    let had_old = match std::fs::rename(&target, &aside) {
-        Ok(()) => true,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
-        Err(err) => {
-            return Err(format!(
-                "cannot move {} to {}: {}",
-                target.display(),
-                aside.display(),
-                err
-            )
-            .into())
-        }
-    };
-    if let Err(err) = std::fs::rename(&staged, &target) {
-        let mut msg = format!(
-            "cannot move {} to {}: {}",
-            staged.display(),
-            target.display(),
-            err
-        );
-        // Put the old package back, so a failed install leaves it as it was.
-        if had_old {
-            if let Err(err) = std::fs::rename(&aside, &target) {
-                temp_lib.keep();
-                msg.push_str(&format!(
-                    "; cannot move the previous version back from {}: {}",
+    // Where the old package(s) went, the most recent one last.
+    let mut asides: Vec<PathBuf> = Vec::new();
+
+    let mut attempt = 0;
+    let result = loop {
+        let aside = match attempt {
+            0 => temp_lib.path().join(".old"),
+            n => temp_lib.path().join(format!(".old-{}", n)),
+        };
+        match std::fs::rename(&target, &aside) {
+            Ok(()) => asides.push(aside),
+            // No old package, or another process has just moved it away.
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => {
+                break Err(format!(
+                    "cannot move {} to {}: {}",
+                    target.display(),
                     aside.display(),
                     err
-                ));
+                ))
+            }
+        }
+        match std::fs::rename(&staged, &target) {
+            Ok(()) => break Ok(()),
+            // The error kind for renaming onto an existing directory varies
+            // between platforms, so look at the target instead.
+            Err(_) if attempt + 1 < ATTEMPTS && target.exists() => {
+                debug!(
+                    "{} appeared while installing it, moving it aside again",
+                    target.display()
+                );
+                attempt += 1;
+            }
+            Err(err) => {
+                break Err(format!(
+                    "cannot move {} to {}: {}",
+                    staged.display(),
+                    target.display(),
+                    err
+                ))
+            }
+        }
+    };
+
+    if let Err(mut msg) = result {
+        // Put the old package back, so a failed install leaves it as it was.
+        // If another process has put its copy in place, that is newer anyway.
+        if let Some(aside) = asides.last() {
+            if !target.exists() {
+                if let Err(err) = std::fs::rename(aside, &target) {
+                    temp_lib.keep();
+                    msg.push_str(&format!(
+                        "; cannot move the previous version back from {}: {}",
+                        aside.display(),
+                        err
+                    ));
+                }
             }
         }
         return Err(msg.into());
     }
-    if had_old {
-        // `temp_lib` is deleted later anyway, but the old package can be
-        // large, and this frees the space right away. Not fatal: the new
-        // package is in place. On Windows this fails if a running R has a DLL
-        // of the old package loaded; the file can be renamed, but not deleted.
-        if let Err(err) = std::fs::remove_dir_all(&aside) {
+
+    // `temp_lib` is deleted later anyway, but the old package can be large,
+    // and this frees the space right away. Not fatal: the new package is in
+    // place. On Windows this fails if a running R has a DLL of the old package
+    // loaded; the file can be renamed, but not deleted.
+    for aside in &asides {
+        if let Err(err) = std::fs::remove_dir_all(aside) {
             debug!("Cannot remove {}: {}", aside.display(), err);
         }
     }
@@ -1868,6 +1904,45 @@ exit 1"#,
 
         assert!(lib.join("foo/old").exists());
         assert!(!temp_lib.path().join(".old").exists());
+    }
+
+    /// Two installs of the same package that finish at the same time both
+    /// succeed, and one of them ends up in the library. Racy by nature, so it
+    /// tries many times; without the retry in `move_into_library` some of the
+    /// moves fail.
+    #[test]
+    fn concurrent_moves_into_the_library_both_succeed() {
+        use std::sync::{Arc, Barrier};
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = tmp.path().join("lib");
+        std::fs::create_dir_all(lib.join("foo")).unwrap();
+        for round in 0..200 {
+            let barrier = Arc::new(Barrier::new(2));
+            let threads: Vec<_> = ["a", "b"]
+                .into_iter()
+                .map(|who| {
+                    let lib = lib.clone();
+                    let barrier = barrier.clone();
+                    std::thread::spawn(move || {
+                        let temp_lib = TempLibrary::create(&lib).unwrap();
+                        let staged = temp_lib.path().join("foo");
+                        std::fs::create_dir(&staged).unwrap();
+                        std::fs::write(staged.join(who), "").unwrap();
+                        barrier.wait();
+                        move_into_library(&temp_lib, &lib, "foo").map_err(|e| e.to_string())
+                    })
+                })
+                .collect();
+            for t in threads {
+                t.join()
+                    .unwrap()
+                    .unwrap_or_else(|e| panic!("round {}: {}", round, e));
+            }
+            let files: Vec<_> = std::fs::read_dir(lib.join("foo")).unwrap().collect();
+            assert_eq!(files.len(), 1, "round {}", round);
+            let entries: Vec<_> = std::fs::read_dir(&lib).unwrap().collect();
+            assert_eq!(entries.len(), 1, "round {}: leftovers", round);
+        }
     }
 
     #[test]
