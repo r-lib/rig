@@ -215,7 +215,7 @@ fn install_from_cache(
     // `staging` must not exist yet: [`link_package_tree`] creates it, since
     // the fastest way to populate it (a whole-directory reflink on macOS)
     // requires the destination to not already exist.
-    let temp_lib = TempLibrary::create(library_path, &pkg.name)?;
+    let temp_lib = TempLibrary::create(library_path)?;
     let staging = &temp_lib.path().join(&pkg.name);
     link_package_tree(&unpacked, staging)?;
 
@@ -308,9 +308,16 @@ struct TempLibrary {
 }
 
 impl TempLibrary {
-    fn create(library_path: &Path, name: &str) -> Result<TempLibrary, Box<dyn Error>> {
-        // A leading `.` keeps `rig pkg list` from reading it as a package.
-        let path = library_path.join(format!(".rig-build-{}-{}", name, std::process::id()));
+    /// Create `<library_path>/.rig-<pid>-<n>`, where `n` counts the temporary
+    /// libraries of this process, since rig installs several packages at once.
+    /// The name is short because Windows limits path lengths, and every path
+    /// of the package is under it while it is built. A leading `.` keeps `rig
+    /// pkg list` and R from reading it as a package.
+    fn create(library_path: &Path) -> Result<TempLibrary, Box<dyn Error>> {
+        static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = library_path.join(format!(".rig-{}-{}", std::process::id(), n));
+        // Left behind by an earlier process with the same pid.
         if path.exists() {
             std::fs::remove_dir_all(&path)
                 .map_err(|err| format!("cannot remove {}: {}", path.display(), err))?;
@@ -755,7 +762,7 @@ where
     // Build into an empty library and move the package into the real one only
     // once it is complete.
     // `--no-lock`: the build library is private to this install #525
-    let build_lib = TempLibrary::create(&library_path_abs, package_name)?;
+    let build_lib = TempLibrary::create(&library_path_abs)?;
     let build_lib_r = crate::utils::r_path(build_lib.path());
     let r_libs = build_r_libs(&library_path_abs, std::env::var("R_LIBS").ok().as_deref());
 
@@ -1745,7 +1752,7 @@ done
         std::fs::read_dir(lib)
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
-            .filter(|name| name.starts_with(".rig-build"))
+            .filter(|name| name.starts_with(".rig-"))
             .collect()
     }
 
@@ -1815,7 +1822,7 @@ exit 1"#,
     fn move_setup(tmp: &Path) -> (PathBuf, TempLibrary) {
         let lib = tmp.join("lib");
         std::fs::create_dir_all(&lib).unwrap();
-        let temp_lib = TempLibrary::create(&lib, "foo").unwrap();
+        let temp_lib = TempLibrary::create(&lib).unwrap();
         (lib, temp_lib)
     }
 
@@ -1861,6 +1868,22 @@ exit 1"#,
 
         assert!(lib.join("foo/old").exists());
         assert!(!temp_lib.path().join(".old").exists());
+    }
+
+    #[test]
+    fn temp_libraries_get_short_distinct_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = TempLibrary::create(tmp.path()).unwrap();
+        let b = TempLibrary::create(tmp.path()).unwrap();
+        assert_ne!(a.path(), b.path());
+        let prefix = format!(".rig-{}-", std::process::id());
+        for lib in [&a, &b] {
+            assert_eq!(lib.path().parent(), Some(tmp.path()));
+            let name = lib.path().file_name().unwrap().to_str().unwrap();
+            let n = name.strip_prefix(&prefix).expect(name);
+            assert!(n.parse::<usize>().is_ok(), "{}", name);
+            assert!(lib.path().is_dir());
+        }
     }
 
     #[test]
