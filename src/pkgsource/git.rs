@@ -31,12 +31,45 @@ use crate::utils::http_client_builder;
 /// it doesn't exist yet, its ancestors must already exist for subcommands
 /// other than `init` (`init` creates `dest` itself).
 fn run_git(dest: &Path, args: &[&str]) -> Result<String, Box<dyn Error>> {
-    let output = duct::cmd("git", args)
+    let stdout = run_git_raw(dest, args)?;
+    Ok(String::from_utf8_lossy(&stdout).trim().to_string())
+}
+
+/// Environment variables that point git at a repository, work tree, index or
+/// object store other than the one in the directory it runs in. Git sets
+/// several of them for the hooks it runs, so rig may inherit them, e.g. when
+/// a git hook calls `rig proj sync`. This is the list of
+/// `git rev-parse --local-env-vars`, minus the `GIT_CONFIG*` ones, which only
+/// pass on configuration (e.g. credentials in CI), not a repository.
+const GIT_REPO_ENV_VARS: &[&str] = &[
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE",
+    "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_PREFIX",
+    "GIT_SHALLOW_FILE",
+    "GIT_COMMON_DIR",
+];
+
+/// Like [`run_git`], but returns stdout as raw bytes, e.g. for file names
+/// from `git ls-files -z`, which need not be UTF-8.
+pub(crate) fn run_git_raw(dest: &Path, args: &[&str]) -> Result<Vec<u8>, Box<dyn Error>> {
+    let mut cmd = duct::cmd("git", args);
+    for var in GIT_REPO_ENV_VARS {
+        cmd = cmd.env_remove(var);
+    }
+    let output = cmd
         .dir(dest)
         .stdout_capture()
         .stderr_capture()
         .unchecked()
-        .run()?;
+        .run()
+        .map_err(|err| format!("cannot run git: {}", err))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(Box::new(simple_error::SimpleError::new(format!(
@@ -46,7 +79,7 @@ fn run_git(dest: &Path, args: &[&str]) -> Result<String, Box<dyn Error>> {
             stderr.trim()
         ))));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    Ok(output.stdout)
 }
 
 /// `init` a repo at `dest`, add `origin` pointing at `url`, and (if `sparse`
@@ -434,7 +467,7 @@ pub(crate) mod tests {
     /// `PATH` env var (see `utils::tests`, which does exactly that) while
     /// tests run in parallel -- a `Command::new("git")` PATH lookup would
     /// otherwise randomly fail with ENOENT depending on scheduling.
-    fn git_binary() -> &'static str {
+    pub(crate) fn git_binary() -> &'static str {
         for candidate in [
             "/usr/bin/git",
             "/usr/local/bin/git",
