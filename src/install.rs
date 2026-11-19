@@ -210,35 +210,13 @@ fn install_from_cache(
     key: &str,
     library_path: &Path,
 ) -> Result<(), Box<dyn Error>> {
-    // A leading `.` keeps `rig pkg list` from reading the staging directory as
-    // a half-installed package while another rig is working in the library.
-    let staging = library_path.join(format!(".rig-staging-{}-{}", pkg.name, std::process::id()));
-    if staging.exists() {
-        std::fs::remove_dir_all(&staging)?;
-    }
-
-    let result = stage_cached_package(pkg, archive, key, &staging, library_path);
-    if result.is_err() {
-        let _ = std::fs::remove_dir_all(&staging);
-    }
-    result
-}
-
-/// The body of [`install_from_cache`], so that its caller can clean the
-/// staging directory up on every error path.
-///
-/// `staging` must not exist yet: [`link_package_tree`] creates it, since the
-/// fastest way to populate it (a whole-directory reflink on macOS) requires
-/// the destination to not already exist.
-fn stage_cached_package(
-    pkg: &PackageInfo,
-    archive: &Path,
-    key: &str,
-    staging: &Path,
-    library_path: &Path,
-) -> Result<(), Box<dyn Error>> {
     let unpacked = crate::built::ensure_unpacked(archive, key, &pkg.name)?;
 
+    // `staging` must not exist yet: [`link_package_tree`] creates it, since
+    // the fastest way to populate it (a whole-directory reflink on macOS)
+    // requires the destination to not already exist.
+    let temp_lib = TempLibrary::create(library_path, &pkg.name)?;
+    let staging = &temp_lib.path().join(&pkg.name);
     link_package_tree(&unpacked, staging)?;
 
     // `DESCRIPTION` always gets a private, patched copy: `patch_description`
@@ -249,30 +227,88 @@ fn stage_cached_package(
     std::fs::copy(unpacked.join("DESCRIPTION"), staging.join("DESCRIPTION"))?;
     patch_description(staging, pkg)?;
 
-    // Replacing the old directory and moving the new one in is not atomic, so
-    // this is the one window where an interrupted install leaves the library
-    // without the package. It is as small as we can make it, and `rig pkg
-    // install` recovers on the next run: a package without a DESCRIPTION is not
-    // installed as far as `rig pkg list` is concerned.
-    move_into_library(staging, library_path, &pkg.name)
+    move_into_library(&temp_lib, library_path, &pkg.name)
 }
 
 /// Replace the `name` package in `library_path` with the complete package
-/// directory at `staged`.
-fn move_into_library(staged: &Path, library_path: &Path, name: &str) -> Result<(), Box<dyn Error>> {
+/// directory `<temp_lib>/<name>`.
+///
+/// The old package is renamed to `<temp_lib>/.old` first, then the new one is
+/// renamed into place, and only then is the old one deleted. Renaming is
+/// quick, so the window where the library has no `name` package is only the
+/// time between the two renames, not the time it takes to delete every file
+/// of the old package. If rig is killed in that window, the old package is
+/// still in `.old`. `temp_lib` must be inside `library_path`, so that both
+/// are on the same filesystem. The leading `.` keeps `.old` from clashing with
+/// a package called `old`.
+///
+/// If the new package cannot be moved in, the old one is moved back. If that
+/// fails too, `temp_lib` is kept, so that the old package is not deleted with
+/// it, and the error says where it is.
+fn move_into_library(
+    temp_lib: &TempLibrary,
+    library_path: &Path,
+    name: &str,
+) -> Result<(), Box<dyn Error>> {
+    let staged = temp_lib.path().join(name);
+    let aside = temp_lib.path().join(".old");
     let target = library_path.join(name);
-    if target.exists() {
-        std::fs::remove_dir_all(&target)?;
+    let had_old = match std::fs::rename(&target, &aside) {
+        Ok(()) => true,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
+        Err(err) => {
+            return Err(format!(
+                "cannot move {} to {}: {}",
+                target.display(),
+                aside.display(),
+                err
+            )
+            .into())
+        }
+    };
+    if let Err(err) = std::fs::rename(&staged, &target) {
+        let mut msg = format!(
+            "cannot move {} to {}: {}",
+            staged.display(),
+            target.display(),
+            err
+        );
+        // Put the old package back, so a failed install leaves it as it was.
+        if had_old {
+            if let Err(err) = std::fs::rename(&aside, &target) {
+                temp_lib.keep();
+                msg.push_str(&format!(
+                    "; cannot move the previous version back from {}: {}",
+                    aside.display(),
+                    err
+                ));
+            }
+        }
+        return Err(msg.into());
     }
-    std::fs::rename(staged, &target)?;
+    if had_old {
+        // `temp_lib` is deleted later anyway, but the old package can be
+        // large, and this frees the space right away. Not fatal: the new
+        // package is in place. On Windows this fails if a running R has a DLL
+        // of the old package loaded; the file can be renamed, but not deleted.
+        if let Err(err) = std::fs::remove_dir_all(&aside) {
+            debug!("Cannot remove {}: {}", aside.display(), err);
+        }
+    }
     Ok(())
 }
 
-/// An temporary library for `R CMD INSTALL` to build into.
-struct BuildLibrary(PathBuf);
+/// A temporary library inside the real one, deleted when dropped. A package
+/// is built (`R CMD INSTALL`) or staged (from the cache) into it, then
+/// [`move_into_library`] moves it into the real library.
+struct TempLibrary {
+    path: PathBuf,
+    /// Set by [`TempLibrary::keep`]: leave the directory on disk when dropped.
+    keep: std::cell::Cell<bool>,
+}
 
-impl BuildLibrary {
-    fn create(library_path: &Path, name: &str) -> Result<BuildLibrary, Box<dyn Error>> {
+impl TempLibrary {
+    fn create(library_path: &Path, name: &str) -> Result<TempLibrary, Box<dyn Error>> {
         // A leading `.` keeps `rig pkg list` from reading it as a package.
         let path = library_path.join(format!(".rig-build-{}-{}", name, std::process::id()));
         if path.exists() {
@@ -281,21 +317,32 @@ impl BuildLibrary {
         }
         std::fs::create_dir(&path)
             .map_err(|err| format!("cannot create {}: {}", path.display(), err))?;
-        Ok(BuildLibrary(path))
+        Ok(TempLibrary {
+            path,
+            keep: std::cell::Cell::new(false),
+        })
     }
 
     fn path(&self) -> &Path {
-        &self.0
+        &self.path
+    }
+
+    /// Do not delete the directory when dropped, because it holds something
+    /// that must not be lost, e.g. the only copy of a previous install.
+    fn keep(&self) {
+        self.keep.set(true);
     }
 }
 
-impl Drop for BuildLibrary {
+impl Drop for TempLibrary {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        if !self.keep.get() {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
     }
 }
 
-/// `R_LIBS` for an `R CMD INSTALL` that builds into a [`BuildLibrary`]: the
+/// `R_LIBS` for an `R CMD INSTALL` that builds into a [`TempLibrary`]: the
 /// real library first, so that the package's dependencies are found there,
 /// then whatever `R_LIBS` already was. `R CMD INSTALL` puts its `-l` library
 /// in front of this itself.
@@ -620,7 +667,7 @@ fn drop_fields(text: &str, fields: &[&str]) -> String {
 /// Install a source package with `R CMD INSTALL`, and record the provenance in
 /// the result.
 ///
-/// The package is built into a [`BuildLibrary`] and only then replaces any
+/// The package is built into a [`TempLibrary`] and only then replaces any
 /// previous install in `library_path`, the same way a built package does.
 async fn r_cmd_install<F>(
     pkg: &PackageInfo,
@@ -708,7 +755,7 @@ where
     // Build into an empty library and move the package into the real one only
     // once it is complete.
     // `--no-lock`: the build library is private to this install #525
-    let build_lib = BuildLibrary::create(&library_path_abs, package_name)?;
+    let build_lib = TempLibrary::create(&library_path_abs, package_name)?;
     let build_lib_r = crate::utils::r_path(build_lib.path());
     let r_libs = build_r_libs(&library_path_abs, std::env::var("R_LIBS").ok().as_deref());
 
@@ -737,14 +784,7 @@ where
 
         let built = build_lib.path().join(package_name);
         patch_description(&built, pkg)?;
-        move_into_library(&built, &library_path_abs, package_name).map_err(|err| {
-            format!(
-                "cannot move {} into {}: {}",
-                built.display(),
-                library_path.display(),
-                err
-            )
-        })?;
+        move_into_library(&build_lib, &library_path_abs, package_name)?;
 
         // User output: Use custom print function if provided, otherwise use OUTPUT
         let msg = format!("Installed {} {}", package_name, pkg.version);
@@ -1769,6 +1809,73 @@ exit 1"#,
         let desc = std::fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
         assert_eq!(desc, "Package: foo\nVersion: 0.9.0\n");
         assert!(leftovers(&lib).is_empty());
+    }
+
+    /// A library `lib` under `tmp`, and an empty temporary library in it.
+    fn move_setup(tmp: &Path) -> (PathBuf, TempLibrary) {
+        let lib = tmp.join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        let temp_lib = TempLibrary::create(&lib, "foo").unwrap();
+        (lib, temp_lib)
+    }
+
+    #[test]
+    fn move_into_library_replaces_the_old_package() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (lib, temp_lib) = move_setup(tmp.path());
+        std::fs::create_dir_all(lib.join("foo")).unwrap();
+        std::fs::write(lib.join("foo/old"), "").unwrap();
+        std::fs::create_dir_all(temp_lib.path().join("foo")).unwrap();
+        std::fs::write(temp_lib.path().join("foo/new"), "").unwrap();
+
+        move_into_library(&temp_lib, &lib, "foo").unwrap();
+
+        assert!(lib.join("foo/new").exists());
+        assert!(!lib.join("foo/old").exists());
+        assert!(!temp_lib.path().join("foo").exists());
+        assert!(!temp_lib.path().join(".old").exists());
+    }
+
+    #[test]
+    fn move_into_library_works_without_an_old_package() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (lib, temp_lib) = move_setup(tmp.path());
+        std::fs::create_dir_all(temp_lib.path().join("foo")).unwrap();
+        std::fs::write(temp_lib.path().join("foo/new"), "").unwrap();
+
+        move_into_library(&temp_lib, &lib, "foo").unwrap();
+
+        assert!(lib.join("foo/new").exists());
+        assert!(!temp_lib.path().join(".old").exists());
+    }
+
+    #[test]
+    fn move_into_library_puts_the_old_package_back_on_failure() {
+        let tmp = tempfile::tempdir().unwrap();
+        // No `<temp_lib>/foo`, so the second rename fails.
+        let (lib, temp_lib) = move_setup(tmp.path());
+        std::fs::create_dir_all(lib.join("foo")).unwrap();
+        std::fs::write(lib.join("foo/old"), "").unwrap();
+
+        assert!(move_into_library(&temp_lib, &lib, "foo").is_err());
+
+        assert!(lib.join("foo/old").exists());
+        assert!(!temp_lib.path().join(".old").exists());
+    }
+
+    #[test]
+    fn a_temp_library_is_deleted_unless_kept() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (_lib, temp_lib) = move_setup(tmp.path());
+        let path = temp_lib.path().to_path_buf();
+        drop(temp_lib);
+        assert!(!path.exists());
+
+        let (_lib, temp_lib) = move_setup(tmp.path());
+        let path = temp_lib.path().to_path_buf();
+        temp_lib.keep();
+        drop(temp_lib);
+        assert!(path.exists());
     }
 
     #[test]
