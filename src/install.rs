@@ -707,6 +707,7 @@ where
 
     // Build into an empty library and move the package into the real one only
     // once it is complete.
+    // `--no-lock`: the build library is private to this install #525
     let build_lib = BuildLibrary::create(&library_path_abs, package_name)?;
     let build_lib_r = crate::utils::r_path(build_lib.path());
     let r_libs = build_r_libs(&library_path_abs, std::env::var("R_LIBS").ok().as_deref());
@@ -715,6 +716,7 @@ where
     let status = Command::new(r_binary)
         .arg("CMD")
         .arg("INSTALL")
+        .arg("--no-lock")
         .arg("-l")
         .arg(&build_lib_r)
         .arg(&package_path_r)
@@ -1662,14 +1664,26 @@ mod tests {
     // ----------------------------------------------------------------
     // Building a source package
 
-    /// A stand-in for `R` that handles `R CMD INSTALL -l <lib> <pkg>` by
-    /// running the shell snippet `body` with `$lib` set, so that tests can see
-    /// what rig asks of a build without a real R.
+    /// A stand-in for `R` that handles `R CMD INSTALL ... -l <lib> <pkg>` by
+    /// running the shell snippet `body` with `$lib` set to the `-l` library and
+    /// `$args` to all arguments, so that tests can see what rig asks of a
+    /// build without a real R.
     #[cfg(unix)]
     fn fake_r(dir: &Path, body: &str) -> String {
         use std::os::unix::fs::PermissionsExt;
         let path = dir.join("R");
-        std::fs::write(&path, format!("#!/bin/sh\nlib=\"$4\"\n{}\n", body)).unwrap();
+        let script = format!(
+            r#"#!/bin/sh
+args="$*"
+while [ $# -gt 0 ]; do
+  if [ "$1" = "-l" ]; then lib="$2"; fi
+  shift
+done
+{}
+"#,
+            body
+        );
+        std::fs::write(&path, script).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         path.display().to_string()
     }
@@ -1705,7 +1719,8 @@ mod tests {
             r#"mkdir -p "$lib/foo"
 printf 'Package: foo\nVersion: 1.0.0\n' > "$lib/foo/DESCRIPTION"
 echo "$lib" > "$lib/foo/built-in"
-echo "$R_LIBS" > "$lib/foo/r-libs""#,
+echo "$R_LIBS" > "$lib/foo/r-libs"
+echo "$args" > "$lib/foo/args""#,
         );
 
         r_cmd_install::<fn(&str)>(&pkg, &lib, &r, None)
@@ -1718,6 +1733,12 @@ echo "$R_LIBS" > "$lib/foo/r-libs""#,
         assert_ne!(built_in, lib);
         let r_libs = std::fs::read_to_string(lib.join("foo/r-libs")).unwrap();
         assert_eq!(r_libs.trim().split(':').next(), lib.to_str());
+        let args = std::fs::read_to_string(lib.join("foo/args")).unwrap();
+        assert!(
+            args.split_whitespace().any(|a| a == "--no-lock"),
+            "{}",
+            args
+        );
         let desc = std::fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
         assert!(desc.contains("RemoteHash: abc\n"), "{}", desc);
         assert!(leftovers(&lib).is_empty());
