@@ -2376,7 +2376,7 @@ echo "$o" > "$lib/foo/had-object""#,
     #[test]
     fn an_untracked_git_source_is_an_error() {
         let tmp = tempfile::tempdir().unwrap();
-        let status = std::process::Command::new("git")
+        let status = std::process::Command::new(crate::pkgsource::git::tests::git_binary())
             .args(["init", "--quiet"])
             .current_dir(tmp.path())
             .status()
@@ -2415,7 +2415,7 @@ echo "$o" > "$lib/foo/had-object""#,
                 "init",
             ],
         ] {
-            let status = std::process::Command::new("git")
+            let status = std::process::Command::new(crate::pkgsource::git::tests::git_binary())
                 .args(&args)
                 .current_dir(&checkout)
                 .status()

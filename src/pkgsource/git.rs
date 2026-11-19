@@ -467,7 +467,7 @@ pub(crate) mod tests {
     /// `PATH` env var (see `utils::tests`, which does exactly that) while
     /// tests run in parallel -- a `Command::new("git")` PATH lookup would
     /// otherwise randomly fail with ENOENT depending on scheduling.
-    fn git_binary() -> &'static str {
+    pub(crate) fn git_binary() -> &'static str {
         for candidate in [
             "/usr/bin/git",
             "/usr/local/bin/git",
