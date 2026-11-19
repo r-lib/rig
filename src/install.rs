@@ -965,20 +965,31 @@ where
         } else {
             run_dir.path().join(package_name)
         };
-        if staged.exists() {
-            std::fs::remove_dir_all(&staged)
-                .map_err(|err| format!("cannot remove {}: {}", staged.display(), err))?;
-        }
         debug!(
             "Staging package {} from {} to {} for an out-of-tree build",
             package_name,
             package_path_abs.display(),
             staged.display()
         );
-        let copied = if is_git {
-            stage_tracked_source(&package_path_abs, &staged)
-        } else {
-            stage_local_source(&package_path_abs, &staged)
+        // Removing the old copy, running git and copying the files all block,
+        // so do them off the async runtime, like the build below.
+        let copied = {
+            let src = package_path_abs.clone();
+            let dst = staged.clone();
+            tokio::task::spawn_blocking(move || -> Result<(), String> {
+                if dst.exists() {
+                    std::fs::remove_dir_all(&dst)
+                        .map_err(|err| format!("cannot remove {}: {}", dst.display(), err))?;
+                }
+                let copied = if is_git {
+                    stage_tracked_source(&src, &dst)
+                } else {
+                    stage_local_source(&src, &dst)
+                };
+                copied.map_err(|err| err.to_string())
+            })
+            .await
+            .map_err(|err| format!("copying task failed: {}", err))?
         };
         copied.map_err(|err| {
             let msg = format!(
