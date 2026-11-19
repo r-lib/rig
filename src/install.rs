@@ -588,21 +588,23 @@ fn path_from_git(bytes: &[u8]) -> Result<PathBuf, Box<dyn Error>> {
     }
 }
 
-/// Stage a package directory that is, or is inside, a git checkout, from the
-/// files git specifically tracks. Returns `false` if git does not track the
-/// package in `src`, e.g. because it is not in a git checkout, or only in the
-/// work tree of an unrelated repository.
-fn stage_tracked_source(src: &Path, dst: &Path) -> Result<bool, Box<dyn Error>> {
-    if !src.ancestors().any(|dir| dir.join(".git").exists()) {
-        return Ok(false);
-    }
+/// Stage a package directory in a git checkout (the package may be in a
+/// subdirectory of the checkout) from the files git tracks, leaving out
+/// anything an earlier build left behind.
+fn stage_tracked_source(src: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
     let output = std::process::Command::new("git")
         .args(["ls-files", "-z", "--cached"])
         .current_dir(src)
         .env("GIT_TERMINAL_PROMPT", "0")
-        .output()?;
+        .output()
+        .map_err(|err| format!("cannot run git: {}", err))?;
     if !output.status.success() {
-        return Ok(false);
+        return Err(format!(
+            "`git ls-files` failed in {}: {}",
+            src.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        )
+        .into());
     }
     let tracked = output
         .stdout
@@ -611,7 +613,7 @@ fn stage_tracked_source(src: &Path, dst: &Path) -> Result<bool, Box<dyn Error>> 
         .map(path_from_git)
         .collect::<Result<Vec<_>, _>>()?;
     if !tracked.iter().any(|rel| rel == Path::new("DESCRIPTION")) {
-        return Ok(false);
+        return Err(format!("git does not track a DESCRIPTION file in {}", src.display()).into());
     }
 
     std::fs::create_dir_all(dst)?;
@@ -634,7 +636,7 @@ fn stage_tracked_source(src: &Path, dst: &Path) -> Result<bool, Box<dyn Error>> 
             std::fs::copy(&from, &to)?;
         }
     }
-    Ok(true)
+    Ok(())
 }
 
 fn stage_local_source_entries(src: &Path, dst: &Path, top: bool) -> Result<(), Box<dyn Error>> {
@@ -962,13 +964,15 @@ where
 
     // `R CMD INSTALL` builds a source directory in place and leaves the
     // compiled artifacts (`.o`/`.so`, a generated `src/Makevars`, `config.log`,
-    // ...) behind, we want to build directories from a copy -- either a regular
-    // copy (for a local directory), or a copy of tracked sources (for a git
-    // checkout).
+    // ...) behind, we want to build directories from a copy -- a copy of the
+    // tracked sources for a git checkout, and a regular copy for anything else
+    // (a local directory, or an extracted `url::` archive in the cache).
     //
     // A tarball/zip or an already-built binary is unaffected -- R (or rig's
     // own unpacker) already extracts those into a throwaway location.
-    let is_local = pkg.remote.get(REMOTE_TYPE_FIELD).map(String::as_str) == Some("local");
+    let remote_type = pkg.remote.get(REMOTE_TYPE_FIELD).map(String::as_str);
+    let is_local = remote_type == Some("local");
+    let is_git = matches!(remote_type, Some("git") | Some("github"));
     let package_path_abs = if package_path_abs.is_dir() {
         let staged = if is_local {
             crate::cache::local_pkg_build_dir(&package_path_abs)?
@@ -985,14 +989,10 @@ where
             package_path_abs.display(),
             staged.display()
         );
-        let copied = if is_local {
-            stage_local_source(&package_path_abs, &staged)
+        let copied = if is_git {
+            stage_tracked_source(&package_path_abs, &staged)
         } else {
-            match stage_tracked_source(&package_path_abs, &staged) {
-                Ok(true) => Ok(()),
-                Ok(false) => stage_local_source(&package_path_abs, &staged),
-                Err(err) => Err(err),
-            }
+            stage_local_source(&package_path_abs, &staged)
         };
         copied.map_err(|err| {
             let msg = format!(
@@ -2332,13 +2332,13 @@ exit 1"#,
         );
     }
 
-    /// A `git` source package at `checkout`, and an empty library.
+    /// A source package of `remote_type` at `checkout`, and an empty library.
     #[cfg(unix)]
-    fn git_source_setup(tmp: &Path, checkout: &Path) -> (PackageInfo, PathBuf) {
+    fn dir_source_setup(tmp: &Path, checkout: &Path, remote_type: &str) -> (PackageInfo, PathBuf) {
         let (mut pkg, lib) = source_setup(tmp);
         pkg.file_path = checkout.to_path_buf();
         pkg.remote
-            .insert(REMOTE_TYPE_FIELD.to_string(), "git".to_string());
+            .insert(REMOTE_TYPE_FIELD.to_string(), remote_type.to_string());
         (pkg, lib)
     }
 
@@ -2358,17 +2358,18 @@ echo "$o" > "$lib/foo/had-object""#,
         )
     }
 
-    /// A git checkout in the cache is shared by every build of its commit, so
-    /// a build must not leave its object files in it.
+    /// An extracted `url::` archive in the cache is shared by every build of
+    /// it, so a build must not leave its object files in it. It is not a git
+    /// checkout, so it is copied without git.
     #[cfg(unix)]
     #[tokio::test]
-    async fn a_source_directory_is_built_from_a_copy() {
+    async fn a_url_source_directory_is_built_from_a_copy() {
         let tmp = tempfile::tempdir().unwrap();
         let checkout = tmp.path().join("checkout");
         std::fs::create_dir_all(checkout.join("src")).unwrap();
         std::fs::write(checkout.join("DESCRIPTION"), DESC).unwrap();
         std::fs::write(checkout.join("src/foo.c"), "").unwrap();
-        let (pkg, lib) = git_source_setup(tmp.path(), &checkout);
+        let (pkg, lib) = dir_source_setup(tmp.path(), &checkout, "url");
         let r = fake_r_building_a_directory(tmp.path());
 
         r_cmd_install::<fn(&str)>(&pkg, &lib, &r, None)
@@ -2384,10 +2385,10 @@ echo "$o" > "$lib/foo/had-object""#,
         assert!(!Path::new(built_from.trim()).exists());
     }
 
-    /// A package that is not tracked by the repository it happens to be in
-    /// (e.g. a cache directory inside a project) is copied as it is.
+    /// A git source whose `DESCRIPTION` git does not track is an error, not
+    /// a silent fallback to copying everything.
     #[test]
-    fn an_untracked_directory_in_a_repository_is_copied_whole() {
+    fn an_untracked_git_source_is_an_error() {
         let tmp = tempfile::tempdir().unwrap();
         let status = std::process::Command::new("git")
             .args(["init", "--quiet"])
@@ -2395,12 +2396,12 @@ echo "$o" > "$lib/foo/had-object""#,
             .status()
             .unwrap();
         assert!(status.success());
-        let src = tmp.path().join("cache/pkg");
+        let src = tmp.path().join("pkg");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::write(src.join("DESCRIPTION"), DESC).unwrap();
 
         let dst = tmp.path().join("staged");
-        assert!(!stage_tracked_source(&src, &dst).unwrap());
+        assert!(stage_tracked_source(&src, &dst).is_err());
         assert!(!dst.exists());
     }
 
@@ -2436,7 +2437,7 @@ echo "$o" > "$lib/foo/had-object""#,
             assert!(status.success());
         }
         std::fs::write(checkout.join("src/foo.o"), "stale").unwrap();
-        let (pkg, lib) = git_source_setup(tmp.path(), &checkout);
+        let (pkg, lib) = dir_source_setup(tmp.path(), &checkout, "git");
         let r = fake_r_building_a_directory(tmp.path());
 
         r_cmd_install::<fn(&str)>(&pkg, &lib, &r, None)
