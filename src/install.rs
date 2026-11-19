@@ -385,6 +385,95 @@ impl Drop for TempLibrary {
     }
 }
 
+/// The pid of the rig process that created `name` in a library, if `name` is
+/// one of rig's temporary directories: a [`TempLibrary`]
+/// (`.rig-<pid>-<n>`), or a staging directory of rig 0.10 and 0.11
+/// (`.rig-staging-<pkg>-<pid>`; package names cannot contain `-`).
+fn temp_library_pid(name: &str) -> Option<u32> {
+    if let Some(rest) = name.strip_prefix(".rig-staging-") {
+        let (_pkg, pid) = rest.rsplit_once('-')?;
+        return pid.parse().ok();
+    }
+    let (pid, n) = name.strip_prefix(".rig-")?.split_once('-')?;
+    n.parse::<usize>().ok()?;
+    pid.parse().ok()
+}
+
+/// Remove the temporary directories that rig processes that no longer run
+/// left in `library_path`, e.g. because they were killed in the middle of an
+/// install. Such a directory may hold a complete build, so it can be large.
+///
+/// A directory of a running process is left alone: it may be installing into
+/// the same library right now. A reused pid only means that a directory is
+/// removed later. Not fatal: errors are only logged.
+fn remove_stale_temp_libraries(library_path: &Path) {
+    let entries = match std::fs::read_dir(library_path) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    let me = std::process::id();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let pid = match name.to_str().and_then(temp_library_pid) {
+            Some(pid) => pid,
+            None => continue,
+        };
+        if pid == me || process_is_running(pid) {
+            continue;
+        }
+        let path = entry.path();
+        match std::fs::remove_dir_all(&path) {
+            Ok(()) => info!("Removed stale temporary library {}", path.display()),
+            Err(err) => debug!("Cannot remove {}: {}", path.display(), err),
+        }
+    }
+}
+
+/// Whether a process with `pid` is running. When in doubt, e.g. because the
+/// process belongs to another user, it is.
+#[cfg(unix)]
+fn process_is_running(pid: u32) -> bool {
+    let pid = match i32::try_from(pid) {
+        Ok(pid) if pid > 0 => pid,
+        _ => return true,
+    };
+    // SAFETY: signal 0 only checks whether the process exists.
+    if unsafe { libc::kill(pid, 0) } == 0 {
+        return true;
+    }
+    std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+}
+
+/// Whether a process with `pid` is running. When in doubt, e.g. because the
+/// process belongs to another user, it is.
+#[cfg(windows)]
+fn process_is_running(pid: u32) -> bool {
+    use std::ffi::c_void;
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    const ERROR_INVALID_PARAMETER: i32 = 87;
+    const STILL_ACTIVE: u32 = 259;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut c_void;
+        fn GetExitCodeProcess(process: *mut c_void, code: *mut u32) -> i32;
+        fn CloseHandle(handle: *mut c_void) -> i32;
+    }
+    // SAFETY: plain calls on a process handle that is closed before returning.
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            // `ERROR_INVALID_PARAMETER` means there is no process with this
+            // pid. Anything else, e.g. access denied, means there is one.
+            return std::io::Error::last_os_error().raw_os_error() != Some(ERROR_INVALID_PARAMETER);
+        }
+        let mut code = 0u32;
+        let ok = GetExitCodeProcess(handle, &mut code);
+        CloseHandle(handle);
+        // An exited process can still have a handle open somewhere.
+        ok == 0 || code == STILL_ACTIVE
+    }
+}
+
 /// `R_LIBS` for an `R CMD INSTALL` that builds into a [`TempLibrary`]: the
 /// real library first, so that the package's dependencies are found there,
 /// then whatever `R_LIBS` already was. `R CMD INSTALL` puts its `-l` library
@@ -1026,6 +1115,8 @@ where
         "Installing {} packages in dependency order with max_concurrent={}",
         package_count, max_concurrent
     );
+
+    remove_stale_temp_libraries(library_path);
 
     let package_map: Arc<HashMap<String, PackageInfo>> = Arc::new(
         packages
@@ -1942,6 +2033,68 @@ exit 1"#,
             assert_eq!(files.len(), 1, "round {}", round);
             let entries: Vec<_> = std::fs::read_dir(&lib).unwrap().collect();
             assert_eq!(entries.len(), 1, "round {}: leftovers", round);
+        }
+    }
+
+    #[test]
+    fn temp_library_pid_parses_rigs_temporary_directories() {
+        assert_eq!(temp_library_pid(".rig-123-0"), Some(123));
+        assert_eq!(temp_library_pid(".rig-123-45"), Some(123));
+        assert_eq!(temp_library_pid(".rig-staging-foo-123"), Some(123));
+        assert_eq!(temp_library_pid(".rig-staging-foo.bar-123"), Some(123));
+        assert_eq!(temp_library_pid("foo"), None);
+        assert_eq!(temp_library_pid(".rig-123"), None);
+        assert_eq!(temp_library_pid(".rig-abc-0"), None);
+        assert_eq!(temp_library_pid(".rig-123-x"), None);
+        assert_eq!(temp_library_pid(".rig-staging-foo"), None);
+        assert_eq!(temp_library_pid("_logs"), None);
+    }
+
+    /// The pid of a process that has exited.
+    fn dead_pid() -> u32 {
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("--list")
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        pid
+    }
+
+    #[test]
+    fn process_is_running_knows_running_and_exited_processes() {
+        assert!(process_is_running(std::process::id()));
+        assert!(!process_is_running(dead_pid()));
+    }
+
+    #[test]
+    fn stale_temp_libraries_are_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = tmp.path();
+        let dead = dead_pid();
+        let me = std::process::id();
+        let stale = [
+            format!(".rig-{}-0", dead),
+            format!(".rig-staging-foo-{}", dead),
+        ];
+        let kept = [
+            format!(".rig-{}-0", me),
+            "foo".to_string(),
+            "_logs".to_string(),
+            ".rig-other".to_string(),
+        ];
+        for name in stale.iter().chain(kept.iter()) {
+            std::fs::create_dir_all(lib.join(name).join("sub")).unwrap();
+        }
+
+        remove_stale_temp_libraries(lib);
+
+        for name in &stale {
+            assert!(!lib.join(name).exists(), "{}", name);
+        }
+        for name in &kept {
+            assert!(lib.join(name).exists(), "{}", name);
         }
     }
 
