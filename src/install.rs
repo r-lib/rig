@@ -111,6 +111,19 @@ pub async fn install_package<F>(
 where
     F: Fn(&str) + Send + Sync + 'static,
 {
+    // Guard against malicious package names (e.g. "../victim") from the
+    // package's `DESCRIPTION` file.
+    if !crate::pkgsource::is_r_package_name(&pkg.name) {
+        let msg = format!(
+            "Failed to install {}: {:?} is not a valid R package name",
+            pkg.file_path.display(),
+            pkg.name
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        return Err(Box::new(Reported(msg)));
+    }
+
     let archive = if pkg.binary {
         Some(pkg.file_path.clone())
     } else {
@@ -801,12 +814,16 @@ pub(crate) fn single_subdir(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
 /// itself — which is why `packageDescription()` in R shows these fields but
 /// `installed.packages()` does not.
 fn patch_description(pkg_dir: &Path, pkg: &PackageInfo) -> Result<(), Box<dyn Error>> {
-    let path = pkg_dir.join("DESCRIPTION");
-    let text = std::fs::read_to_string(&path)
-        .map_err(|err| format!("cannot read {}: {}", path.display(), err))?;
+    rewrite_description(pkg_dir, pkg)
+        .map_err(|err| format!("cannot patch {}/DESCRIPTION: {}", pkg_dir.display(), err))?;
+    Ok(())
+}
+
+/// `text` with the provenance fields for `pkg` set.
+fn patched_description(text: &str, pkg: &PackageInfo) -> String {
     let mut drop = vec![REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD];
     drop.extend_from_slice(REMOTE_GIT_FIELDS);
-    let mut out = drop_fields(&text, &drop);
+    let mut out = drop_fields(text, &drop);
 
     if !out.is_empty() && !out.ends_with('\n') {
         out.push('\n');
@@ -826,9 +843,176 @@ fn patch_description(pkg_dir: &Path, pkg: &PackageInfo) -> Result<(), Box<dyn Er
             out.push_str(&format!("{}: {}\n", field, value));
         }
     }
+    out
+}
 
-    std::fs::write(&path, out)
-        .map_err(|err| format!("cannot write {}: {}", path.display(), err))?;
+/// Patch the `DESCRIPTION` file of the package in `pkg_dir` for `pkg`. Hardened
+/// against malicious symlinks.
+#[cfg(unix)]
+fn rewrite_description(pkg_dir: &Path, pkg: &PackageInfo) -> std::io::Result<()> {
+    use std::io::{Read, Write};
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::io::{AsRawFd, FromRawFd};
+
+    // Note that we operate on file descriptors (i.e. with openat, unlinkat,
+    // renameat) to sidestep TOCTOU attacks. Unfortunately this requires going
+    // through libc.
+
+    fn open_in(
+        dir: &std::fs::File,
+        name: &std::ffi::CStr,
+        flags: libc::c_int,
+    ) -> std::io::Result<std::fs::File> {
+        let fd = unsafe {
+            libc::openat(
+                dir.as_raw_fd(),
+                name.as_ptr(),
+                flags | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                0o600 as libc::c_uint,
+            )
+        };
+        if fd < 0 {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(unsafe { std::fs::File::from_raw_fd(fd) })
+        }
+    }
+
+    let dir = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
+        .open(pkg_dir)?;
+    let name = std::ffi::CString::new("DESCRIPTION").unwrap();
+    let tmp_name =
+        std::ffi::CString::new(format!("DESCRIPTION.rig-{}.tmp", std::process::id())).unwrap();
+
+    let mut file = open_in(&dir, &name, libc::O_RDONLY)?;
+    let mut text = String::new();
+    file.read_to_string(&mut text)?;
+    let out = patched_description(&text, pkg);
+
+    unsafe { libc::unlinkat(dir.as_raw_fd(), tmp_name.as_ptr(), 0) };
+    let mut tmp = open_in(
+        &dir,
+        &tmp_name,
+        libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL,
+    )?;
+    let result = (|| {
+        // Match the mode R gives.
+        use std::os::unix::fs::PermissionsExt;
+        tmp.set_permissions(std::fs::Permissions::from_mode(0o644))?;
+        tmp.write_all(out.as_bytes())?;
+        let renamed = unsafe {
+            libc::renameat(
+                dir.as_raw_fd(),
+                tmp_name.as_ptr(),
+                dir.as_raw_fd(),
+                name.as_ptr(),
+            )
+        };
+        if renamed < 0 {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
+    })();
+    if result.is_err() {
+        unsafe { libc::unlinkat(dir.as_raw_fd(), tmp_name.as_ptr(), 0) };
+    }
+    result
+}
+
+/// Patch the `DESCRIPTION` file of the package in `pkg_dir` for `pkg`. Hardened
+/// against malicious symlinks.
+#[cfg(not(unix))]
+fn rewrite_description(pkg_dir: &Path, pkg: &PackageInfo) -> std::io::Result<()> {
+    use std::io::{Read, Write};
+    use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    const FILE_READ_ATTRIBUTES: u32 = 0x80;
+    const FILE_SHARE_READ: u32 = 0x1;
+    const FILE_SHARE_WRITE: u32 = 0x2;
+
+    let is_link =
+        |meta: &std::fs::Metadata| meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0;
+
+    // Unlike on Unix, this cannot be made free of TOCTOU races: there is no
+    // handle-relative API in std, so the file is still reached by path.
+    // Instead, the package directory and each directory above it are held
+    // open without FILE_SHARE_DELETE, which stops them being renamed or
+    // replaced by a junction while we work, and the package directory and its
+    // parent (the private build library) are required to not be links. Higher
+    // ancestors may legitimately be links, so they are not checked. Whatever
+    // those directories resolved to when we opened them is trusted, so a
+    // process that replaces one of them before this point can still redirect
+    // the write.
+    //
+    // Held until the end of the function.
+    let mut held = vec![];
+    for (depth, ancestor) in std::path::absolute(pkg_dir)?.ancestors().enumerate() {
+        let dir = OpenOptions::new()
+            .access_mode(FILE_READ_ATTRIBUTES)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(ancestor)?;
+        if depth < 2 {
+            let meta = dir.metadata()?;
+            if is_link(&meta) || !meta.is_dir() {
+                return Err(std::io::Error::other(format!(
+                    "{} is not a real directory",
+                    ancestor.display()
+                )));
+            }
+        }
+        held.push(dir);
+    }
+
+    let path = pkg_dir.join("DESCRIPTION");
+    let mut file = OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(&path)?;
+    if is_link(&file.metadata()?) {
+        return Err(std::io::Error::other("DESCRIPTION is a link"));
+    }
+    let mut text = String::new();
+    file.read_to_string(&mut text)?;
+    drop(file);
+    let out = patched_description(&text, pkg);
+
+    let mut tmp = path.as_os_str().to_os_string();
+    tmp.push(format!(".rig-{}.tmp", std::process::id()));
+    let tmp = PathBuf::from(tmp);
+    let _ = std::fs::remove_file(&tmp);
+    let result = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
+        .and_then(|mut file| file.write_all(out.as_bytes()))
+        .and_then(|()| std::fs::rename(&tmp, &path));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
+/// Check that what a source build produced is a package rig can safely work
+/// on: a real directory with a regular `DESCRIPTION` file.
+fn check_built_package(dir: &Path) -> Result<(), Box<dyn Error>> {
+    let meta = std::fs::symlink_metadata(dir)
+        .map_err(|err| format!("cannot find {}: {}", dir.display(), err))?;
+    if !meta.is_dir() {
+        bail!("{} is not a directory", dir.display());
+    }
+    let desc = dir.join("DESCRIPTION");
+    let meta = std::fs::symlink_metadata(&desc)
+        .map_err(|err| format!("cannot find {}: {}", desc.display(), err))?;
+    if !meta.is_file() {
+        bail!("{} is not a regular file", desc.display());
+    }
     Ok(())
 }
 
@@ -952,35 +1136,28 @@ where
     // compiled artifacts (`.o`/`.so`, a generated `src/Makevars`, `config.log`,
     // ...) behind, we want to build directories from a copy -- a copy of the
     // tracked sources for a git checkout, and a regular copy for anything else
-    // (a local directory, or an extracted `url::` archive in the cache).
+    // (a local directory, or an extracted `url::` archive in the cache). The
+    // copy goes into this build's own temporary directory, so that concurrent
+    // builds of the same source never share it.
     //
     // A tarball/zip or an already-built binary is unaffected -- R (or rig's
     // own unpacker) already extracts those into a throwaway location.
     let remote_type = pkg.remote.get(REMOTE_TYPE_FIELD).map(String::as_str);
-    let is_local = remote_type == Some("local");
     let is_git = matches!(remote_type, Some("git") | Some("github"));
     let package_path_abs = if package_path_abs.is_dir() {
-        let staged = if is_local {
-            crate::cache::local_pkg_build_dir(&package_path_abs)?
-        } else {
-            run_dir.path().join(package_name)
-        };
+        let staged = run_dir.path().join(package_name);
         debug!(
             "Staging package {} from {} to {} for an out-of-tree build",
             package_name,
             package_path_abs.display(),
             staged.display()
         );
-        // Removing the old copy, running git and copying the files all block,
-        // so do them off the async runtime, like the build below.
+        // Running git and copying the files block, so do them off the async
+        // runtime, like the build below.
         let copied = {
             let src = package_path_abs.clone();
             let dst = staged.clone();
             tokio::task::spawn_blocking(move || -> Result<(), String> {
-                if dst.exists() {
-                    std::fs::remove_dir_all(&dst)
-                        .map_err(|err| format!("cannot remove {}: {}", dst.display(), err))?;
-                }
                 let copied = if is_git {
                     stage_tracked_source(&src, &dst)
                 } else {
@@ -1032,13 +1209,16 @@ where
         .map_err(|err| format!("cannot run {}: {}", r_binary, err))?;
 
     if status.success() {
+        let built = build_lib.path().join(package_name);
+        check_built_package(&built)
+            .map_err(|err| format!("the build did not produce a usable package: {}", err))?;
+
         // Before `patch_description`, so that the cached archive is what the
         // package built, and not what rig recorded in it. The provenance fields
         // are added on every install anyway, including on the installs that come
         // out of this cache.
         cache_build(pkg, build_lib.path()).await;
 
-        let built = build_lib.path().join(package_name);
         patch_description(&built, pkg)?;
         move_into_library(&build_lib, &library_path_abs, package_name)?;
 
@@ -2071,6 +2251,93 @@ exit 1"#,
         assert!(leftovers(&lib).is_empty());
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_build_with_a_linked_description_is_not_installed_or_cached() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (mut pkg, lib) = source_setup(tmp.path());
+        let cache = tmp.path().join("built/foo_1.0.0.tar.gz");
+        pkg.built = Some(cache.clone());
+        let other = tmp.path().join("other");
+        std::fs::write(&other, DESC).unwrap();
+        let r = fake_r(
+            tmp.path(),
+            &format!(
+                r#"mkdir -p "$lib/foo"
+ln -s '{}' "$lib/foo/DESCRIPTION""#,
+                other.display()
+            ),
+        );
+
+        assert!(r_cmd_install::<fn(&str)>(&pkg, &lib, &r, None)
+            .await
+            .is_err());
+
+        assert!(!lib.join("foo").exists());
+        assert!(!cache.exists());
+        assert_eq!(std::fs::read_to_string(&other).unwrap(), DESC);
+        assert!(leftovers(&lib).is_empty());
+    }
+
+    /// A package directory `foo` under a fresh temporary directory, with a
+    /// regular `DESCRIPTION`.
+    #[cfg(unix)]
+    fn built_package() -> (tempfile::TempDir, PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("foo");
+        std::fs::create_dir_all(dir.join("R")).unwrap();
+        std::fs::write(dir.join("DESCRIPTION"), DESC).unwrap();
+        std::fs::write(dir.join("R/foo"), "x").unwrap();
+        (tmp, dir)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_built_package_must_be_a_real_directory() {
+        let (_tmp, dir) = built_package();
+        check_built_package(&dir).unwrap();
+
+        let (tmp, dir) = built_package();
+        let link = tmp.path().join("bar");
+        std::os::unix::fs::symlink(&dir, &link).unwrap();
+        assert!(check_built_package(&link).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn patching_never_writes_through_a_link() {
+        let pkg = info("foo", Path::new("unused"), Some("abc"), &[]);
+
+        // A symlink is not followed at all.
+        let (tmp, dir) = built_package();
+        let other = tmp.path().join("other");
+        std::fs::rename(dir.join("DESCRIPTION"), &other).unwrap();
+        std::os::unix::fs::symlink(&other, dir.join("DESCRIPTION")).unwrap();
+        assert!(patch_description(&dir, &pkg).is_err());
+        assert_eq!(std::fs::read_to_string(&other).unwrap(), DESC);
+
+        // Nor is a symlinked package directory.
+        let (tmp, dir) = built_package();
+        let moved = tmp.path().join("moved");
+        std::fs::rename(&dir, &moved).unwrap();
+        std::os::unix::fs::symlink(&moved, &dir).unwrap();
+        assert!(patch_description(&dir, &pkg).is_err());
+        assert_eq!(
+            std::fs::read_to_string(moved.join("DESCRIPTION")).unwrap(),
+            DESC
+        );
+        assert_eq!(std::fs::read_dir(&moved).unwrap().count(), 2);
+
+        // A hard link is replaced, not written through.
+        let (tmp, dir) = built_package();
+        let other = tmp.path().join("other");
+        std::fs::hard_link(dir.join("DESCRIPTION"), &other).unwrap();
+        patch_description(&dir, &pkg).unwrap();
+        assert_eq!(std::fs::read_to_string(&other).unwrap(), DESC);
+        let desc = std::fs::read_to_string(dir.join("DESCRIPTION")).unwrap();
+        assert!(desc.contains("RemoteHash: abc\n"), "{}", desc);
+    }
+
     /// A library `lib` under `tmp`, and an empty temporary library in it.
     fn move_setup(tmp: &Path) -> (PathBuf, TempLibrary) {
         let lib = tmp.join("lib");
@@ -2355,6 +2622,34 @@ echo "$o" > "$lib/foo/had-object""#,
         )
     }
 
+    /// Every build of a local directory gets a copy of its own, so that
+    /// concurrent builds of the same directory cannot get in each other's
+    /// way, and nothing of a build is left behind.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_local_source_directory_is_built_from_a_copy_of_its_own() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = tmp.path().join("source");
+        std::fs::create_dir_all(source.join("src")).unwrap();
+        std::fs::write(source.join("DESCRIPTION"), DESC).unwrap();
+        std::fs::write(source.join("src/foo.c"), "").unwrap();
+        let (pkg, lib) = dir_source_setup(tmp.path(), &source, "local");
+        let r = fake_r_building_a_directory(tmp.path());
+
+        let mut built_from = vec![];
+        for _ in 0..2 {
+            r_cmd_install::<fn(&str)>(&pkg, &lib, &r, None)
+                .await
+                .unwrap();
+            let from = std::fs::read_to_string(lib.join("foo/built-from")).unwrap();
+            assert!(!Path::new(from.trim()).exists());
+            built_from.push(from);
+        }
+
+        assert!(!source.join("src/foo.o").exists());
+        assert_ne!(built_from[0], built_from[1]);
+    }
+
     /// An extracted `url::` archive in the cache is shared by every build of
     /// it, so a build must not leave its object files in it. It is not a git
     /// checkout, so it is copied without git.
@@ -2380,6 +2675,29 @@ echo "$o" > "$lib/foo/had-object""#,
             checkout.canonicalize().unwrap()
         );
         assert!(!Path::new(built_from.trim()).exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_package_name_that_is_not_a_name_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = tmp.path().join("source");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("DESCRIPTION"), DESC).unwrap();
+        let r = fake_r(tmp.path(), "exit 1");
+        for name in ["../victim", "/abs", "a/b", ".hidden", "", "1abc"] {
+            let (mut pkg, lib) = dir_source_setup(tmp.path(), &source, "local");
+            pkg.name = name.to_string();
+            let err = install_package::<fn(&str)>(&pkg, &lib, &r, None)
+                .await
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("not a valid R package name"),
+                "{}",
+                err
+            );
+        }
+        assert!(!tmp.path().join("victim").exists());
     }
 
     /// A git source whose `DESCRIPTION` git does not track is an error, not
