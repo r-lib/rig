@@ -2395,27 +2395,42 @@ echo "$o" > "$lib/foo/had-object""#,
         assert!(!Path::new(built_from.trim()).exists());
     }
 
-    #[cfg(unix)]
+    /// The name is checked before anything touches the file system or runs
+    /// R, so this needs no fake R and runs on every platform.
     #[tokio::test]
     async fn a_package_name_that_is_not_a_name_is_refused() {
         let tmp = tempfile::tempdir().unwrap();
-        let source = tmp.path().join("source");
-        std::fs::create_dir_all(&source).unwrap();
-        std::fs::write(source.join("DESCRIPTION"), DESC).unwrap();
-        let r = fake_r(tmp.path(), "exit 1");
-        for name in ["../victim", "/abs", "a/b", ".hidden", "", "1abc"] {
-            let (mut pkg, lib) = dir_source_setup(tmp.path(), &source, "local");
-            pkg.name = name.to_string();
-            let err = install_package::<fn(&str)>(&pkg, &lib, &r, None)
-                .await
-                .unwrap_err();
-            assert!(
-                err.to_string().contains("not a valid R package name"),
-                "{}",
-                err
-            );
+        let lib = tmp.path().join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        let archive = tmp.path().join("foo_1.0.0.tgz");
+        std::fs::write(&archive, "").unwrap();
+        for name in [
+            "../victim",
+            "..\\victim",
+            "/abs",
+            "C:\\abs",
+            "C:abs",
+            "a/b",
+            "a\\b",
+            ".hidden",
+            "",
+            "1abc",
+        ] {
+            for binary in [true, false] {
+                let mut pkg = info(name, &archive, None, &[]);
+                pkg.binary = binary;
+                let err = install_package::<fn(&str)>(&pkg, &lib, "no-such-R", None)
+                    .await
+                    .unwrap_err();
+                assert!(
+                    err.to_string().contains("not a valid R package name"),
+                    "{}",
+                    err
+                );
+            }
         }
         assert!(!tmp.path().join("victim").exists());
+        assert_eq!(std::fs::read_dir(&lib).unwrap().count(), 0);
     }
 
     /// A git source whose `DESCRIPTION` git does not track is an error, not
