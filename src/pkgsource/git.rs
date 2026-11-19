@@ -31,12 +31,20 @@ use crate::utils::http_client_builder;
 /// it doesn't exist yet, its ancestors must already exist for subcommands
 /// other than `init` (`init` creates `dest` itself).
 fn run_git(dest: &Path, args: &[&str]) -> Result<String, Box<dyn Error>> {
+    let stdout = run_git_raw(dest, args)?;
+    Ok(String::from_utf8_lossy(&stdout).trim().to_string())
+}
+
+/// Like [`run_git`], but returns stdout as raw bytes, e.g. for file names
+/// from `git ls-files -z`, which need not be UTF-8.
+pub(crate) fn run_git_raw(dest: &Path, args: &[&str]) -> Result<Vec<u8>, Box<dyn Error>> {
     let output = duct::cmd("git", args)
         .dir(dest)
         .stdout_capture()
         .stderr_capture()
         .unchecked()
-        .run()?;
+        .run()
+        .map_err(|err| format!("cannot run git: {}", err))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(Box::new(simple_error::SimpleError::new(format!(
@@ -46,7 +54,7 @@ fn run_git(dest: &Path, args: &[&str]) -> Result<String, Box<dyn Error>> {
             stderr.trim()
         ))));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    Ok(output.stdout)
 }
 
 /// `init` a repo at `dest`, add `origin` pointing at `url`, and (if `sparse`

@@ -592,22 +592,8 @@ fn path_from_git(bytes: &[u8]) -> Result<PathBuf, Box<dyn Error>> {
 /// subdirectory of the checkout) from the files git tracks, leaving out
 /// anything an earlier build left behind.
 fn stage_tracked_source(src: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
-    let output = std::process::Command::new("git")
-        .args(["ls-files", "-z", "--cached"])
-        .current_dir(src)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .output()
-        .map_err(|err| format!("cannot run git: {}", err))?;
-    if !output.status.success() {
-        return Err(format!(
-            "`git ls-files` failed in {}: {}",
-            src.display(),
-            String::from_utf8_lossy(&output.stderr).trim()
-        )
-        .into());
-    }
-    let tracked = output
-        .stdout
+    let stdout = crate::pkgsource::git::run_git_raw(src, &["ls-files", "-z", "--cached"])?;
+    let tracked = stdout
         .split(|b| *b == 0)
         .filter(|p| !p.is_empty())
         .map(path_from_git)
