@@ -269,7 +269,7 @@ fn move_into_library(
             0 => temp_lib.path().join(".old"),
             n => temp_lib.path().join(format!(".old-{}", n)),
         };
-        match std::fs::rename(&target, &aside) {
+        match rename_retrying(&target, &aside) {
             Ok(()) => asides.push(aside),
             // No old package, or another process has just moved it away.
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
@@ -282,7 +282,7 @@ fn move_into_library(
                 ))
             }
         }
-        match std::fs::rename(&staged, &target) {
+        match rename_retrying(&staged, &target) {
             Ok(()) => break Ok(()),
             // The error kind for renaming onto an existing directory varies
             // between platforms, so look at the target instead.
@@ -309,7 +309,7 @@ fn move_into_library(
         // If another process has put its copy in place, that is newer anyway.
         if let Some(aside) = asides.last() {
             if !target.exists() {
-                if let Err(err) = std::fs::rename(aside, &target) {
+                if let Err(err) = rename_retrying(aside, &target) {
                     temp_lib.keep();
                     msg.push_str(&format!(
                         "; cannot move the previous version back from {}: {}",
@@ -332,6 +332,55 @@ fn move_into_library(
         }
     }
     Ok(())
+}
+
+/// `std::fs::rename`, but on Windows it tries again for a while if the rename
+/// fails because a file is in use. Antivirus software and the search indexer
+/// open newly written files to scan them, and while they do, the files and
+/// the directories that hold them cannot be renamed. This is common right
+/// after a package was built.
+///
+/// It does not try again if `to` exists: that is not going to go away by
+/// waiting, and [`move_into_library`] handles it itself.
+fn rename_retrying(from: &Path, to: &Path) -> std::io::Result<()> {
+    retry_transient(
+        || std::fs::rename(from, to),
+        |err| is_file_in_use(err) && !to.exists(),
+    )
+}
+
+/// Whether `err` is Windows refusing to rename or delete a file because some
+/// process has it open. Never true on other systems, where open files do not
+/// stop either.
+fn is_file_in_use(err: &std::io::Error) -> bool {
+    // ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION
+    cfg!(windows) && matches!(err.raw_os_error(), Some(5) | Some(32))
+}
+
+/// Run `op`, and run it again, with increasing waits in between, as long as
+/// it fails with an error that `transient` says may go away. It waits about
+/// 1.3 seconds in total before it gives up and returns the last error.
+///
+/// The waits block the thread. They only happen when something has already
+/// gone wrong, and they are short, so this is fine in an async install task.
+fn retry_transient<T>(
+    mut op: impl FnMut() -> std::io::Result<T>,
+    transient: impl Fn(&std::io::Error) -> bool,
+) -> std::io::Result<T> {
+    const RETRIES: u32 = 7;
+    let mut wait = std::time::Duration::from_millis(10);
+    let mut retries = 0;
+    loop {
+        match op() {
+            Err(err) if retries < RETRIES && transient(&err) => {
+                debug!("{}, trying again in {:?}", err, wait);
+                std::thread::sleep(wait);
+                wait *= 2;
+                retries += 1;
+            }
+            result => return result,
+        }
+    }
 }
 
 /// A temporary library inside the real one, deleted when dropped. A package
@@ -2034,6 +2083,65 @@ exit 1"#,
             let entries: Vec<_> = std::fs::read_dir(&lib).unwrap().collect();
             assert_eq!(entries.len(), 1, "round {}: leftovers", round);
         }
+    }
+
+    fn in_use() -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::PermissionDenied, "in use")
+    }
+
+    #[test]
+    fn retry_transient_tries_again_until_it_works() {
+        let mut calls = 0;
+        let result = retry_transient(
+            || {
+                calls += 1;
+                if calls < 3 {
+                    Err(in_use())
+                } else {
+                    Ok(calls)
+                }
+            },
+            |_| true,
+        );
+        assert_eq!(result.unwrap(), 3);
+    }
+
+    #[test]
+    fn retry_transient_gives_up_eventually() {
+        let mut calls = 0;
+        let result: std::io::Result<()> = retry_transient(
+            || {
+                calls += 1;
+                Err(in_use())
+            },
+            |_| true,
+        );
+        assert!(result.is_err());
+        assert_eq!(calls, 8);
+    }
+
+    #[test]
+    fn retry_transient_does_not_retry_other_errors() {
+        let mut calls = 0;
+        let result: std::io::Result<()> = retry_transient(
+            || {
+                calls += 1;
+                Err(in_use())
+            },
+            |_| false,
+        );
+        assert!(result.is_err());
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn is_file_in_use_is_windows_only() {
+        let denied = std::io::Error::from_raw_os_error(5);
+        let sharing = std::io::Error::from_raw_os_error(32);
+        let missing = std::io::Error::new(std::io::ErrorKind::NotFound, "missing");
+        assert_eq!(is_file_in_use(&denied), cfg!(windows));
+        assert_eq!(is_file_in_use(&sharing), cfg!(windows));
+        assert!(!is_file_in_use(&missing));
     }
 
     #[test]
