@@ -1192,9 +1192,17 @@ where
     let build_lib_r = crate::utils::r_path(build_lib.path());
     let r_libs = build_r_libs(&library_path_abs, std::env::var("R_LIBS").ok().as_deref());
 
+    // A build should only write to its build library, its temporary directory,
+    // and the copy of a source directory.
+    let mut writable = vec![build_lib.path(), run_dir.path()];
+    if package_path_abs.is_dir() {
+        writable.push(&package_path_abs);
+    }
+    let sandbox = crate::sandbox::Sandbox::for_build(&writable)?;
+
     let package_path_r = crate::utils::r_path(&package_path_abs);
-    let status = Command::new(r_binary)
-        .arg("CMD")
+    let mut cmd = Command::new(r_binary);
+    cmd.arg("CMD")
         .arg("INSTALL")
         .arg("--no-lock")
         .arg("-l")
@@ -1203,13 +1211,33 @@ where
         .env("R_LIBS", &r_libs)
         .current_dir(run_dir.path())
         .stdout(Stdio::from(log_file))
-        .stderr(Stdio::from(log_file_stderr))
+        .stderr(Stdio::from(log_file_stderr));
+    if let Some(sandbox) = &sandbox {
+        cmd.env("TMPDIR", run_dir.path());
+        sandbox.apply(&mut cmd);
+    }
+    let status = cmd
         .status()
         .await
         .map_err(|err| format!("cannot run {}: {}", r_binary, err))?;
+    drop(sandbox);
 
     if status.success() {
-        let built = build_lib.path().join(package_name);
+        // Take the package out of the build library before looking at it, and
+        // install it from a second temporary library. A sandboxed build may
+        // have left processes running, which can still write to the build
+        // library, but not to a directory created after they were sandboxed:
+        // Landlock rules belong to directories, so such a process can no
+        // longer create, rename or replace anything in the moved tree. That
+        // is what makes the check below still hold when rig archives and
+        // installs the package. It also keeps the previous install, which
+        // `move_into_library` moves aside into the temporary library, and
+        // whose files may be links into rig's caches, out of the build's
+        // reach.
+        let out_lib = TempLibrary::create(&library_path_abs)?;
+        let built = out_lib.path().join(package_name);
+        rename_retrying(&build_lib.path().join(package_name), &built)
+            .map_err(|err| format!("the build did not produce a usable package: {}", err))?;
         check_built_package(&built)
             .map_err(|err| format!("the build did not produce a usable package: {}", err))?;
 
@@ -1217,10 +1245,10 @@ where
         // package built, and not what rig recorded in it. The provenance fields
         // are added on every install anyway, including on the installs that come
         // out of this cache.
-        cache_build(pkg, build_lib.path()).await;
+        cache_build(pkg, out_lib.path()).await;
 
         patch_description(&built, pkg)?;
-        move_into_library(&build_lib, &library_path_abs, package_name)?;
+        move_into_library(&out_lib, &library_path_abs, package_name)?;
 
         // User output: Use custom print function if provided, otherwise use OUTPUT
         let msg = format!("Installed {} {}", package_name, pkg.version);

@@ -117,6 +117,16 @@ configuration file takes precedence over rig's built-in default.
   downloads them at most once a day, and uses the copy built into rig if it
   cannot download them.
 
+- `sandbox` (`RIG_SANDBOX`, `--sandbox`): Linux only. Whether rig builds source
+  packages in a lightweight sandbox, restricting writes outside the build
+  directory (in keeping with CRAN policy). Builds can still read everything the
+  user can and use the network.
+
+  - `off`, the default: no sandbox.
+  - `auto`: use the sandbox if the host machine supports it (which generally
+    requires Linux 6.2 or later), and warn if it does not.
+  - `required`: require use of the sandbox and fail otherwise.
+
 - `positron-setup`: [user mode](../admin-vs-user-mode.qmd) only. Set it to `false` to stop rig from updating
   Positron's settings: adding its R installation root to
   `positron.r.customRootFolders`, and pointing

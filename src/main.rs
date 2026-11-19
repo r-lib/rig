@@ -74,6 +74,7 @@ mod rproj;
 mod run;
 mod rvenv;
 mod rversion;
+mod sandbox;
 mod self_uninstall;
 mod self_update;
 mod solver;
@@ -264,6 +265,12 @@ fn main_() -> i32 {
             OUTPUT.error(&format!("{}", e));
             error!("{}", e);
             return 1;
+        }
+    }
+
+    if let Some(mode) = args.get_one::<String>("sandbox") {
+        if let Some(mode) = sandbox::SandboxMode::parse(mode) {
+            sandbox::set_sandbox_mode(mode);
         }
     }
 
