@@ -21,6 +21,8 @@
 
 use std::error::Error;
 
+use crate::utils::is_r_package_name;
+
 pub mod git;
 pub mod local;
 pub mod lock;
@@ -183,16 +185,6 @@ fn strip_name_override(spec: &str) -> (Option<String>, &str) {
         }
     }
     (None, spec)
-}
-
-/// Whether `name` is a valid R package name (by R's own definition).
-pub fn is_r_package_name(name: &str) -> bool {
-    let mut chars = name.chars();
-    match chars.next() {
-        Some(first) if first.is_ascii_alphabetic() => {}
-        _ => return false,
-    }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '.')
 }
 
 /// Whether `body` (already stripped of any `<name>=` override) is a bare path

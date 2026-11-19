@@ -113,7 +113,7 @@ where
 {
     // Guard against malicious package names (e.g. "../victim") from the
     // package's `DESCRIPTION` file.
-    if !crate::pkgsource::is_r_package_name(&pkg.name) {
+    if !crate::utils::is_r_package_name(&pkg.name) {
         let msg = format!(
             "Failed to install {}: {:?} is not a valid R package name",
             pkg.file_path.display(),
