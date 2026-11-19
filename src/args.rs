@@ -1697,7 +1697,7 @@ pub fn rig_app() -> Command {
         )
         .arg(
             Arg::new("rscript")
-                .help("Run with Rscript instead of R, e.g. for scripts (no echoing of input)")
+                .help("Run with Rscript instead of R, e.g. for scripts")
                 .long("rscript")
                 .action(clap::ArgAction::SetTrue)
                 .required(false)
