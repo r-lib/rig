@@ -86,6 +86,7 @@ pub mod blob;
 pub mod loader;
 use crate::rversion::OsVersion;
 use crate::utils::http_client;
+use crate::utils::is_r_package_name;
 use crate::utils::write_atomically;
 use blob::IndexBlob;
 pub use blob::LinkingTo;
@@ -181,12 +182,7 @@ fn binary_index_dir(feed: &MetadataFeed) -> Result<PathBuf, Box<dyn Error>> {
 /// The name is interpolated into both a filesystem path and a URL, so this is
 /// what stops `../..` traversal out of the cache directory.
 pub fn validate_package_name(package: &str) -> Result<(), Box<dyn Error>> {
-    let ok = !package.is_empty()
-        && package.starts_with(|c: char| c.is_ascii_alphabetic())
-        && package
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '.');
-    if !ok {
+    if !is_r_package_name(package) {
         bail!("Invalid R package name: '{}'", package);
     }
     Ok(())

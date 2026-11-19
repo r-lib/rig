@@ -289,6 +289,18 @@ pub fn calculate_file_hash(path: &Path) -> std::io::Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+/// Whether `name` is a valid R package name: an ASCII letter, then ASCII
+/// letters, digits and dots, at least two characters, and not ending in a dot.
+/// This is the same pattern pkgdepends uses (`pkg_rx()$pkg_name`).
+///
+/// Package names end up in file system paths and URLs, so this is also what
+/// stops names like `../evil` from escaping a directory.
+pub fn is_r_package_name(name: &str) -> bool {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"^[a-zA-Z][a-zA-Z0-9.]*[a-zA-Z0-9]$").unwrap())
+        .is_match(name)
+}
+
 pub fn unquote(s: &str) -> String {
     let l = s.len();
     if l <= 2 {
@@ -1389,5 +1401,38 @@ mod r_path_tests {
             normalize_windows_r_install_dir("D:/tools\\rig/r"),
             "D:\\tools\\rig\\r"
         );
+    }
+}
+
+#[cfg(test)]
+mod package_name_tests {
+    use super::*;
+
+    #[test]
+    fn r_package_names() {
+        for good in ["dplyr", "R6", "data.table", "A3", "ab", "a.b", "x1.2"] {
+            assert!(is_r_package_name(good), "rejected '{}'", good);
+        }
+        for bad in [
+            "",
+            "a",
+            "1abc",
+            ".hidden",
+            "foo.",
+            "a_b",
+            "a-b",
+            "a b",
+            "../evil",
+            "..\\evil",
+            "a/b",
+            "a\\b",
+            "/abs",
+            "C:\\abs",
+            "C:abs",
+            "dplyr\n",
+            "pkg\u{e9}",
+        ] {
+            assert!(!is_r_package_name(bad), "accepted '{}'", bad.escape_debug());
+        }
     }
 }

@@ -43,6 +43,7 @@ use crate::repos::detect::RepoType;
 use crate::repos::feed::RepoId;
 use crate::rvenv::RPROJ_LOCK_FILE;
 use crate::solver::{RPackageRegistry, RegistrySolution};
+use crate::utils::is_r_package_name;
 
 pub const RPROJ_LOCK_VERSION: usize = 7;
 
@@ -2798,17 +2799,6 @@ pub(crate) fn pak_ref_name(entry: &str) -> Option<String> {
     } else {
         None
     }
-}
-
-/// Whether `name` is a valid R package name: a letter, then letters, digits
-/// and dots.
-fn is_r_package_name(name: &str) -> bool {
-    let mut chars = name.chars();
-    match chars.next() {
-        Some(first) if first.is_ascii_alphabetic() => {}
-        _ => return false,
-    }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '.')
 }
 
 /// Write comma-joined `items` (each already formatted, e.g.
