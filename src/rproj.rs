@@ -2774,6 +2774,18 @@ pub(crate) fn pak_ref_name(entry: &str) -> Option<String> {
         }
     }
 
+    // A GitHub/GitLab reference with a subdirectory, e.g.
+    // `apache/arrow/r@apache-arrow-15.0.2` or `gitlab::group/project/-/pkg`,
+    // names the repository, not the subdirectory, like pak does: the last
+    // path component would be `r` or `pkg` here.
+    if let Ok(crate::pkgsource::PkgSource::Remote(r)) = crate::pkgsource::parse_pkg_source(entry) {
+        if r.subdir.is_some() {
+            let last = r.git.trim_end_matches('/').rsplit('/').next()?;
+            let last = last.strip_suffix(".git").unwrap_or(last);
+            return is_r_package_name(last).then(|| last.to_string());
+        }
+    }
+
     let (type_, ref_) = match entry.split_once("::") {
         Some((type_, ref_)) => (Some(type_), ref_),
         None => (None, entry),
@@ -6336,6 +6348,18 @@ foo = "bar"
             ),
             ("owner/foo.tar@main", Some("foo.tar")),
             ("data.table=foo/bar", Some("data.table")),
+            // https://github.com/r-lib/rig/issues/527: a subdirectory
+            // names the repository, not the subdirectory.
+            ("apache/arrow/r", Some("arrow")),
+            ("apache/arrow/r@apache-arrow-15.0.2", Some("arrow")),
+            ("github::apache/arrow/r@apache-arrow-15.0.2", Some("arrow")),
+            (
+                "posit-dev/shinychat/pkg-r@fc50706f914290bceba5ccf6712a83af38e00ede",
+                Some("shinychat"),
+            ),
+            ("gitlab::group/project/-/pkg@main", Some("project")),
+            ("rstudio/pins-r", None),
+            ("pins=rstudio/pins-r", Some("pins")),
         ];
         for (entry, want) in cases {
             assert_eq!(pak_ref_name(entry).as_deref(), want, "{}", entry);
@@ -6397,7 +6421,7 @@ foo = "bar"
             ),
             (
                 "r-lib/usethis/subdir",
-                "subdir",
+                "usethis",
                 DepTable {
                     git: Some("https://github.com/r-lib/usethis.git".to_string()),
                     subdir: Some("subdir".to_string()),
