@@ -7,8 +7,8 @@
   versions that the repository blocks. `rig audit --fix` upgrades them to
   the nearest version without known problems. It exits with status 1 if it
   finds problems, so it can be used in CI. `rig pkg audit` does the same
-  for a library, also in a project. `--exclude-newer` limits the upgrades
-  to versions published by a date.
+  for a package library, inside or outside a project. `--exclude-newer`
+  limits the upgrades to versions published before a given date.
 
 * rig now reads a package repository according to its type (CRAN mirror,
   Posit Package Manager, Bioconductor, r-universe, etc.), detected from the
@@ -16,40 +16,40 @@
   CRAN mirrors rig reads the full history of CRAN, so older versions are
   available, too.
 
-* `rig proj lock` and `rig pkg install` now record the git commit of the
-  packages of an r-universe repository. If r-universe replaces the package
-  file later, `rig proj sync` builds the package from git, at the locked
-  commit, and it does not reinstall a package of the same commit.
+* `rig proj lock` and `rig pkg install` now record the git commit of
+  packages from r-universe repositories. If r-universe later replaces the
+  package file, `rig proj sync` builds the package from git at the locked
+  commit.
 
 ## Projects
 
-* Synced rig projects now read `.Renviron.rig` after `~/.Renviron`, for
-  secrets that must not be committed (#518).
+* R sessions in synced rig projects now read `.Renviron.rig` after
+  `~/.Renviron`. Put secrets that must not be committed into this file
+  (#518).
 
-* `rig proj import` improvements:
-   - `rig proj import` now does a better job at parsing author names and
-     `rig proj export` at writing them back in the same form,
-   - `rig proj import` now records the order of the `DESCRIPTION` fields in
-     `description-field-order` in `[tool.rig]`, and `rig proj export` writes
-     the fields in the same order.
-   - `rig proj import` now also rewrites `DESCRIPTION` from the new
-     `rproj.toml`, like `rig proj export --force`. Use `--keep-description`
-     to leave `DESCRIPTION` unchanged.
-   - `rig proj import` now adds `rproj.toml`, `rproj.lock`, `.rvenv`,
-     `.rvenvlib`, `.Renviron` and `.Renviron.rig` to `.Rbuildignore`.
-   - `rig proj import` now adds `rproj.lock` to `.gitignore`. A package is
-     checked against many versions of its dependencies, so it should not
-     commit a lock file.
+* `rig proj import` improvements. It now:
+   - parses author names better, and `rig proj export` writes them back
+     in the same form;
+   - records the order of the `DESCRIPTION` fields in
+     `description-field-order` in `[tool.rig]`, and `rig proj export`
+     writes the fields in the same order;
+   - rewrites `DESCRIPTION` from the new `rproj.toml`, like
+     `rig proj export --force`. Use `--keep-description` to leave
+     `DESCRIPTION` unchanged;
+   - adds `rproj.toml`, `rproj.lock`, `.rvenv`, `.rvenvlib`, `.Renviron`
+     and `.Renviron.rig` to `.Rbuildignore`;
+   - adds `rproj.lock` to `.gitignore`. A package is checked against many
+     versions of its dependencies, so it should not commit a lock file.
 
-* `rig proj renv import` improvements:
-   - create both `rproj.toml` and `rproj.lock`, with the lock file having
-     the same package versions as `renv.lock`, use `--no-lock-versions` to
-     skip creating `rproj.lock`;
-   - set `r-versions` in `rproj.toml` to the R version of `renv.lock`;
-   - import repositories, detect their type;
-   - warn about packages from unsupported sources (e.g. URL or local file);
-   - import packages that renv installed from GitHub, GitLab, Bitbucket or
-     git as `git` dependencies.
+* `rig proj renv import` improvements. It now:
+   - creates both `rproj.toml` and `rproj.lock`, and the lock file has the
+     same package versions as `renv.lock`. Use `--no-lock-versions` to skip
+     creating `rproj.lock`;
+   - sets `r-versions` in `rproj.toml` to the R version of `renv.lock`;
+   - imports repositories and detects their type;
+   - warns about packages from unsupported sources;
+   - imports packages that renv installed from GitHub, GitLab, Bitbucket
+     or git as `git` dependencies.
 
 * `rig proj export` now writes exact version requirements as
   `pkg (== 1.0.0)` in `DESCRIPTION`, because R does not support a single
@@ -61,9 +61,9 @@
   again with `sudo` after the R installation, so the project library and
   the package cache were owned by root (#503).
 
-* `rig proj sync` no longer fails to install the project's own package
-  sometimes, mostly on Linux. It copied the project's `.rvenv`
-  directory too, while it was installing the dependencies there.
+* `rig proj sync` no longer fails to install the project's own package.
+  It copied the project's `.rvenv` directory too, while it was installing
+  the dependencies there, and this sometimes failed.
 
 ## Package installation
 
@@ -72,11 +72,13 @@
   It tries each URL up to three times.
 
 * rig now respects servers that rate limit requests, e.g. the public Posit
-  Package Manager at p3m.dev. If a server answers with a `Retry-After`
-  header, or with 429 Too Many Requests.
+  Package Manager at p3m.dev. If a server answers with 429 Too Many
+  Requests, or with a `Retry-After` header, rig pauses all downloads from
+  that server for the time in `Retry-After` and then tries again.
 
 * `rig pkg install --no-install-self` now only skips the local packages
-  (paths) named on the command line.
+  (paths) named on the command line. Before, it skipped every named
+  package.
 
 * `rig pkg install` and `rig proj sync` now show why a package failed to
   install when the error happens outside of `R CMD INSTALL`, e.g. when the
@@ -94,18 +96,19 @@
 
 ## R installations
 
-* rig now supports manylinux_2_28 R builds, which requires glibc 2.28,
-  so now it works on RHEL 8, Rocky Linux 8, Ubuntu 20.04, etc. (#402, #517).
+* rig now supports manylinux_2_28 R builds, which only need glibc 2.28,
+  so rig now works on RHEL 8, Rocky Linux 8, Ubuntu 20.04, etc.
+  (#402, #517).
 
 * In user mode on macOS, `rig add` now sets `FONTCONFIG_FILE` in R's
-  `etc/Renviron`, so cairo graphics devices, e.g. `svg()` work correctly.
+  `etc/Renviron`, so cairo graphics devices, e.g. `svg()`, work correctly.
   Reinstall R versions installed with an older rig to get the fix, e.g.
   with `rig add --reinstall` (#439, #524).
 
 * rig's code in the system `Rprofile` now only creates the user library
-  if `R_LIBS_USER` is an absolute path. Previously it created a directory
-  called `'NULL'` on Windows in R CMD check, where `R_LIBS_USER` is set to
-  `'NULL'`, with the quotes.
+  if `R_LIBS_USER` is an absolute path. Before, it created a directory
+  called `'NULL'` on Windows during `R CMD check`, which sets
+  `R_LIBS_USER` to `'NULL'`, with the quotes.
 
 ## Certificates
 
@@ -118,8 +121,8 @@
 * On Linux, rig now points portable R installations at the system CA
   bundle, e.g. `/etc/ssl/certs/ca-certificates.crt`, so R trusts the same
   certificates as the rest of the system. It only downloads the Mozilla
-  bundle from curl.se if it cannot find a system bundle. This happens both
-  in `rig add` and `rig system update-certs` (#501).
+  bundle from curl.se if it cannot find a system bundle. Both `rig add`
+  and `rig system update-certs` do this (#501).
 
 * `rig system update-certs` now also works in admin mode on Linux. It
   updates the portable R installations, and runs `sudo` if needed.
