@@ -42,6 +42,7 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
             "RIG_MODE",
             "RIG_NO_CACHE",
             "RIG_R_INSTALL_DIR",
+            "RIG_SANDBOX",
             "RUST_BACKTRACE",
             "http_proxy",
             "https_proxy",

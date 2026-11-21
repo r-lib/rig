@@ -3705,6 +3705,18 @@ pub fn rig_app() -> Command {
                 .global(true)
                 .num_args(1)
                 .value_parser(clap::builder::NonEmptyStringValueParser::new()),
+        )
+        .arg(
+            Arg::new("sandbox")
+                .help(
+                    "Whether to sandbox package builds: auto, required or off \
+                     (overrides RIG_SANDBOX and config)",
+                )
+                .long("sandbox")
+                .value_name("MODE")
+                .global(true)
+                .num_args(1)
+                .value_parser(["auto", "required", "off"]),
         );
 
     let cmd_audit = Command::new("audit")
@@ -3796,7 +3808,7 @@ pub fn is_r_script_file(arg: &str) -> bool {
 
 // Global options that take a value, in a separate argument unless they are
 // written as `--opt=value`.
-const GLOBAL_VALUE_OPTS: [&str; 1] = ["--cache-dir"];
+const GLOBAL_VALUE_OPTS: [&str; 2] = ["--cache-dir", "--sandbox"];
 
 // `rig run` options that take a value, in a separate argument unless they
 // are written as `--opt=value` or `-oVALUE`.
