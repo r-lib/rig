@@ -1,36 +1,30 @@
 # rig 0.11.2-dev (development version)
 
-* rig now has nightly builds, published as the `nightly` GitHub release.
-  Install them with `rig self update --nightly`.
+## New features
 
-* rig's code in the system `Rprofile` now only creates the user library
-  if `R_LIBS_USER` is an absolute path. Previously it created a directory
-  called `'NULL'` on Windows in R CMD check, where `R_LIBS_USER` is set to
-  `'NULL'`, with the quotes.
+* New `rig audit` command: it checks the packages of a project's lock file
+  and library, or of an R library, for known vulnerabilities and for
+  versions that the repository blocks. `rig audit --fix` upgrades them to
+  the nearest version without known problems. It exits with status 1 if it
+  finds problems, so it can be used in CI. `rig pkg audit` does the same
+  for a library, also in a project. `--exclude-newer` limits the upgrades
+  to versions published by a date.
 
-* `rig self update` now works on Windows on ARM.
+* rig now reads a package repository according to its type (CRAN mirror,
+  Posit Package Manager, Bioconductor, r-universe, etc.), detected from the
+  server or set with `type` in `rproj.toml` or `rig repos add --type`. For
+  CRAN mirrors rig reads the full history of CRAN, so older versions are
+  available, too.
 
-* In user mode on macOS, `rig add` now sets `FONTCONFIG_FILE` in R's
-  `etc/Renviron`, so cairo graphics devices, e.g. `svg()` work correctly.
-  Reinstall R versions installed with an older rig to get the fix, e.g.
-  with `rig add --reinstall` (#439, #524).
+* `rig proj lock` and `rig pkg install` now record the git commit of the
+  packages of an r-universe repository. If r-universe replaces the package
+  file later, `rig proj sync` builds the package from git, at the locked
+  commit, and it does not reinstall a package of the same commit.
 
-* rig now supports manylinux_2_28 R builds, which requires glibc 2.28,
-  so now it works on RHEL 8, Rocky Linux 8, Ubuntu 20.04, etc. (#402, #517).
-
-* rig now retries package downloads that fail with a transient error, a
-  broken connection, a timeout, or some 4xx and 5xx HTTP statuses.
-  It tries each URL up to three times.
-
-* rig now respects servers that rate limit requests, e.g. the public Posit
-  Package Manager at p3m.dev. If a server answers with a `Retry-After`
-  header, or with 429 Too Many Requests.
+## Projects
 
 * Synced rig projects now read `.Renviron.rig` after `~/.Renviron`, for
   secrets that must not be committed (#518).
-
-* `rig pkg install --no-install-self` now only skips the local packages
-  (paths) named on the command line.
 
 * `rig proj import` improvements:
    - `rig proj import` now does a better job at parsing author names and
@@ -57,24 +51,9 @@
    - import packages that renv installed from GitHub, GitLab, Bitbucket or
      git as `git` dependencies.
 
-* New `rig audit` command: it checks the packages of a project's lock file
-  and library, or of an R library, for known vulnerabilities and for
-  versions that the repository blocks. `rig audit --fix` upgrades them to
-  the nearest version without known problems. It exits with status 1 if it
-  finds problems, so it can be used in CI. `rig pkg audit` does the same
-  for a library, also in a project. `--exclude-newer` limits the upgrades
-  to versions published by a date.
-
-* rig now reads a package repository according to its type (CRAN mirror,
-  Posit Package Manager, Bioconductor, r-universe, etc.), detected from the
-  server or set with `type` in `rproj.toml` or `rig repos add --type`. For
-  CRAN mirrors rig reads the full history of CRAN, so older versions are
-  available, too.
-
-* `rig proj lock` and `rig pkg install` now record the git commit of the
-  packages of an r-universe repository. If r-universe replaces the package
-  file later, `rig proj sync` builds the package from git, at the locked
-  commit, and it does not reinstall a package of the same commit.
+* `rig proj export` now writes exact version requirements as
+  `pkg (== 1.0.0)` in `DESCRIPTION`, because R does not support a single
+  `=`. It also writes strict bounds as `>` and `<`, not `>>` and `<<`.
 
 * In admin mode, when `rig proj sync` or `rig run` need to install R, they
   now run `rig add` in a separate process, and only that process runs with
@@ -82,10 +61,53 @@
   again with `sudo` after the R installation, so the project library and
   the package cache were owned by root (#503).
 
+* `rig proj sync` no longer fails to install the project's own package
+  sometimes, mostly on Linux. It copied the project's `.rvenv`
+  directory too, while it was installing the dependencies there.
+
+## Package installation
+
+* rig now retries package downloads that fail with a transient error, a
+  broken connection, a timeout, or some 4xx and 5xx HTTP statuses.
+  It tries each URL up to three times.
+
+* rig now respects servers that rate limit requests, e.g. the public Posit
+  Package Manager at p3m.dev. If a server answers with a `Retry-After`
+  header, or with 429 Too Many Requests.
+
+* `rig pkg install --no-install-self` now only skips the local packages
+  (paths) named on the command line.
+
 * `rig pkg install` and `rig proj sync` now show why a package failed to
   install when the error happens outside of `R CMD INSTALL`, e.g. when the
   library is not writeable. Before, this error was only in the debug
   output (#504).
+
+* `rig pkg install` and `rig proj lock` now choose binary packages for
+  the architecture of the R version, not rig's own. Before, an x86_64
+  build of rig on aarch64 Windows installed x86_64 binaries into the
+  library of an aarch64 R. `rig pkg install` and `rig proj sync` now also
+  reinstall packages that were built for another architecture.
+
+* `rig pkg doctor` now reports packages built for another architecture
+  on Windows too, e.g. x86_64 packages in the library of an aarch64 R.
+
+## R installations
+
+* rig now supports manylinux_2_28 R builds, which requires glibc 2.28,
+  so now it works on RHEL 8, Rocky Linux 8, Ubuntu 20.04, etc. (#402, #517).
+
+* In user mode on macOS, `rig add` now sets `FONTCONFIG_FILE` in R's
+  `etc/Renviron`, so cairo graphics devices, e.g. `svg()` work correctly.
+  Reinstall R versions installed with an older rig to get the fix, e.g.
+  with `rig add --reinstall` (#439, #524).
+
+* rig's code in the system `Rprofile` now only creates the user library
+  if `R_LIBS_USER` is an absolute path. Previously it created a directory
+  called `'NULL'` on Windows in R CMD check, where `R_LIBS_USER` is set to
+  `'NULL'`, with the quotes.
+
+## Certificates
 
 * In user mode on Linux and for portable installations in admin mode,
   `SSL_CERT_FILE` and `CURL_CA_BUNDLE` set in the shell now take precedence
@@ -102,22 +124,12 @@
 * `rig system update-certs` now also works in admin mode on Linux. It
   updates the portable R installations, and runs `sudo` if needed.
 
-* `rig proj sync` no longer fails to install the project's own package
-  sometimes, mostly on Linux. It copied the project's `.rvenv`
-  directory too, while it was installing the dependencies there.
+## rig itself
 
-* `rig pkg doctor` now reports packages built for another architecture
-  on Windows too, e.g. x86_64 packages in the library of an aarch64 R.
+* rig now has nightly builds, published as the `nightly` GitHub release.
+  Install them with `rig self update --nightly`.
 
-* `rig pkg install` and `rig proj lock` now choose binary packages for
-  the architecture of the R version, not rig's own. Before, an x86_64
-  build of rig on aarch64 Windows installed x86_64 binaries into the
-  library of an aarch64 R. `rig pkg install` and `rig proj sync` now also
-  reinstall packages that were built for another architecture.
-
-* `rig proj export` now writes exact version requirements as
-  `pkg (== 1.0.0)` in `DESCRIPTION`, because R does not support a single
-  `=`. It also writes strict bounds as `>` and `<`, not `>>` and `<<`.
+* `rig self update` now works on Windows on ARM.
 
 # rig 0.11.1
 
