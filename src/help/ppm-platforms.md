@@ -14,8 +14,8 @@ which is which. `--all` applies to `--json` as well.
 * `os`: `linux`, `macos` or `windows`.
 
 * `platform`: the name this target goes by in a package's build index, so
-  this is the value to match against the `platform` column of [`rig ppm
-  builds`](ppm.qmd#rig-ppm-builds) . Several entries can share one: CentOS 7
+  this is the value to match against the `platform` column of [`rig ppm pkg
+  builds`](ppm.qmd#rig-ppm-pkg-builds) . Several entries can share one: CentOS 7
   and RHEL 7 both use the `centos7` binaries.
 
 * `distribution`, `release`: the distribution PPM *builds* the target on, which

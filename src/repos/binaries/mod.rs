@@ -976,15 +976,9 @@ pub fn ppm_url() -> String {
     ppm_url_from(std::env::var("PACKAGEMANAGER_ADDRESS").ok().as_deref())
 }
 
-/// URL of P3M's status document.
-///
-/// `RIG_PPM_STATUS_URL` still wins over `PACKAGEMANAGER_ADDRESS`, so a setup
-/// that redirects only the status document keeps working.
+/// URL of the status document of the instance [`ppm_url`] names.
 pub fn ppm_status_url() -> String {
-    ppm_status_url_from(
-        std::env::var("RIG_PPM_STATUS_URL").ok().as_deref(),
-        &ppm_url(),
-    )
+    format!("{}/__api__/status", ppm_url())
 }
 
 /// The pure part of [`ppm_url`], split out because `cargo test` runs the whole
@@ -994,14 +988,6 @@ fn ppm_url_from(env: Option<&str>) -> String {
     match env.map(str::trim).filter(|v| !v.is_empty()) {
         Some(url) => url.trim_end_matches('/').to_string(),
         None => DEFAULT_PPM_URL.to_string(),
-    }
-}
-
-/// The pure part of [`ppm_status_url`]. See [`ppm_url_from`].
-fn ppm_status_url_from(status_env: Option<&str>, base: &str) -> String {
-    match status_env.map(str::trim).filter(|v| !v.is_empty()) {
-        Some(url) => url.to_string(),
-        None => format!("{}/__api__/status", base.trim_end_matches('/')),
     }
 }
 
@@ -1786,31 +1772,6 @@ mod tests {
         assert_eq!(
             ppm_url_from(Some("https://ppm.example.com/")),
             "https://ppm.example.com"
-        );
-    }
-
-    #[test]
-    fn status_url_is_composed_unless_overridden() {
-        assert_eq!(
-            ppm_status_url_from(None, DEFAULT_PPM_URL),
-            format!("{}/__api__/status", DEFAULT_PPM_URL)
-        );
-        assert_eq!(
-            ppm_status_url_from(None, "https://ppm.example.com"),
-            "https://ppm.example.com/__api__/status"
-        );
-        // RIG_PPM_STATUS_URL wins over PACKAGEMANAGER_ADDRESS, and is used
-        // as given rather than having a path appended.
-        assert_eq!(
-            ppm_status_url_from(
-                Some("https://other.example.com/s.json"),
-                "https://ppm.example.com"
-            ),
-            "https://other.example.com/s.json"
-        );
-        assert_eq!(
-            ppm_status_url_from(Some(""), "https://ppm.example.com"),
-            "https://ppm.example.com/__api__/status"
         );
     }
 

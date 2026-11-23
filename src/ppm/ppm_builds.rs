@@ -1,4 +1,4 @@
-//! `rig ppm builds`: every published build of one package.
+//! `rig ppm pkg builds`: every published build of one package.
 //!
 //! The data is the per-package binary index described in
 //! `crate::repos::binaries`. Note that it comes from rig's own index host, not
@@ -25,7 +25,7 @@ struct BuildLinkingTo<'a> {
     sha256: &'a str,
 }
 
-/// One row of `rig ppm builds`, and the shape of its `--json` output.
+/// One row of `rig ppm pkg builds`, and the shape of its `--json` output.
 #[derive(Debug, serde::Serialize)]
 struct BuildRow<'a> {
     package: &'a str,

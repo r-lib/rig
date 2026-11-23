@@ -8,6 +8,9 @@ use clap::ArgMatches;
 use owo_colors::OwoColorize;
 use tabular::{row, Table};
 
+use serde_json::Value;
+
+use crate::ppm::api;
 use crate::ppm::{distro_table, print_table, use_color, want_json};
 use crate::repos::binaries::{ppm_status_url, PpmMacosUrls, PpmStatus, PpmSupportWindow};
 use crate::textfmt::print_field;
@@ -25,14 +28,73 @@ pub fn sc_ppm_status(
     // support window — so a copy up to a day old would be the wrong answer. The
     // document is about 12 KB.
     let status = PpmStatus::load(Some(Duration::ZERO))?;
+    // Older PPM versions do not have these, so they are optional.
+    let stats: Option<BTreeMap<String, Value>> = api::get(&["status", "stats"], &vec![]).ok();
+    let flags: Option<Value> = api::get::<Value>(&["flags"], &vec![])
+        .ok()
+        .map(|f| f.get("enabled").cloned().unwrap_or(Value::Null));
 
     if want_json(args, ppmargs, mainargs) {
         // Includes `extra`, so fields rig does not model are still reported.
-        println!("{}", serde_json::to_string_pretty(&status)?);
+        let mut out = serde_json::to_value(&status)?;
+        if let Some(obj) = out.as_object_mut() {
+            if let Some(stats) = &stats {
+                obj.insert("stats".to_string(), serde_json::to_value(stats)?);
+            }
+            if let Some(flags) = &flags {
+                obj.insert("flags".to_string(), flags.clone());
+            }
+        }
+        println!("{}", serde_json::to_string_pretty(&out)?);
     } else {
         print_status(&status, &ppm_status_url());
+        print_extra(stats.as_ref(), flags.as_ref());
     }
     Ok(())
+}
+
+/// The statistics and the feature flags of the instance, after the status
+/// document.
+fn print_extra(stats: Option<&BTreeMap<String, Value>>, flags: Option<&Value>) {
+    let color = use_color();
+    if let Some(stats) = stats {
+        section("Statistics", stats.len(), color);
+        let width = stats
+            .keys()
+            .map(|k| k.len() + 2)
+            .max()
+            .unwrap_or(0)
+            .max(LABEL_WIDTH);
+        for (k, v) in stats {
+            let v = match v {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            print_field(k, &v, width, color);
+        }
+    }
+    if let Some(flags) = flags {
+        let names: Vec<String> = match flags {
+            Value::Array(a) => a
+                .iter()
+                .map(|v| {
+                    v.as_str()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| v.to_string())
+                })
+                .collect(),
+            Value::Object(o) => o.keys().cloned().collect(),
+            Value::Null => vec![],
+            other => vec![other.to_string()],
+        };
+        section("Enabled feature flags", names.len(), color);
+        if names.is_empty() {
+            println!("none");
+        }
+        for n in names {
+            println!("{}", n);
+        }
+    }
 }
 
 fn print_status(status: &PpmStatus, status_url: &str) {

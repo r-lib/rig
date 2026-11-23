@@ -21,6 +21,20 @@
   package file, `rig proj sync` builds the package from git at the locked
   commit.
 
+* `rig ppm` has new subcommands to query a Posit Package Manager instance:
+  `repos`, `snapshots`, `sources`, `transactions` and `whoami`. The new
+  `rig ppm pkg` group has the commands about packages: `list`, `info`,
+  `history`, `vulns`, `downloads`, and `publish`, which uploads
+  a package to a local source. `rig ppm builds` and `rig ppm build-log` moved
+  to `rig ppm pkg builds` and `rig ppm pkg build-log`; the old names still
+  work. `rig ppm url` can now print repository URLs, for a snapshot and for
+  Linux binaries, and `rig ppm status` also shows the statistics and feature
+  flags of the instance.
+
+* rig now reads a Package Manager token from the `PACKAGEMANAGER_TOKEN`
+  environment variable, for the instance in `PACKAGEMANAGER_ADDRESS`. It
+  sends Package Manager tokens to the Package Manager API as bearer tokens.
+
 ## Projects
 
 * R sessions in synced rig projects now read `.Renviron.rig` after

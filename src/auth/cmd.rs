@@ -251,7 +251,7 @@ struct AuthStatus {
     ppm_sso: Vec<SsoStatus>,
 }
 
-fn mask(token: &str) -> String {
+pub(crate) fn mask(token: &str) -> String {
     let n = token.chars().count();
     if n < 12 {
         return "***".to_string();
@@ -261,7 +261,7 @@ fn mask(token: &str) -> String {
     format!("{}...{}", head, tail)
 }
 
-fn fmt_time(secs: Option<f64>) -> Option<String> {
+pub(crate) fn fmt_time(secs: Option<f64>) -> Option<String> {
     let secs = secs? as i64;
     let ts = jiff::Timestamp::from_second(secs).ok()?;
     Some(ts.strftime("%Y-%m-%d %H:%M:%S UTC").to_string())
