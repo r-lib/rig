@@ -1091,6 +1091,20 @@ where
             hint
         ));
 
+        // With `-v`, show the whole build log as well, e.g. for CI and
+        // Docker builds, where the log file is gone after the run. #535
+        if OUTPUT.is_verbose() {
+            let log = std::fs::read(&log_file_path)
+                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+                .unwrap_or_else(|err| format!("cannot read {}: {}", log_file_path.display(), err));
+            OUTPUT.println(&format!(
+                "--- {} ---\n{}\n--- end of {} ---",
+                log_file_path.display(),
+                log.trim_end(),
+                log_file_path.display()
+            ));
+        }
+
         error!(
             "Installation failed for {} from {}: exit code {}",
             package_name,

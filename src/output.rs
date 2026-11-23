@@ -31,6 +31,8 @@ struct OutputInner {
     errors: RwLock<Vec<String>>,
     // Drop info and status messages, see `set_quiet()`.
     quiet: AtomicBool,
+    // `-v` was given, see `set_verbose()`.
+    verbose: AtomicBool,
 }
 
 impl Output {
@@ -42,6 +44,7 @@ impl Output {
                 bar: RwLock::new(None),
                 errors: RwLock::new(Vec::new()),
                 quiet: AtomicBool::new(false),
+                verbose: AtomicBool::new(false),
             }),
         }
     }
@@ -64,6 +67,16 @@ impl Output {
 
     pub fn is_quiet(&self) -> bool {
         self.inner.quiet.load(Ordering::Relaxed)
+    }
+
+    /// Record that `-v` was given, so callers can show more detail to the
+    /// user, e.g. the full build log of a package that failed to install.
+    pub fn set_verbose(&self, verbose: bool) {
+        self.inner.verbose.store(verbose, Ordering::Relaxed);
+    }
+
+    pub fn is_verbose(&self) -> bool {
+        self.inner.verbose.load(Ordering::Relaxed)
     }
 
     fn emit(&self, line: &str) {

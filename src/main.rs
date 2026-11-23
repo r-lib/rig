@@ -134,6 +134,7 @@ fn main_() -> i32 {
     // -- set up logger output --------------------------------------------
 
     let verbose_count = args.get_count("verbose");
+    OUTPUT.set_verbose(verbose_count >= 1);
     let mut loglevel = match verbose_count {
         0 => LevelFilter::Info,
         1 => LevelFilter::Debug,
