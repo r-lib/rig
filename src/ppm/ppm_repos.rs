@@ -422,6 +422,7 @@ pub(crate) fn source_type_name(t: i64) -> &'static str {
         8 => "local-python",
         9 => "pypi",
         10 => "curated-pypi",
+        13 => "openvsx",
         _ => "unknown",
     }
 }
@@ -466,39 +467,61 @@ pub fn sc_ppm_sources(
         println!("{}", serde_json::to_string_pretty(&sources)?);
         return Ok(());
     }
-    // Not every Package Manager version reports these, only show them if
-    // some source has them.
-    let bioc = |s: &Source| -> String { s.bioc_version().unwrap_or("").to_string() };
-    let with_bioc = sources.iter().any(|s| !bioc(s).is_empty());
-    let with_sync = sources.iter().any(|s| s.last_sync.is_some());
-    let ncol = 3 + with_bioc as usize + with_sync as usize;
-    let mut tab = Table::new(&vec!["{:<}"; ncol].join("   "));
-    let mut header = Row::new()
-        .with_cell("name")
-        .with_cell("id")
-        .with_cell("type");
-    if with_bioc {
-        header = header.with_cell("bioc_version");
-    }
-    if with_sync {
-        header = header.with_cell("last_sync");
-    }
-    tab.add_row(header);
+    // Not every Package Manager version or source type reports these, only
+    // show a column if some source has a value for it.
+    type Column = (&'static str, fn(&Source) -> String);
+    let columns: Vec<Column> = vec![
+        ("name", |s| s.name.clone()),
+        ("id", |s| s.id.to_string()),
+        ("type", |s| s.type_name()),
+        ("order", |s| source_field(s, "order")),
+        ("bioc_version", |s| source_field(s, "bioc_version")),
+        ("snapshot", |s| source_field(s, "snapshot")),
+        ("include", |s| source_field(s, "include")),
+        ("package_requests_enabled", |s| {
+            source_field(s, "package_requests_enabled")
+        }),
+        ("created", |s| date_only(&source_field(s, "created"))),
+        ("last_sync", |s| s.last_sync.clone().unwrap_or_default()),
+    ];
+    let columns: Vec<_> = columns
+        .into_iter()
+        .enumerate()
+        .filter(|(i, (_, f))| *i < 3 || sources.iter().any(|s| !f(s).is_empty()))
+        .map(|(_, c)| c)
+        .collect();
+    let mut tab = Table::new(&vec!["{:<}"; columns.len()].join("   "));
+    tab.add_row(
+        columns
+            .iter()
+            .fold(Row::new(), |row, (name, _)| row.with_cell(name)),
+    );
     for s in &sources {
-        let mut row = Row::new()
-            .with_cell(&s.name)
-            .with_cell(s.id)
-            .with_cell(s.type_name());
-        if with_bioc {
-            row = row.with_cell(bioc(s));
-        }
-        if with_sync {
-            row = row.with_cell(s.last_sync.as_deref().unwrap_or(""));
-        }
-        tab.add_row(row);
+        tab.add_row(
+            columns
+                .iter()
+                .fold(Row::new(), |row, (_, f)| row.with_cell(f(s))),
+        );
     }
     print_table(&tab);
     Ok(())
+}
+
+/// A field of a source as text for the table. Missing fields, `null` and
+/// empty strings are empty, booleans are `yes` or `-`.
+fn source_field(s: &Source, key: &str) -> String {
+    match s.extra.get(key) {
+        None | Some(Value::Null) => String::new(),
+        Some(Value::String(x)) => x.clone(),
+        Some(Value::Bool(b)) => yesno(*b).to_string(),
+        Some(x) => x.to_string(),
+    }
+}
+
+/// The date part of a timestamp, e.g. `2024-01-02` from
+/// `2024-01-02T10:11:12Z`.
+fn date_only(x: &str) -> String {
+    x.split('T').next().unwrap_or("").to_string()
 }
 
 // ------------------------------------------------------------------------
