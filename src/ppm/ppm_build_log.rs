@@ -1,4 +1,4 @@
-//! `rig ppm build-log`: P3M's build log for one package binary.
+//! `rig ppm pkg build-log`: P3M's build log for one package binary.
 //!
 //! P3M serves this as a fixed-layout HTML page rather than JSON (see
 //! `get_binary_build_logs.go` in the P3M source, which builds the page with a
@@ -49,44 +49,11 @@ pub fn sc_ppm_build_log(
     // Before the name is echoed into a URL.
     validate_package_name(package)?;
 
-    let explicit_platform = args.get_one::<String>("platform").map(|s| s.as_str());
-    let explicit_arch = args.get_one::<String>("arch").map(|s| s.as_str());
-    // A rig platform string, e.g. `x86_64-unknown-linux-gnu-ubuntu-22.04`,
-    // names a P3M target and its arch. P3M's own names have no `-`.
-    let (explicit_platform, explicit_arch) = match explicit_platform {
-        Some(p) if p.contains('-') => {
-            let os = parse_platform_string(p)?;
-            let (platform, arch) = PpmStatus::load(None)?
-                .ppm_platform(&os)
-                .ok_or_else(|| format!("P3M has no build target for {}", p))?;
-            (
-                Some(platform),
-                Some(explicit_arch.map_or(arch, str::to_string)),
-            )
-        }
-        p => (p.map(str::to_string), explicit_arch.map(str::to_string)),
-    };
-    let explicit_platform = explicit_platform.as_deref();
-    let explicit_arch = explicit_arch.as_deref();
-    let (platform, arch) = match (explicit_platform, explicit_arch) {
-        (Some(platform), Some(arch)) => (platform.to_string(), arch.to_string()),
-        (platform, arch) => {
-            let (detected_platform, detected_arch) = detect_current_ppm_target()?;
-            (
-                platform.map(str::to_string).unwrap_or(detected_platform),
-                arch.map(str::to_string).unwrap_or(detected_arch),
-            )
-        }
-    };
-    let r_version = match args.get_one::<String>("r-version") {
-        Some(r_version) => r_version.clone(),
-        None => get_default_r_version()?.ok_or(
-            "No default R version is set; pass --r-version or run `rig default <version>`",
-        )?,
-    };
-    // P3M only accepts a minor R version (e.g. `4.6`), not a full patch
-    // version like `rig default` reports (`4.6.1`).
-    let r_version = minor_r_version(&r_version);
+    let (platform, arch) = resolve_target(
+        args.get_one::<String>("platform").map(|s| s.as_str()),
+        args.get_one::<String>("arch").map(|s| s.as_str()),
+    )?;
+    let r_version = resolve_r_version(args.get_one::<String>("r-version").map(|s| s.as_str()))?;
     let version = args.get_one::<String>("version").map(|v| v.as_str());
 
     let url = build_log_url(&ppm_url(), package, &platform, &r_version, &arch, version)?;
@@ -103,6 +70,53 @@ pub fn sc_ppm_build_log(
     }
 
     Ok(())
+}
+
+/// The P3M build target and architecture for `--platform` and `--arch`,
+/// e.g. `("jammy", "x86_64")`. `--platform` is a P3M name (no `-`), or a
+/// rig platform string, e.g. `x86_64-unknown-linux-gnu-ubuntu-22.04`, which
+/// names a P3M target and its arch. Whatever is missing is detected from the
+/// current machine.
+pub(crate) fn resolve_target(
+    explicit_platform: Option<&str>,
+    explicit_arch: Option<&str>,
+) -> Result<(String, String), Box<dyn Error>> {
+    let (explicit_platform, explicit_arch) = match explicit_platform {
+        Some(p) if p.contains('-') => {
+            let os = parse_platform_string(p)?;
+            let (platform, arch) = PpmStatus::load(None)?
+                .ppm_platform(&os)
+                .ok_or_else(|| format!("P3M has no build target for {}", p))?;
+            (
+                Some(platform),
+                Some(explicit_arch.map_or(arch, str::to_string)),
+            )
+        }
+        p => (p.map(str::to_string), explicit_arch.map(str::to_string)),
+    };
+    match (explicit_platform, explicit_arch) {
+        (Some(platform), Some(arch)) => Ok((platform, arch)),
+        (platform, arch) => {
+            let (detected_platform, detected_arch) = detect_current_ppm_target()?;
+            Ok((
+                platform.unwrap_or(detected_platform),
+                arch.unwrap_or(detected_arch),
+            ))
+        }
+    }
+}
+
+/// The minor R version for `--r-version`, or of the default R version. P3M
+/// only accepts a minor R version (e.g. `4.6`), not a full patch version like
+/// `rig default` reports (`4.6.1`).
+pub(crate) fn resolve_r_version(explicit: Option<&str>) -> Result<String, Box<dyn Error>> {
+    let r_version = match explicit {
+        Some(r_version) => r_version.to_string(),
+        None => get_default_r_version()?.ok_or(
+            "No default R version is set; pass --r-version or run `rig default <version>`",
+        )?,
+    };
+    Ok(minor_r_version(&r_version))
 }
 
 /// The current machine's platform and architecture, in the vocabulary P3M

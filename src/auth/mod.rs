@@ -9,9 +9,10 @@
 //!    [`register_repo`].
 //! 2. `RIG_REPO_<NAME>_USERNAME` and `RIG_REPO_<NAME>_PASSWORD` environment
 //!    variables, for a repository named `<NAME>`.
-//! 3. A Posit Package Manager SSO token, from `~/.ppm/tokens.toml` (the file
-//!    pak uses, too), or an identity token in
-//!    `PACKAGEMANAGER_IDENTITY_TOKEN_FILE`.
+//! 3. A Posit Package Manager token: `PACKAGEMANAGER_TOKEN`, an SSO token
+//!    from `~/.ppm/tokens.toml` (the file pak uses, too), or an identity
+//!    token in `PACKAGEMANAGER_IDENTITY_TOKEN_FILE`. The first and the last
+//!    only apply to `PACKAGEMANAGER_ADDRESS`.
 //! 4. A netrc file.
 //! 5. The system credential store, for URLs that include a username, with the
 //!    same keys as pak: repository URL with and without the username, then
@@ -349,6 +350,17 @@ fn sso_lookup(p: &UrlParts, res: &mut Lookup) -> Option<Credentials> {
     }
     let explicit = p.username.is_some();
 
+    // A ready-made token in PACKAGEMANAGER_TOKEN, for PACKAGEMANAGER_ADDRESS,
+    // as the `rspm` CLI uses it
+    if let Some(c) = env_token(
+        p,
+        ppm_sso::ppm_address().as_deref(),
+        std::env::var("PACKAGEMANAGER_TOKEN").ok().as_deref(),
+    ) {
+        res.source = Some(Source::Env("PACKAGEMANAGER_TOKEN".to_string()));
+        return Some(c);
+    }
+
     // A stored token for an instance this URL belongs to
     let conn = ppm_sso::read_connections()
         .into_iter()
@@ -415,6 +427,20 @@ fn sso_lookup(p: &UrlParts, res: &mut Lookup) -> Option<Credentials> {
         ));
     }
     None
+}
+
+/// The credentials from `PACKAGEMANAGER_TOKEN` (`token`), if the URL belongs
+/// to `PACKAGEMANAGER_ADDRESS` (`addr`).
+fn env_token(p: &UrlParts, addr: Option<&str>, token: Option<&str>) -> Option<Credentials> {
+    let addr = addr?;
+    let token = token.map(str::trim).filter(|t| !t.is_empty())?;
+    if !under(&p.clean, addr) {
+        return None;
+    }
+    Some(Credentials {
+        username: "__token__".to_string(),
+        password: token.to_string(),
+    })
 }
 
 fn conn_missing(addr: &str) -> bool {
@@ -574,6 +600,30 @@ pub fn request(
     }
 }
 
+/// A request to the API of a Package Manager instance, `<ppm>/__api__/...`.
+/// The API wants a PPM token as a bearer token, while the repositories take
+/// it as the password of the `__token__` user. Other credentials are sent as
+/// for [`request`].
+pub fn api_request(
+    client: &reqwest::Client,
+    method: reqwest::Method,
+    url: &str,
+) -> reqwest::RequestBuilder {
+    let creds = lookup(url).creds;
+    let req = client.request(method, strip_userinfo(url));
+    match creds {
+        Some(c) if is_bearer(&c) => req.bearer_auth(c.password),
+        Some(c) => req.basic_auth(c.username, Some(c.password)),
+        None => req,
+    }
+}
+
+/// Whether credentials are a PPM token, to send as a bearer token to the PPM
+/// API.
+fn is_bearer(creds: &Credentials) -> bool {
+    creds.username == "__token__"
+}
+
 pub fn get(client: &reqwest::Client, url: &str) -> reqwest::RequestBuilder {
     request(client, reqwest::Method::GET, url)
 }
@@ -594,6 +644,22 @@ pub fn status_hint(status: reqwest::StatusCode) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_env_token() {
+        let p = parse_url("https://ppm.example.com/__api__/repos").unwrap();
+        let c = env_token(&p, Some("https://ppm.example.com"), Some(" tok\n")).unwrap();
+        assert_eq!(c.username, "__token__");
+        assert_eq!(c.password, "tok");
+        assert!(is_bearer(&c));
+        assert!(env_token(&p, Some("https://other.example.com"), Some("tok")).is_none());
+        assert!(env_token(&p, None, Some("tok")).is_none());
+        assert!(env_token(&p, Some("https://ppm.example.com"), Some("  ")).is_none());
+        assert!(!is_bearer(&Credentials {
+            username: "me".to_string(),
+            password: "pw".to_string()
+        }));
+    }
 
     #[test]
     fn test_parse_url() {

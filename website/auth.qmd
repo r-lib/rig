@@ -148,6 +148,26 @@ On a CI system that has an OIDC identity token, put the identity token into
 a file, and set `PACKAGEMANAGER_IDENTITY_TOKEN_FILE` to its path. rig then
 exchanges it for a PPM token itself, without a browser.
 
+## Posit Package Manager tokens
+
+If your PPM admin gave you a token, e.g. one made with `rspm create token`,
+put it into the `PACKAGEMANAGER_TOKEN` environment variable. rig uses it for
+the instance in `PACKAGEMANAGER_ADDRESS`, before any SSO token:
+
+```sh
+export PACKAGEMANAGER_ADDRESS=https://ppm.acme.com
+export PACKAGEMANAGER_TOKEN=eyJ...
+```
+
+rig sends PPM tokens, from `PACKAGEMANAGER_TOKEN`, from SSO, or from an
+identity token, to the repositories as the password of the `__token__`
+user, and to the PPM API (the [`rig ppm`](reference/ppm.qmd) commands) as a
+bearer token. Some API calls need a token with a specific scope, e.g.
+[`rig ppm pkg publish`](reference/ppm.qmd#rig-ppm-pkg-publish) needs
+`sources:write`.
+[`rig ppm whoami`](reference/ppm.qmd#rig-ppm-whoami) shows the token rig
+uses, its scopes, and whether the server accepts it.
+
 ## Checking your setup
 
 [`rig auth status`](reference/auth.qmd#rig-auth-status) shows which

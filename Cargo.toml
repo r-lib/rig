@@ -97,6 +97,7 @@ reqwest = { version = "0.13", features = [
     "json",
     "stream",
     "http2",
+    "multipart",
 ], default-features = false }
 # SQLite database for caching
 rusqlite = { version = "0.32", features = ["bundled"] }

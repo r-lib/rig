@@ -219,6 +219,15 @@ pub(crate) fn proj_repos_args() -> [Arg; 2] {
     ]
 }
 
+/// The `--json` flag of a `rig ppm` subcommand.
+fn ppm_json() -> Arg {
+    Arg::new("json")
+        .help("JSON output")
+        .long("json")
+        .num_args(0)
+        .required(false)
+}
+
 /// `--sysreqs` and `--no-sysreqs`, for the commands that install packages.
 /// Linux only: elsewhere there are no system requirements to install.
 fn sysreqs_args() -> [Arg; 2] {
@@ -3073,79 +3082,290 @@ pub fn rig_app() -> Command {
                 .required(false),
         )
         .subcommand(
-            Command::new("builds")
-                .about(ABOUT_PPM_BUILDS)
-                .long_about(HELP_PPM_BUILDS)
+            Command::new("pkg")
+                .about(ABOUT_PPM_PKG)
+                .long_about(HELP_PPM_PKG)
                 .display_order(0)
-                .arg(
-                    Arg::new("package")
-                        .help("package to list the builds of")
-                        .required(true),
+                .arg_required_else_help(true)
+                .subcommand(
+                    Command::new("list")
+                        .about(ABOUT_PPM_PKG_LIST)
+                        .long_about(HELP_PPM_PKG_LIST)
+                        .display_order(0)
+                        .arg(
+                            Arg::new("repo")
+                                .help("repository name or id (default: all R and Bioconductor repositories)")
+                                .long("repo")
+                                .num_args(1)
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("source")
+                                .help("list the packages of this source (name or id) instead of a repository; needs a token for a name")
+                                .long("source")
+                                .num_args(1)
+                                .conflicts_with("repo")
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("search")
+                                .help("only packages whose name contains this")
+                                .long("search")
+                                .short('s')
+                                .num_args(1)
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("fields")
+                                .help("fields to show, comma separated (default: name,version,title)")
+                                .long("fields")
+                                .short('f')
+                                .num_args(1)
+                                .action(clap::ArgAction::Append)
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("limit")
+                                .help("maximum number of rows (default: 100)")
+                                .long("limit")
+                                .short('n')
+                                .num_args(1)
+                                .value_parser(clap::value_parser!(usize))
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("bioc-version")
+                                .help("Bioconductor version, for Bioconductor repositories (default: the newest)")
+                                .long("bioc-version")
+                                .num_args(1)
+                                .required(false),
+                        )
+                        .arg(ppm_json()),
                 )
-                .arg(
-                    Arg::new("version")
-                        .help("package version to list (default: all)")
-                        .long("version")
-                        .short('v')
-                        .num_args(1)
-                        .required(false),
+                .subcommand(
+                    Command::new("info")
+                        .about(ABOUT_PPM_PKG_INFO)
+                        .long_about(HELP_PPM_PKG_INFO)
+                        .display_order(0)
+                        .arg(
+                            Arg::new("package")
+                                .help("package to show")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::new("repo")
+                                .help("repository name or id (default: the first one that has the package)")
+                                .long("repo")
+                                .num_args(1)
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("bioc-version")
+                                .help("Bioconductor version, for Bioconductor repositories (default: the newest)")
+                                .long("bioc-version")
+                                .num_args(1)
+                                .required(false),
+                        )
+                        .arg(ppm_json()),
                 )
-                .arg(
-                    Arg::new("json")
-                        .help("JSON output")
-                        .long("json")
-                        .num_args(0)
-                        .required(false),
-                ),
-        )
-        .subcommand(
-            Command::new("build-log")
-                .about(ABOUT_PPM_BUILD_LOG)
-                .long_about(HELP_PPM_BUILD_LOG)
-                .display_order(0)
-                .arg(
-                    Arg::new("package")
-                        .help("package whose build log to show")
-                        .required(true),
+                .subcommand(
+                    Command::new("history")
+                        .about(ABOUT_PPM_PKG_HISTORY)
+                        .long_about(HELP_PPM_PKG_HISTORY)
+                        .display_order(0)
+                        .arg(
+                            Arg::new("package")
+                                .help("package to show the history of")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::new("repo")
+                                .help("repository name or id (default: the first one that has the package)")
+                                .long("repo")
+                                .num_args(1)
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("limit")
+                                .help("maximum number of rows (default: 100)")
+                                .long("limit")
+                                .short('n')
+                                .num_args(1)
+                                .value_parser(clap::value_parser!(usize))
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("bioc-version")
+                                .help("Bioconductor version, for Bioconductor repositories (default: the newest)")
+                                .long("bioc-version")
+                                .num_args(1)
+                                .required(false),
+                        )
+                        .arg(ppm_json()),
                 )
-                .arg(
-                    Arg::new("platform")
-                        .help("P3M build target, e.g. macos, windows, jammy (see `rig ppm builds`); default: the current platform")
-                        .long("platform")
-                        .short('p')
-                        .num_args(1)
-                        .required(false),
+                .subcommand(
+                    Command::new("builds")
+                        .about(ABOUT_PPM_PKG_BUILDS)
+                        .long_about(HELP_PPM_PKG_BUILDS)
+                        .display_order(0)
+                        .arg(
+                            Arg::new("package")
+                                .help("package to list the builds of")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::new("version")
+                                .help("package version to list (default: all)")
+                                .long("version")
+                                .short('v')
+                                .num_args(1)
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("json")
+                                .help("JSON output")
+                                .long("json")
+                                .num_args(0)
+                                .required(false),
+                        ),
                 )
-                .arg(
-                    Arg::new("r-version")
-                        .help("R version the build is for (default: the default R version)")
-                        .long("r-version")
-                        .short('r')
-                        .num_args(1)
-                        .required(false),
+                .subcommand(
+                    Command::new("build-log")
+                        .about(ABOUT_PPM_PKG_BUILD_LOG)
+                        .long_about(HELP_PPM_PKG_BUILD_LOG)
+                        .display_order(0)
+                        .arg(
+                            Arg::new("package")
+                                .help("package whose build log to show")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::new("platform")
+                                .help("P3M build target, e.g. macos, windows, jammy (see `rig ppm pkg builds`); default: the current platform")
+                                .long("platform")
+                                .short('p')
+                                .num_args(1)
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("r-version")
+                                .help("R version the build is for (default: the default R version)")
+                                .long("r-version")
+                                .short('r')
+                                .num_args(1)
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("arch")
+                                .help("CPU architecture (default: the current architecture)")
+                                .long("arch")
+                                .short('a')
+                                .num_args(1)
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("version")
+                                .help("package version (default: latest)")
+                                .long("version")
+                                .short('v')
+                                .num_args(1)
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("json")
+                                .help("JSON output")
+                                .long("json")
+                                .num_args(0)
+                                .required(false),
+                        ),
                 )
-                .arg(
-                    Arg::new("arch")
-                        .help("CPU architecture (default: the current architecture)")
-                        .long("arch")
-                        .short('a')
-                        .num_args(1)
-                        .required(false),
+                .subcommand(
+                    Command::new("downloads")
+                        .about(ABOUT_PPM_PKG_DOWNLOADS)
+                        .long_about(HELP_PPM_PKG_DOWNLOADS)
+                        .display_order(0)
+                        .arg(
+                            Arg::new("package")
+                                .help("packages to count the downloads of")
+                                .required(true)
+                                .num_args(1..),
+                        )
+                        .arg(
+                            Arg::new("days")
+                                .help("number of days to count (default: 30)")
+                                .long("days")
+                                .num_args(1)
+                                .value_parser(clap::value_parser!(u32).range(1..))
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("daily")
+                                .help("downloads per day, one request per day and package")
+                                .long("daily")
+                                .num_args(0)
+                                .required(false),
+                        )
+                        .arg(ppm_json()),
                 )
-                .arg(
-                    Arg::new("version")
-                        .help("package version (default: latest)")
-                        .long("version")
-                        .short('v')
-                        .num_args(1)
-                        .required(false),
+                .subcommand(
+                    Command::new("vulns")
+                        .about(ABOUT_PPM_PKG_VULNS)
+                        .long_about(HELP_PPM_PKG_VULNS)
+                        .display_order(0)
+                        .arg(
+                            Arg::new("package")
+                                .help("packages to show (default: all)")
+                                .required(false)
+                                .num_args(1..),
+                        )
+                        .arg(
+                            Arg::new("repo")
+                                .help("repository name or id (default: all R and Bioconductor repositories)")
+                                .long("repo")
+                                .num_args(1)
+                                .required(false),
+                        )
+                        .arg(ppm_json()),
                 )
-                .arg(
-                    Arg::new("json")
-                        .help("JSON output")
-                        .long("json")
-                        .num_args(0)
-                        .required(false),
+                .subcommand(
+                    Command::new("publish")
+                        .about(ABOUT_PPM_PKG_PUBLISH)
+                        .long_about(HELP_PPM_PKG_PUBLISH)
+                        .display_order(0)
+                        .arg(
+                            Arg::new("path")
+                                .help("package file, or package directory to build (default: current directory)")
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("source")
+                                .help("local source to publish to, name or id")
+                                .long("source")
+                                .num_args(1)
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::new("binary")
+                                .help("the file is a binary package, needs --distro")
+                                .long("binary")
+                                .num_args(0)
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("distro")
+                                .help("platform of a binary package, e.g. jammy")
+                                .long("distro")
+                                .num_args(1)
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("overwrite")
+                                .help("replace the same version if it is already there")
+                                .long("overwrite")
+                                .num_args(0)
+                                .required(false),
+                        )
+                        .arg(ppm_json()),
                 ),
         )
         .subcommand(
@@ -3195,10 +3415,222 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("repos")
+                .about(ABOUT_PPM_REPOS)
+                .long_about(HELP_PPM_REPOS)
+                .display_order(0)
+                .arg(
+                    Arg::new("all")
+                        .help("also list hidden repositories")
+                        .long("all")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("type")
+                        .help("only repositories of this type, e.g. R, Bioconductor, Python")
+                        .long("type")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(ppm_json()),
+        )
+        .subcommand(
+            Command::new("snapshots")
+                .about(ABOUT_PPM_SNAPSHOTS)
+                .long_about(HELP_PPM_SNAPSHOTS)
+                .display_order(0)
+                .arg(
+                    Arg::new("repo")
+                        .help("repository name or id (default: all R and Bioconductor repositories)")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("limit")
+                        .help("maximum number of rows (default: 20)")
+                        .long("limit")
+                        .short('n')
+                        .num_args(1)
+                        .value_parser(clap::value_parser!(usize))
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all")
+                        .help("list all snapshots")
+                        .long("all")
+                        .num_args(0)
+                        .conflicts_with("limit")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("bioc-version")
+                        .help("Bioconductor version, for Bioconductor repositories (default: the newest)")
+                        .long("bioc-version")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("since")
+                        .help("only snapshots on or after this date, YYYY-MM-DD")
+                        .long("since")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(ppm_json()),
+        )
+        .subcommand(
+            Command::new("sources")
+                .about(ABOUT_PPM_SOURCES)
+                .long_about(HELP_PPM_SOURCES)
+                .display_order(0)
+                .arg(
+                    Arg::new("repo")
+                        .help("repository name or id (default: all sources, needs a token)")
+                        .required(false),
+                )
+                .arg(ppm_json()),
+        )
+        .subcommand(
+            Command::new("transactions")
+                .about(ABOUT_PPM_TRANSACTIONS)
+                .long_about(HELP_PPM_TRANSACTIONS)
+                .display_order(0)
+                .arg(
+                    Arg::new("repo")
+                        .help("repository name or id (default: all R and Bioconductor repositories)")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("source")
+                        .help("source name or id (default: all sources of the repository)")
+                        .long("source")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("bioc-version")
+                        .help("Bioconductor version, for Bioconductor repositories (default: the newest)")
+                        .long("bioc-version")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("limit")
+                        .help("maximum number of rows (default: 20)")
+                        .long("limit")
+                        .short('n')
+                        .num_args(1)
+                        .value_parser(clap::value_parser!(usize))
+                        .required(false),
+                )
+                .arg(ppm_json()),
+        )
+        .subcommand(
             Command::new("url")
                 .about(ABOUT_PPM_URL)
                 .long_about(HELP_PPM_URL)
                 .display_order(0)
+                .arg(
+                    Arg::new("repo")
+                        .help("print the URL of this repository (default: the first R repository)")
+                        .long("repo")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("snapshot")
+                        .help("snapshot, a date (YYYY-MM-DD) or `latest` (default: latest)")
+                        .long("snapshot")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("platform")
+                        .help("Linux binaries for this platform: a P3M build target, e.g. noble, a rig platform string, or `current`")
+                        .long("platform")
+                        .short('p')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(ppm_json()),
+        )
+        .subcommand(
+            Command::new("whoami")
+                .about(ABOUT_PPM_WHOAMI)
+                .long_about(HELP_PPM_WHOAMI)
+                .display_order(0)
+                .arg(ppm_json()),
+        )
+        .subcommand(
+            Command::new("builds")
+                .about(ABOUT_PPM_PKG_BUILDS)
+                .long_about(HELP_PPM_PKG_BUILDS)
+                .display_order(0)
+                .hide(true)
+                .arg(
+                    Arg::new("package")
+                        .help("package to list the builds of")
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("version")
+                        .help("package version to list (default: all)")
+                        .long("version")
+                        .short('v')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("build-log")
+                .about(ABOUT_PPM_PKG_BUILD_LOG)
+                .long_about(HELP_PPM_PKG_BUILD_LOG)
+                .display_order(0)
+                .hide(true)
+                .arg(
+                    Arg::new("package")
+                        .help("package whose build log to show")
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("platform")
+                        .help("P3M build target, e.g. macos, windows, jammy (see `rig ppm pkg builds`); default: the current platform")
+                        .long("platform")
+                        .short('p')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version the build is for (default: the default R version)")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("arch")
+                        .help("CPU architecture (default: the current architecture)")
+                        .long("arch")
+                        .short('a')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("version")
+                        .help("package version (default: latest)")
+                        .long("version")
+                        .short('v')
+                        .num_args(1)
+                        .required(false),
+                )
                 .arg(
                     Arg::new("json")
                         .help("JSON output")
@@ -4882,21 +5314,149 @@ mod tests {
     }
 
     #[test]
+    fn test_ppm_new_args() {
+        let sub = |argv: &[&str], name: &str| -> ArgMatches {
+            let m = rig_app().try_get_matches_from(argv).unwrap();
+            let ppm = m.subcommand_matches("ppm").unwrap();
+            let parent = if argv[2] == "pkg" {
+                ppm.subcommand_matches("pkg").unwrap()
+            } else {
+                ppm
+            };
+            parent.subcommand_matches(name).unwrap().clone()
+        };
+        let m = sub(
+            &[
+                "rig",
+                "ppm",
+                "pkg",
+                "list",
+                "--repo",
+                "bioconductor",
+                "-s",
+                "lima",
+                "-n",
+                "5",
+                "-f",
+                "name,title",
+                "--bioc-version",
+                "3.21",
+            ],
+            "list",
+        );
+        assert_eq!(m.get_one::<String>("repo").unwrap(), "bioconductor");
+        assert_eq!(m.get_one::<String>("search").unwrap(), "lima");
+        assert_eq!(m.get_one::<usize>("limit"), Some(&5));
+        assert_eq!(m.get_one::<String>("bioc-version").unwrap(), "3.21");
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "ppm", "pkg", "list", "--repo", "cran", "--source", "x",])
+            .is_err());
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "ppm", "pkg", "list", "-n", "lots"])
+            .is_err());
+        // The repository is an option, not a positional argument
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "ppm", "pkg", "list", "cran"])
+            .is_err());
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "ppm", "pkg", "binaries", "dplyr"])
+            .is_err());
+
+        let m = sub(
+            &[
+                "rig",
+                "ppm",
+                "url",
+                "--repo",
+                "cran",
+                "--snapshot",
+                "2024-01-02",
+                "-p",
+                "current",
+            ],
+            "url",
+        );
+        assert_eq!(m.get_one::<String>("snapshot").unwrap(), "2024-01-02");
+        assert_eq!(m.get_one::<String>("platform").unwrap(), "current");
+
+        let m = sub(
+            &["rig", "ppm", "snapshots", "--all", "--since", "2024-01-01"],
+            "snapshots",
+        );
+        assert!(m.get_flag("all"));
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "ppm", "snapshots", "--all", "-n", "3"])
+            .is_err());
+
+        let m = sub(
+            &[
+                "rig",
+                "ppm",
+                "pkg",
+                "downloads",
+                "a",
+                "--days",
+                "7",
+                "--daily",
+            ],
+            "downloads",
+        );
+        assert_eq!(m.get_one::<u32>("days"), Some(&7));
+        assert!(m.get_flag("daily"));
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "ppm", "pkg", "downloads", "a", "--days", "0"])
+            .is_err());
+
+        let m = sub(
+            &[
+                "rig",
+                "ppm",
+                "pkg",
+                "publish",
+                "x.tar.gz",
+                "--source",
+                "s",
+                "--binary",
+                "--distro",
+                "jammy",
+                "--overwrite",
+            ],
+            "publish",
+        );
+        assert_eq!(m.get_one::<String>("path").unwrap(), "x.tar.gz");
+        assert!(m.get_flag("binary") && m.get_flag("overwrite"));
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "ppm", "pkg", "publish"])
+            .is_err());
+
+        let m = sub(&["rig", "ppm", "pkg", "vulns"], "vulns");
+        assert!(m.get_many::<String>("package").is_none());
+        let m = sub(&["rig", "ppm", "whoami", "--json"], "whoami");
+        assert!(m.get_flag("json"));
+    }
+
+    #[test]
     fn test_ppm_args() {
         // Every subcommand `sc_ppm` dispatches on has to exist here, or the
         // dispatch bails out.
         for name in [
+            "pkg",
             "builds",
             "build-log",
             "platforms",
             "r-versions",
+            "repos",
+            "snapshots",
+            "sources",
             "status",
+            "transactions",
             "url",
+            "whoami",
         ] {
-            let argv: Vec<&str> = if name == "builds" || name == "build-log" {
-                vec!["rig", "ppm", name, "dplyr"]
-            } else {
-                vec!["rig", "ppm", name]
+            let argv: Vec<&str> = match name {
+                "builds" | "build-log" => vec!["rig", "ppm", name, "dplyr"],
+                "pkg" => vec!["rig", "ppm", name, "list"],
+                _ => vec!["rig", "ppm", name],
             };
             let m = rig_app().try_get_matches_from(argv).unwrap();
             assert!(
@@ -4905,6 +5465,34 @@ mod tests {
                     .subcommand_matches(name)
                     .is_some(),
                 "rig ppm {} did not parse",
+                name
+            );
+        }
+        // The same for `sc_ppm_pkg`
+        for name in [
+            "builds",
+            "build-log",
+            "downloads",
+            "history",
+            "info",
+            "list",
+            "publish",
+            "vulns",
+        ] {
+            let argv: Vec<&str> = match name {
+                "list" | "vulns" => vec!["rig", "ppm", "pkg", name],
+                "publish" => vec!["rig", "ppm", "pkg", name, "--source", "internal"],
+                _ => vec!["rig", "ppm", "pkg", name, "dplyr"],
+            };
+            let m = rig_app().try_get_matches_from(argv).unwrap();
+            assert!(
+                m.subcommand_matches("ppm")
+                    .unwrap()
+                    .subcommand_matches("pkg")
+                    .unwrap()
+                    .subcommand_matches(name)
+                    .is_some(),
+                "rig ppm pkg {} did not parse",
                 name
             );
         }

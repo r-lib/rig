@@ -39,12 +39,12 @@ URL serves.
 
 ```sh
 # Every build of a package, latest version last
-rig ppm builds cli
+rig ppm pkg builds cli
 
 # Just one version
-rig ppm builds dplyr --version 1.1.4
+rig ppm pkg builds dplyr --version 1.1.4
 
 # The builds for one R version and platform
-rig ppm builds dplyr --json |
+rig ppm pkg builds dplyr --json |
   jq '.[] | select(.r_version == "4.5" and .platform == "jammy")'
 ```
