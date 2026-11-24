@@ -1,4 +1,4 @@
-# rig 0.11.2-dev (development version)
+# rig 0.12.0-alpha
 
 ## New features
 

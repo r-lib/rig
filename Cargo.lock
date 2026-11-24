@@ -2637,7 +2637,7 @@ dependencies = [
 
 [[package]]
 name = "rig"
-version = "0.11.2-dev"
+version = "0.12.0-alpha"
 dependencies = [
  "assert_cmd",
  "base64",
