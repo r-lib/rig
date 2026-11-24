@@ -124,6 +124,11 @@
   called `'NULL'` on Windows during `R CMD check`, which sets
   `R_LIBS_USER` to `'NULL'`, with the quotes.
 
+* rig now creates `.exe` shims differently, without modifying the signed
+  `.exe` files, to avoid interference with security software. Run
+  `rig system make-links`, `rig default` and in your projects `rig proj sync`
+  to update existing shims.
+
 ## Certificates
 
 * In user mode on Linux and for portable installations in admin mode,

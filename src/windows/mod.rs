@@ -48,11 +48,12 @@ pub fn get_links_dir() -> Result<String, Box<dyn Error>> {
     get_binary_dir()
 }
 
-// Quick links are real `.exe` shims: a copy of the `rig-shim.exe` template,
-// bundled next to `rig.exe` (same lookup as `gsudo.exe` in
-// src/escalate.rs), with a small footer appended that tells the shim which
-// real R.exe/Rscript.exe to forward to. See src/shim_format.rs for the
-// footer layout and src/shim/main.rs for the shim itself.
+// Quick links are real `.exe` shims: an unmodified copy of the
+// `rig-shim.exe` template, bundled next to `rig.exe` (same lookup as
+// `gsudo.exe` in src/escalate.rs), plus a `.shim` config file next to it
+// that tells the shim which real R.exe/Rscript.exe to forward to. See
+// src/shim_format.rs for the config format and src/shim/main.rs for the
+// shim itself.
 
 fn find_shim_template() -> Result<PathBuf, Box<dyn Error>> {
     let exe = std::env::current_exe()?;
@@ -111,34 +112,84 @@ pub(crate) fn write_shim_link(
     target: &str,
     marker: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let template = std::fs::read(find_shim_template()?)?;
-    let bytes = crate::shim_format::build_shim_bytes(&template, target, marker);
-    std::fs::write(path, bytes)?;
-    Ok(())
+    write_shim_link_env(path, target, marker, &[])
 }
 
-// Same as `write_shim_link`, but also bakes in a list of environment
-// variables for the shim to set before forwarding to `target`. Used for
-// `.rvenv\bin\R.exe` / `Rscript.exe`, which need to force
-// `R_LIBS_USER`/`R_LIBS_SITE`/`R_REPOSITORIES`/`RVENV`, the Windows
-// equivalent of the `export`s in the Unix `.rvenv/bin/R` wrapper script.
-#[allow(dead_code)] // wired up once `rig proj sync` lands on Windows
+// Same as `write_shim_link`, but also lists environment variables for the
+// shim to set before forwarding to `target`. Used for `.rvenv\bin\R.exe` /
+// `Rscript.exe`, which need to force `R_LIBS_USER`/`R_LIBS_SITE`/
+// `R_REPOSITORIES`/`RVENV`, the Windows equivalent of the `export`s in the
+// Unix `.rvenv/bin/R` wrapper script.
+//
+// The config is written first, and each file only if its contents change.
+// So the `.exe` is only rewritten when it is not yet a plain copy of the
+// template (a new link, an older rig's link with a footer, or a new rig
+// version). Changing what an existing link points at only touches the
+// config file, which also works while the shim is running.
 pub(crate) fn write_shim_link_env(
     path: &Path,
     target: &str,
     marker: &str,
     envs: &[(String, String)],
 ) -> Result<(), Box<dyn Error>> {
+    let config = crate::shim_format::ShimConfig {
+        target: target.to_string(),
+        marker: marker.to_string(),
+        env: envs.to_vec(),
+    };
+    let text = crate::shim_format::format_config(&config)?;
+    let config_path = crate::shim_format::config_path(path);
+    if std::fs::read(&config_path).ok().as_deref() != Some(text.as_bytes()) {
+        std::fs::write(&config_path, text)?;
+    }
+
     let template = std::fs::read(find_shim_template()?)?;
-    let bytes = crate::shim_format::build_shim_bytes_env(&template, target, marker, envs);
-    std::fs::write(path, bytes)?;
+    if std::fs::read(path).ok() != Some(template.clone()) {
+        std::fs::write(path, &template)?;
+    }
     Ok(())
+}
+
+// Whether the shim at `path` already forwards to `target` with `marker`, in
+// the current format: a plain copy of the template with a config file. A
+// link from rig 0.11.1 or earlier, with a footer, is not up to date, even if
+// it points to the right place, so that it gets replaced.
+pub(crate) fn shim_link_up_to_date(path: &Path, target: &str, marker: &str) -> bool {
+    let config = match crate::shim_format::read_config(path) {
+        Ok(Some(c)) => c,
+        _ => return false,
+    };
+    if config.target != target || config.marker != marker || !config.env.is_empty() {
+        return false;
+    }
+    match (find_shim_template(), std::fs::read(path)) {
+        (Ok(template), Ok(bytes)) => std::fs::read(template).ok() == Some(bytes),
+        _ => false,
+    }
+}
+
+// Remove the shim at `path` and its config file. A missing config file is
+// not an error, links from rig 0.11.1 and earlier do not have one.
+pub(crate) fn remove_shim_link(path: &Path) -> std::io::Result<()> {
+    std::fs::remove_file(path)?;
+    match std::fs::remove_file(crate::shim_format::config_path(path)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
 }
 
 // Read the (target, marker) a quick-link `.exe` at `path` forwards to, or
 // `None` if `path` doesn't exist, isn't one of our shims, or can't be read.
+// Links from rig 0.11.1 and earlier have no config file, but a footer at
+// the end of the `.exe`.
 pub(crate) fn read_shim_link(path: &Path) -> Option<(String, String)> {
-    match crate::shim_format::read_shim_footer(path) {
+    if !path.exists() {
+        return None;
+    }
+    if let Ok(Some(config)) = crate::shim_format::read_config(path) {
+        return Some((config.target, config.marker));
+    }
+    match crate::shim_format::read_legacy_footer(path) {
         Ok(Some(footer)) => Some((footer.target, footer.marker)),
         _ => None,
     }
@@ -1244,10 +1295,8 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         let op;
         if linkfile.exists() {
             op = "Updating";
-            if let Some((orig_target, orig_marker)) = read_shim_link(&linkfile) {
-                if orig_target == target && orig_marker.is_empty() {
-                    continue;
-                }
+            if shim_link_up_to_date(&linkfile, &target, "") {
+                continue;
             }
         } else {
             op = "Adding";
@@ -1280,6 +1329,20 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     }
                     continue;
                 }
+                // A config file whose shim is gone, e.g. if the `.exe` was
+                // deleted by hand.
+                if filename.starts_with("R-") && filename.ends_with(".shim") {
+                    let exe = path.path().with_extension("exe");
+                    if !exe.exists() {
+                        OUTPUT.status(&format!("Deleting unused {}", filename));
+                        info!("Deleting unused {}", filename);
+                        if let Err(e) = std::fs::remove_file(path.path()) {
+                            OUTPUT.warn(&format!("Failed to remove {}: {}", filename, e));
+                            warn!("Failed to remove {}: {}", filename, e);
+                        }
+                    }
+                    continue;
+                }
                 if !filename.ends_with(".exe") {
                     continue;
                 }
@@ -1301,7 +1364,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                 if !new_links.contains(&filename) {
                     OUTPUT.status(&format!("Deleting unused {}", filename));
                     info!("Deleting unused {}", filename);
-                    match std::fs::remove_file(path.path()) {
+                    match remove_shim_link(&path.path()) {
                         Ok(_) => {}
                         Err(e) => {
                             OUTPUT.warn(&format!("Failed to remove {}: {}", filename, e));
@@ -1874,7 +1937,7 @@ fn list_admin_versions() -> Result<Vec<String>, Box<dyn Error>> {
 }
 
 // Read the admin-mode default R version from `C:\Program Files\R\bin\R.exe`'s
-// shim footer marker, written by sc_set_default(). Falls back to the legacy
+// shim marker, written by sc_set_default(). Falls back to the legacy
 // `::<rig-name>` first line of `R.bat` for installs not yet migrated to the
 // `.exe` shims.
 fn find_admin_default() -> Result<Option<String>, Box<dyn Error>> {
@@ -2239,14 +2302,19 @@ fn remove_admin_links() -> Result<(), Box<dyn Error>> {
             Some(n) => n.to_string(),
             None => continue,
         };
+        // `.shim` files are the config files of the `.exe` shims.
         let is_link = name == "R.bat"
             || name == "Rscript.bat"
             || name == "RS.bat"
             || name == "R.exe"
             || name == "Rscript.exe"
             || name == "RS.exe"
+            || name == "R.shim"
+            || name == "Rscript.shim"
+            || name == "RS.shim"
             || re.is_match(&name)
-            || (name.starts_with("R-") && (name.ends_with(".bat") || name.ends_with(".exe")));
+            || (name.starts_with("R-")
+                && (name.ends_with(".bat") || name.ends_with(".exe") || name.ends_with(".shim")));
         if !is_link {
             continue;
         }
@@ -2409,6 +2477,9 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
     try_rm("R.exe");
     try_rm("RS.exe");
     try_rm("Rscript.exe");
+    try_rm("R.shim");
+    try_rm("RS.shim");
+    try_rm("Rscript.shim");
     // Legacy `.bat` shims, in case this runs before sc_system_make_links has
     // had a chance to sweep them up.
     try_rm("R.bat");

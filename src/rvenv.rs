@@ -24,7 +24,8 @@
 //!     rvenv.cfg             # what this environment was built against
 //!     onload.R              # rest of the shim package's `.onLoad()`
 //!     etc/repositories      # what R_REPOSITORIES points at
-//!     bin/R, bin/Rscript    # wrapper scripts (.exe shims on Windows)
+//!     bin/R, bin/Rscript    # wrapper scripts (.exe shims + .shim configs
+//!                           # on Windows)
 //!     bin/activate*         # shell activation scripts
 //! ```
 //!
@@ -1330,9 +1331,10 @@ pub fn read_rvenv_cfg(root: &Path) -> Result<Option<RvenvCfg>, Box<dyn Error>> {
 
 /// The environment variables that make an R session use the project.
 ///
-/// The one source of truth for the activation environment: the Windows
-/// `.exe` shims bake this list in verbatim, and the Unix wrapper and the
-/// activation scripts spell out the same variables, relative to `$RVENV`.
+/// The one source of truth for the activation environment: the `.shim`
+/// config files of the Windows `.exe` shims list it verbatim, and the Unix
+/// wrapper and the activation scripts spell out the same variables, relative
+/// to `$RVENV`.
 ///
 /// `R_LIBS` is deliberately empty, so that the project library stays
 /// `.libPaths()[1]`, which is where `install.packages()` writes.
@@ -1480,8 +1482,8 @@ fn shell_exports() -> String {
 
 #[cfg(windows)]
 fn shell_exports() -> String {
-    // The Windows wrappers are `.exe` shims with the same variables baked
-    // into them, so there is no shell wrapper to fill in here.
+    // The Windows wrappers are `.exe` shims with the same variables in their
+    // `.shim` config files, so there is no shell wrapper to fill in here.
     String::new()
 }
 
@@ -1647,16 +1649,24 @@ fn write_wrappers(
         ("Rscript.exe", rscript_of(r_binary)),
     ] {
         let path = bin.join(file);
+        let config = crate::shim_format::config_path(&path);
         let target_str = target
             .to_str()
             .ok_or("The R installation path is not valid Unicode")?
             .to_string();
+        // The shim `.exe` is an unmodified copy of `rig-shim.exe`, and the
+        // project's settings go into its `.shim` config file, so check both
+        // for changes.
+        let exe_before = fs::read(&path).ok();
+        let config_before = fs::read(&config).ok();
         // No marker: these shims are not rig's default-version quick links,
         // they belong to one project and one R installation.
-        if let Some(p) = write_if_changed(path.clone(), || {
-            crate::windows::write_shim_link_env(&path, &target_str, "", &envs)
-        })? {
-            written.push(p);
+        crate::windows::write_shim_link_env(&path, &target_str, "", &envs)?;
+        if exe_before != Some(fs::read(&path)?) {
+            written.push(path);
+        }
+        if config_before != Some(fs::read(&config)?) {
+            written.push(config);
         }
     }
     Ok(written)
@@ -2419,7 +2429,7 @@ mod tests {
         }
 
         let wrappers: Vec<&str> = if cfg!(windows) {
-            vec!["R.exe", "Rscript.exe"]
+            vec!["R.exe", "R.shim", "Rscript.exe", "Rscript.shim"]
         } else {
             vec!["R", "Rscript"]
         };

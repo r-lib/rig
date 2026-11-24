@@ -189,10 +189,8 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let op;
     if linkfile.exists() {
         op = "Updating";
-        if let Some((orig_target, orig_marker)) = read_shim_link(&linkfile) {
-            if orig_target == target && orig_marker.is_empty() {
-                return Ok(());
-            }
+        if shim_link_up_to_date(&linkfile, &target, "") {
+            return Ok(());
         }
     } else {
         op = "Adding";
@@ -216,7 +214,7 @@ pub fn remove_alias(alias: &str) -> Result<(), Box<dyn Error>> {
     if linkfile.exists() {
         OUTPUT.status(&format!("Removing R-{} alias", alias));
         info!("Removing R-{} alias", alias);
-        std::fs::remove_file(&linkfile)?;
+        remove_shim_link(&linkfile)?;
     }
 
     Ok(())
