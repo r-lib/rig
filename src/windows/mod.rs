@@ -48,11 +48,12 @@ pub fn get_links_dir() -> Result<String, Box<dyn Error>> {
     get_binary_dir()
 }
 
-// Quick links are real `.exe` shims: a copy of the `rig-shim.exe` template,
-// bundled next to `rig.exe` (same lookup as `gsudo.exe` in
-// src/escalate.rs), with a small footer appended that tells the shim which
-// real R.exe/Rscript.exe to forward to. See src/shim_format.rs for the
-// footer layout and src/shim/main.rs for the shim itself.
+// Quick links are real `.exe` shims: an unmodified copy of the
+// `rig-shim.exe` template, bundled next to `rig.exe` (same lookup as
+// `gsudo.exe` in src/escalate.rs), plus a `.shim` config file next to it
+// that tells the shim which real R.exe/Rscript.exe to forward to. See
+// src/shim_format.rs for the config format and src/shim/main.rs for the
+// shim itself.
 
 fn find_shim_template() -> Result<PathBuf, Box<dyn Error>> {
     let exe = std::env::current_exe()?;
@@ -111,34 +112,238 @@ pub(crate) fn write_shim_link(
     target: &str,
     marker: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let template = std::fs::read(find_shim_template()?)?;
-    let bytes = crate::shim_format::build_shim_bytes(&template, target, marker);
-    std::fs::write(path, bytes)?;
-    Ok(())
+    write_shim_link_env(path, target, marker, &[])
 }
 
-// Same as `write_shim_link`, but also bakes in a list of environment
-// variables for the shim to set before forwarding to `target`. Used for
-// `.rvenv\bin\R.exe` / `Rscript.exe`, which need to force
-// `R_LIBS_USER`/`R_LIBS_SITE`/`R_REPOSITORIES`/`RVENV`, the Windows
-// equivalent of the `export`s in the Unix `.rvenv/bin/R` wrapper script.
-#[allow(dead_code)] // wired up once `rig proj sync` lands on Windows
+// Same as `write_shim_link`, but also lists environment variables for the
+// shim to set before forwarding to `target`. Used for `.rvenv\bin\R.exe` /
+// `Rscript.exe`, which need to force `R_LIBS_USER`/`R_LIBS_SITE`/
+// `R_REPOSITORIES`/`RVENV`, the Windows equivalent of the `export`s in the
+// Unix `.rvenv/bin/R` wrapper script.
+//
+// The config is written first, and each file only if its contents change.
+// So the `.exe` is only rewritten when it is not yet a plain copy of the
+// template (a new link, an older rig's link with a footer, or a new rig
+// version). Changing what an existing link points at only touches the
+// config file. Both work while the shim is running, see `replace_exe()`.
 pub(crate) fn write_shim_link_env(
     path: &Path,
     target: &str,
     marker: &str,
     envs: &[(String, String)],
 ) -> Result<(), Box<dyn Error>> {
+    let config = crate::shim_format::ShimConfig {
+        target: target.to_string(),
+        marker: marker.to_string(),
+        env: envs.to_vec(),
+    };
+    let text = crate::shim_format::format_config(&config)?;
+    let config_path = crate::shim_format::config_path(path);
+    if std::fs::read(&config_path).ok().as_deref() != Some(text.as_bytes()) {
+        std::fs::write(&config_path, text)?;
+    }
+
     let template = std::fs::read(find_shim_template()?)?;
-    let bytes = crate::shim_format::build_shim_bytes_env(&template, target, marker, envs);
-    std::fs::write(path, bytes)?;
+    if std::fs::read(path).ok() != Some(template.clone()) {
+        replace_exe(path, &template)?;
+    } else {
+        // E.g. `.rvenv\bin\R.exe`, replaced while it was running.
+        sweep_old_shims(path);
+    }
     Ok(())
+}
+
+// Leftovers of replaced or removed shims are renamed to
+// `<name>.rig-old-<pid>-<nanos>`, see `move_exe_aside()`.
+const OLD_SHIM_INFIX: &str = ".rig-old-";
+
+// Windows cannot overwrite or delete an `.exe` while it is running, but it
+// can rename it. So move the old file aside within the same directory, and
+// delete it if it is not running. If it is, it stays until a later
+// `sweep_old_shims()`. Returns the new path of the old file, if there was
+// one and it could not be deleted.
+fn move_exe_aside(path: &Path) -> Result<Option<PathBuf>, Box<dyn Error>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    sweep_old_shims(path);
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| format!("Invalid shim path: {}", path.display()))?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let old = path.with_file_name(format!(
+        "{}{}{}-{}",
+        name,
+        OLD_SHIM_INFIX,
+        std::process::id(),
+        nanos
+    ));
+    std::fs::rename(path, &old)?;
+    match std::fs::remove_file(&old) {
+        Ok(()) => Ok(None),
+        Err(e) => {
+            OUTPUT.info(&format!(
+                "Old {} is still running, it will be removed later",
+                name
+            ));
+            info!("Cannot remove {} yet: {}", old.display(), e);
+            Ok(Some(old))
+        }
+    }
+}
+
+// Leftovers that still cannot be deleted after this long are probably not
+// just a running R session, so `remove_old_shim()` warns about them.
+const OLD_SHIM_WARN_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+// When `move_exe_aside()` moved this leftover aside, from the timestamp in
+// its name. (Not the modification time, a rename keeps that of the shim.)
+fn old_shim_moved_at(filename: &str) -> Option<std::time::SystemTime> {
+    let nanos: u64 = filename.rsplit_once('-')?.1.parse().ok()?;
+    std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_nanos(nanos))
+}
+
+// Delete a leftover of `move_exe_aside()`. Quietly, unless it has been
+// around for a long time, see `OLD_SHIM_WARN_AGE`.
+fn remove_old_shim(path: &Path) {
+    let err = match std::fs::remove_file(path) {
+        Ok(()) => return,
+        Err(e) => e,
+    };
+    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let old_enough = old_shim_moved_at(filename)
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|age| age > OLD_SHIM_WARN_AGE);
+    if old_enough {
+        OUTPUT.warn(&format!(
+            "Cannot remove old shim {}: {}",
+            path.display(),
+            err
+        ));
+        warn!("Cannot remove old shim {}: {}", path.display(), err);
+    } else {
+        debug!("Cannot remove {} yet: {}", path.display(), err);
+    }
+}
+
+// Replace the `.exe` at `path` with `bytes`, even if it is running.
+fn replace_exe(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
+    let old = move_exe_aside(path)?;
+    if let Err(e) = std::fs::write(path, bytes) {
+        // Put the old one back, so the link keeps working.
+        if let Some(old) = old {
+            let _ = std::fs::rename(&old, path);
+        }
+        return Err(e.into());
+    }
+    Ok(())
+}
+
+// Delete the leftovers of `move_exe_aside()` for the shim at `path`, the
+// ones that are not running any more.
+fn sweep_old_shims(path: &Path) {
+    let (dir, name) = match (path.parent(), path.file_name().and_then(|n| n.to_str())) {
+        (Some(d), Some(n)) => (d, n),
+        _ => return,
+    };
+    let prefix = format!("{}{}", name, OLD_SHIM_INFIX);
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for de in entries.flatten() {
+            if de.file_name().to_string_lossy().starts_with(&prefix) {
+                remove_old_shim(&de.path());
+            }
+        }
+    }
+}
+
+fn is_old_shim(filename: &str) -> bool {
+    filename.contains(OLD_SHIM_INFIX)
+}
+
+// Whether the shim at `path` already forwards to `target` with `marker`, in
+// the current format: a plain copy of the template with a config file. A
+// link from rig 0.11.1 or earlier, with a footer, is not up to date, even if
+// it points to the right place, so that it gets replaced.
+pub(crate) fn shim_link_up_to_date(path: &Path, target: &str, marker: &str) -> bool {
+    let config = match crate::shim_format::read_config(path) {
+        Ok(Some(c)) => c,
+        _ => return false,
+    };
+    if config.target != target || config.marker != marker || !config.env.is_empty() {
+        return false;
+    }
+    match (find_shim_template(), std::fs::read(path)) {
+        (Ok(template), Ok(bytes)) => std::fs::read(template).ok() == Some(bytes),
+        _ => false,
+    }
+}
+
+// Rewrite the shim at `path` in the current format, keeping its target and
+// marker, if it is not in the current format yet: a link from rig 0.11.1 or
+// earlier, with a footer, or a shim from an older `rig-shim.exe`. Returns
+// whether it rewrote the link. Does nothing if `path` is not a rig shim.
+pub(crate) fn upgrade_shim_link(path: &Path) -> Result<bool, Box<dyn Error>> {
+    let (target, marker) = match read_shim_link(path) {
+        Some(tm) => tm,
+        None => return Ok(false),
+    };
+    if shim_link_up_to_date(path, &target, &marker) {
+        return Ok(false);
+    }
+    write_shim_link(path, &target, &marker)?;
+    Ok(true)
+}
+
+// `upgrade_shim_link()` for `rig system make-links`. A failure is only a
+// warning: the old link keeps working, and the next `make-links` tries
+// again.
+fn report_shim_upgrade(path: &Path, what: &str) {
+    match upgrade_shim_link(path) {
+        Ok(true) => {
+            OUTPUT.status(&format!("Updated {}", what));
+            info!("Updated {}", what);
+        }
+        Ok(false) => {}
+        Err(e) => {
+            OUTPUT.warn(&format!("Failed to update {}: {}", what, e));
+            warn!("Failed to update {}: {}", what, e);
+        }
+    }
+}
+
+// Remove the shim at `path` and its config file. A missing config file is
+// not an error, links from rig 0.11.1 and earlier do not have one.
+// The `.exe` is moved aside first, so this works while the shim is running.
+pub(crate) fn remove_shim_link(path: &Path) -> std::io::Result<()> {
+    if !path.exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("{} does not exist", path.display()),
+        ));
+    }
+    move_exe_aside(path).map_err(|e| std::io::Error::other(e.to_string()))?;
+    match std::fs::remove_file(crate::shim_format::config_path(path)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
 }
 
 // Read the (target, marker) a quick-link `.exe` at `path` forwards to, or
 // `None` if `path` doesn't exist, isn't one of our shims, or can't be read.
+// Links from rig 0.11.1 and earlier have no config file, but a footer at
+// the end of the `.exe`.
 pub(crate) fn read_shim_link(path: &Path) -> Option<(String, String)> {
-    match crate::shim_format::read_shim_footer(path) {
+    if !path.exists() {
+        return None;
+    }
+    if let Ok(Some(config)) = crate::shim_format::read_config(path) {
+        return Some((config.target, config.marker));
+    }
+    match crate::shim_format::read_legacy_footer(path) {
         Ok(Some(footer)) => Some((footer.target, footer.marker)),
         _ => None,
     }
@@ -1231,6 +1436,12 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    // Bring the default-version links up to date with the current shim
+    // format, keeping the version they point to.
+    for name in ["R.exe", "RS.exe", "Rscript.exe"] {
+        report_shim_upgrade(&linkdir.join(name), name);
+    }
+
     for ver in vers {
         let filename = "R-".to_string() + &ver + ".exe";
         let linkfile = linkdir.join(&filename);
@@ -1244,10 +1455,8 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         let op;
         if linkfile.exists() {
             op = "Updating";
-            if let Some((orig_target, orig_marker)) = read_shim_link(&linkfile) {
-                if orig_target == target && orig_marker.is_empty() {
-                    continue;
-                }
+            if shim_link_up_to_date(&linkfile, &target, "") {
+                continue;
             }
         } else {
             op = "Adding";
@@ -1280,6 +1489,25 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     }
                     continue;
                 }
+                // Old shims that were replaced while running.
+                if is_old_shim(&filename) {
+                    remove_old_shim(&path.path());
+                    continue;
+                }
+                // A config file whose shim is gone, e.g. if the `.exe` was
+                // deleted by hand.
+                if filename.starts_with("R-") && filename.ends_with(".shim") {
+                    let exe = path.path().with_extension("exe");
+                    if !exe.exists() {
+                        OUTPUT.status(&format!("Deleting unused {}", filename));
+                        info!("Deleting unused {}", filename);
+                        if let Err(e) = std::fs::remove_file(path.path()) {
+                            OUTPUT.warn(&format!("Failed to remove {}: {}", filename, e));
+                            warn!("Failed to remove {}: {}", filename, e);
+                        }
+                    }
+                    continue;
+                }
                 if !filename.ends_with(".exe") {
                     continue;
                 }
@@ -1295,13 +1523,16 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     };
                     let realname = "R-".to_string() + &rver + ".exe";
                     if new_links.contains(&realname) {
+                        // Keep the alias, but in the current shim format.
+                        let alias = &filename[2..filename.len() - 4];
+                        report_shim_upgrade(&path.path(), &format!("R-{} alias", alias));
                         continue;
                     }
                 }
                 if !new_links.contains(&filename) {
                     OUTPUT.status(&format!("Deleting unused {}", filename));
                     info!("Deleting unused {}", filename);
-                    match std::fs::remove_file(path.path()) {
+                    match remove_shim_link(&path.path()) {
                         Ok(_) => {}
                         Err(e) => {
                             OUTPUT.warn(&format!("Failed to remove {}: {}", filename, e));
@@ -1874,7 +2105,7 @@ fn list_admin_versions() -> Result<Vec<String>, Box<dyn Error>> {
 }
 
 // Read the admin-mode default R version from `C:\Program Files\R\bin\R.exe`'s
-// shim footer marker, written by sc_set_default(). Falls back to the legacy
+// shim marker, written by sc_set_default(). Falls back to the legacy
 // `::<rig-name>` first line of `R.bat` for installs not yet migrated to the
 // `.exe` shims.
 fn find_admin_default() -> Result<Option<String>, Box<dyn Error>> {
@@ -2239,20 +2470,37 @@ fn remove_admin_links() -> Result<(), Box<dyn Error>> {
             Some(n) => n.to_string(),
             None => continue,
         };
+        // `.shim` files are the config files of the `.exe` shims.
         let is_link = name == "R.bat"
             || name == "Rscript.bat"
             || name == "RS.bat"
             || name == "R.exe"
             || name == "Rscript.exe"
             || name == "RS.exe"
+            || name == "R.shim"
+            || name == "Rscript.shim"
+            || name == "RS.shim"
             || re.is_match(&name)
-            || (name.starts_with("R-") && (name.ends_with(".bat") || name.ends_with(".exe")));
+            || (name.starts_with("R-")
+                && (name.ends_with(".bat") || name.ends_with(".exe") || name.ends_with(".shim")));
+        if is_old_shim(&name) {
+            // Not a link, but a shim that was replaced while running.
+            remove_old_shim(&path);
+            continue;
+        }
         if !is_link {
             continue;
         }
         OUTPUT.status(&format!("Removing {}", path.display()));
         info!("Removing {}", path.display());
-        if let Err(e) = std::fs::remove_file(&path) {
+        let result = if name.ends_with(".exe") {
+            move_exe_aside(&path)
+                .map(|_| ())
+                .map_err(|e| std::io::Error::other(e.to_string()))
+        } else {
+            std::fs::remove_file(&path)
+        };
+        if let Err(e) = result {
             OUTPUT.warn(&format!("Cannot remove {}: {}", path.display(), e));
             warn!("Cannot remove {}: {}", path.display(), e);
         }
@@ -2399,7 +2647,14 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
     let try_rm = |x: &str| {
         let f = linkdir.join(x);
         if f.exists() {
-            if let Err(e) = std::fs::remove_file(&f) {
+            // `remove_shim_link()` works while the shim is running, and
+            // removes its `.shim` config, too.
+            let result = if x.ends_with(".exe") {
+                remove_shim_link(&f)
+            } else {
+                std::fs::remove_file(&f)
+            };
+            if let Err(e) = result {
                 OUTPUT.warn(&format!("Failed to remove {}: {}", f.display(), e));
                 warn!("Failed to remove {}: {}", f.display(), e)
             };
@@ -2409,6 +2664,10 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
     try_rm("R.exe");
     try_rm("RS.exe");
     try_rm("Rscript.exe");
+    // In case the `.exe` was deleted by hand.
+    try_rm("R.shim");
+    try_rm("RS.shim");
+    try_rm("Rscript.shim");
     // Legacy `.bat` shims, in case this runs before sc_system_make_links has
     // had a chance to sweep them up.
     try_rm("R.bat");
@@ -2794,6 +3053,117 @@ pub fn get_r_binary_x64(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A link as rig 0.11.1 and earlier wrote it: the template with a V1
+    // footer appended. See src/shim_format.rs.
+    fn legacy_link(target: &str, marker: &str) -> Vec<u8> {
+        let mut out = std::fs::read(find_shim_template().unwrap()).unwrap();
+        out.extend_from_slice(target.as_bytes());
+        out.extend_from_slice(marker.as_bytes());
+        out.extend_from_slice(&(target.len() as u32).to_le_bytes());
+        out.extend_from_slice(&(marker.len() as u32).to_le_bytes());
+        out.extend_from_slice(b"RIGSHIM1");
+        out
+    }
+
+    #[test]
+    fn upgrade_shim_link_rewrites_legacy_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let template = std::fs::read(find_shim_template().unwrap()).unwrap();
+        let target = "C:\\R\\R-4.5.2\\bin\\R.exe";
+        for (name, marker) in [("R.exe", "4.5.2"), ("R-release.exe", "")] {
+            let link = dir.path().join(name);
+            std::fs::write(&link, legacy_link(target, marker)).unwrap();
+            assert!(!shim_link_up_to_date(&link, target, marker));
+
+            assert!(upgrade_shim_link(&link).unwrap());
+            assert_eq!(std::fs::read(&link).unwrap(), template);
+            assert!(shim_link_up_to_date(&link, target, marker));
+            assert_eq!(
+                read_shim_link(&link),
+                Some((target.to_string(), marker.to_string()))
+            );
+
+            // Already up to date: nothing to do.
+            assert!(!upgrade_shim_link(&link).unwrap());
+        }
+    }
+
+    #[test]
+    fn replace_exe_works_while_running() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("R.exe");
+        let cmd = std::env::var("ComSpec").unwrap_or("C:\\Windows\\System32\\cmd.exe".into());
+        std::fs::copy(&cmd, &exe).unwrap();
+        let mut child = std::process::Command::new(&exe)
+            .args(["/c", "ping -n 30 127.0.0.1 >nul"])
+            .spawn()
+            .unwrap();
+        // A running `.exe` cannot be overwritten.
+        assert!(std::fs::write(&exe, b"new").is_err());
+
+        replace_exe(&exe, b"new").unwrap();
+        assert_eq!(std::fs::read(&exe).unwrap(), b"new");
+        let leftovers = || {
+            std::fs::read_dir(dir.path())
+                .unwrap()
+                .flatten()
+                .filter(|de| is_old_shim(&de.file_name().to_string_lossy()))
+                .count()
+        };
+        assert_eq!(leftovers(), 1);
+
+        child.kill().unwrap();
+        child.wait().unwrap();
+        sweep_old_shims(&exe);
+        assert_eq!(leftovers(), 0);
+
+        // Not running: no leftover at all.
+        replace_exe(&exe, b"newer").unwrap();
+        assert_eq!(std::fs::read(&exe).unwrap(), b"newer");
+        assert_eq!(leftovers(), 0);
+    }
+
+    #[test]
+    fn old_shim_moved_at_parses_the_name() {
+        let t = old_shim_moved_at("R.exe.rig-old-1234-1795515923452614400").unwrap();
+        assert_eq!(
+            t.duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
+            1795515923452614400
+        );
+        assert_eq!(old_shim_moved_at("R.exe.rig-old-junk"), None);
+        assert_eq!(old_shim_moved_at("R.exe"), None);
+    }
+
+    #[test]
+    fn remove_shim_link_works_while_running() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("R-release.exe");
+        let cmd = std::env::var("ComSpec").unwrap_or("C:\\Windows\\System32\\cmd.exe".into());
+        std::fs::copy(&cmd, &exe).unwrap();
+        std::fs::write(crate::shim_format::config_path(&exe), "target=x\n").unwrap();
+        let mut child = std::process::Command::new(&exe)
+            .args(["/c", "ping -n 30 127.0.0.1 >nul"])
+            .spawn()
+            .unwrap();
+        remove_shim_link(&exe).unwrap();
+        assert!(!exe.exists());
+        assert!(!crate::shim_format::config_path(&exe).exists());
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert!(remove_shim_link(&exe).is_err());
+    }
+
+    #[test]
+    fn upgrade_shim_link_ignores_other_files() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!upgrade_shim_link(&dir.path().join("R.exe")).unwrap());
+        let other = dir.path().join("R-foo.exe");
+        std::fs::write(&other, b"not a shim").unwrap();
+        assert!(!upgrade_shim_link(&other).unwrap());
+        assert_eq!(std::fs::read(&other).unwrap(), b"not a shim");
+        assert!(!crate::shim_format::config_path(&other).exists());
+    }
 
     #[test]
     fn ensure_dir_root_restores_the_drive_separator() {
