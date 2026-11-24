@@ -125,7 +125,7 @@ pub(crate) fn write_shim_link(
 // So the `.exe` is only rewritten when it is not yet a plain copy of the
 // template (a new link, an older rig's link with a footer, or a new rig
 // version). Changing what an existing link points at only touches the
-// config file, which also works while the shim is running.
+// config file. Both work while the shim is running, see `replace_exe()`.
 pub(crate) fn write_shim_link_env(
     path: &Path,
     target: &str,
@@ -145,9 +145,123 @@ pub(crate) fn write_shim_link_env(
 
     let template = std::fs::read(find_shim_template()?)?;
     if std::fs::read(path).ok() != Some(template.clone()) {
-        std::fs::write(path, &template)?;
+        replace_exe(path, &template)?;
+    } else {
+        // E.g. `.rvenv\bin\R.exe`, replaced while it was running.
+        sweep_old_shims(path);
     }
     Ok(())
+}
+
+// Leftovers of replaced or removed shims are renamed to
+// `<name>.rig-old-<pid>-<nanos>`, see `move_exe_aside()`.
+const OLD_SHIM_INFIX: &str = ".rig-old-";
+
+// Windows cannot overwrite or delete an `.exe` while it is running, but it
+// can rename it. So move the old file aside within the same directory, and
+// delete it if it is not running. If it is, it stays until a later
+// `sweep_old_shims()`. Returns the new path of the old file, if there was
+// one and it could not be deleted.
+fn move_exe_aside(path: &Path) -> Result<Option<PathBuf>, Box<dyn Error>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    sweep_old_shims(path);
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| format!("Invalid shim path: {}", path.display()))?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let old = path.with_file_name(format!(
+        "{}{}{}-{}",
+        name,
+        OLD_SHIM_INFIX,
+        std::process::id(),
+        nanos
+    ));
+    std::fs::rename(path, &old)?;
+    match std::fs::remove_file(&old) {
+        Ok(()) => Ok(None),
+        Err(e) => {
+            OUTPUT.info(&format!(
+                "Old {} is still running, it will be removed later",
+                name
+            ));
+            info!("Cannot remove {} yet: {}", old.display(), e);
+            Ok(Some(old))
+        }
+    }
+}
+
+// Leftovers that still cannot be deleted after this long are probably not
+// just a running R session, so `remove_old_shim()` warns about them.
+const OLD_SHIM_WARN_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+// When `move_exe_aside()` moved this leftover aside, from the timestamp in
+// its name. (Not the modification time, a rename keeps that of the shim.)
+fn old_shim_moved_at(filename: &str) -> Option<std::time::SystemTime> {
+    let nanos: u64 = filename.rsplit_once('-')?.1.parse().ok()?;
+    std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_nanos(nanos))
+}
+
+// Delete a leftover of `move_exe_aside()`. Quietly, unless it has been
+// around for a long time, see `OLD_SHIM_WARN_AGE`.
+fn remove_old_shim(path: &Path) {
+    let err = match std::fs::remove_file(path) {
+        Ok(()) => return,
+        Err(e) => e,
+    };
+    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let old_enough = old_shim_moved_at(filename)
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|age| age > OLD_SHIM_WARN_AGE);
+    if old_enough {
+        OUTPUT.warn(&format!(
+            "Cannot remove old shim {}: {}",
+            path.display(),
+            err
+        ));
+        warn!("Cannot remove old shim {}: {}", path.display(), err);
+    } else {
+        debug!("Cannot remove {} yet: {}", path.display(), err);
+    }
+}
+
+// Replace the `.exe` at `path` with `bytes`, even if it is running.
+fn replace_exe(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
+    let old = move_exe_aside(path)?;
+    if let Err(e) = std::fs::write(path, bytes) {
+        // Put the old one back, so the link keeps working.
+        if let Some(old) = old {
+            let _ = std::fs::rename(&old, path);
+        }
+        return Err(e.into());
+    }
+    Ok(())
+}
+
+// Delete the leftovers of `move_exe_aside()` for the shim at `path`, the
+// ones that are not running any more.
+fn sweep_old_shims(path: &Path) {
+    let (dir, name) = match (path.parent(), path.file_name().and_then(|n| n.to_str())) {
+        (Some(d), Some(n)) => (d, n),
+        _ => return,
+    };
+    let prefix = format!("{}{}", name, OLD_SHIM_INFIX);
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for de in entries.flatten() {
+            if de.file_name().to_string_lossy().starts_with(&prefix) {
+                remove_old_shim(&de.path());
+            }
+        }
+    }
+}
+
+fn is_old_shim(filename: &str) -> bool {
+    filename.contains(OLD_SHIM_INFIX)
 }
 
 // Whether the shim at `path` already forwards to `target` with `marker`, in
@@ -185,8 +299,8 @@ pub(crate) fn upgrade_shim_link(path: &Path) -> Result<bool, Box<dyn Error>> {
 }
 
 // `upgrade_shim_link()` for `rig system make-links`. A failure is only a
-// warning: an old-format link cannot be rewritten while it is running, and
-// it keeps working until the next `make-links`.
+// warning: the old link keeps working, and the next `make-links` tries
+// again.
 fn report_shim_upgrade(path: &Path, what: &str) {
     match upgrade_shim_link(path) {
         Ok(true) => {
@@ -203,8 +317,15 @@ fn report_shim_upgrade(path: &Path, what: &str) {
 
 // Remove the shim at `path` and its config file. A missing config file is
 // not an error, links from rig 0.11.1 and earlier do not have one.
+// The `.exe` is moved aside first, so this works while the shim is running.
 pub(crate) fn remove_shim_link(path: &Path) -> std::io::Result<()> {
-    std::fs::remove_file(path)?;
+    if !path.exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("{} does not exist", path.display()),
+        ));
+    }
+    move_exe_aside(path).map_err(|e| std::io::Error::other(e.to_string()))?;
     match std::fs::remove_file(crate::shim_format::config_path(path)) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
         _ => Ok(()),
@@ -1368,6 +1489,11 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     }
                     continue;
                 }
+                // Old shims that were replaced while running.
+                if is_old_shim(&filename) {
+                    remove_old_shim(&path.path());
+                    continue;
+                }
                 // A config file whose shim is gone, e.g. if the `.exe` was
                 // deleted by hand.
                 if filename.starts_with("R-") && filename.ends_with(".shim") {
@@ -2357,12 +2483,24 @@ fn remove_admin_links() -> Result<(), Box<dyn Error>> {
             || re.is_match(&name)
             || (name.starts_with("R-")
                 && (name.ends_with(".bat") || name.ends_with(".exe") || name.ends_with(".shim")));
+        if is_old_shim(&name) {
+            // Not a link, but a shim that was replaced while running.
+            remove_old_shim(&path);
+            continue;
+        }
         if !is_link {
             continue;
         }
         OUTPUT.status(&format!("Removing {}", path.display()));
         info!("Removing {}", path.display());
-        if let Err(e) = std::fs::remove_file(&path) {
+        let result = if name.ends_with(".exe") {
+            move_exe_aside(&path)
+                .map(|_| ())
+                .map_err(|e| std::io::Error::other(e.to_string()))
+        } else {
+            std::fs::remove_file(&path)
+        };
+        if let Err(e) = result {
             OUTPUT.warn(&format!("Cannot remove {}: {}", path.display(), e));
             warn!("Cannot remove {}: {}", path.display(), e);
         }
@@ -2509,7 +2647,14 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
     let try_rm = |x: &str| {
         let f = linkdir.join(x);
         if f.exists() {
-            if let Err(e) = std::fs::remove_file(&f) {
+            // `remove_shim_link()` works while the shim is running, and
+            // removes its `.shim` config, too.
+            let result = if x.ends_with(".exe") {
+                remove_shim_link(&f)
+            } else {
+                std::fs::remove_file(&f)
+            };
+            if let Err(e) = result {
                 OUTPUT.warn(&format!("Failed to remove {}: {}", f.display(), e));
                 warn!("Failed to remove {}: {}", f.display(), e)
             };
@@ -2519,6 +2664,7 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
     try_rm("R.exe");
     try_rm("RS.exe");
     try_rm("Rscript.exe");
+    // In case the `.exe` was deleted by hand.
     try_rm("R.shim");
     try_rm("RS.shim");
     try_rm("Rscript.shim");
@@ -2941,6 +3087,71 @@ mod tests {
             // Already up to date: nothing to do.
             assert!(!upgrade_shim_link(&link).unwrap());
         }
+    }
+
+    #[test]
+    fn replace_exe_works_while_running() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("R.exe");
+        let cmd = std::env::var("ComSpec").unwrap_or("C:\\Windows\\System32\\cmd.exe".into());
+        std::fs::copy(&cmd, &exe).unwrap();
+        let mut child = std::process::Command::new(&exe)
+            .args(["/c", "ping -n 30 127.0.0.1 >nul"])
+            .spawn()
+            .unwrap();
+        // A running `.exe` cannot be overwritten.
+        assert!(std::fs::write(&exe, b"new").is_err());
+
+        replace_exe(&exe, b"new").unwrap();
+        assert_eq!(std::fs::read(&exe).unwrap(), b"new");
+        let leftovers = || {
+            std::fs::read_dir(dir.path())
+                .unwrap()
+                .flatten()
+                .filter(|de| is_old_shim(&de.file_name().to_string_lossy()))
+                .count()
+        };
+        assert_eq!(leftovers(), 1);
+
+        child.kill().unwrap();
+        child.wait().unwrap();
+        sweep_old_shims(&exe);
+        assert_eq!(leftovers(), 0);
+
+        // Not running: no leftover at all.
+        replace_exe(&exe, b"newer").unwrap();
+        assert_eq!(std::fs::read(&exe).unwrap(), b"newer");
+        assert_eq!(leftovers(), 0);
+    }
+
+    #[test]
+    fn old_shim_moved_at_parses_the_name() {
+        let t = old_shim_moved_at("R.exe.rig-old-1234-1795515923452614400").unwrap();
+        assert_eq!(
+            t.duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
+            1795515923452614400
+        );
+        assert_eq!(old_shim_moved_at("R.exe.rig-old-junk"), None);
+        assert_eq!(old_shim_moved_at("R.exe"), None);
+    }
+
+    #[test]
+    fn remove_shim_link_works_while_running() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("R-release.exe");
+        let cmd = std::env::var("ComSpec").unwrap_or("C:\\Windows\\System32\\cmd.exe".into());
+        std::fs::copy(&cmd, &exe).unwrap();
+        std::fs::write(crate::shim_format::config_path(&exe), "target=x\n").unwrap();
+        let mut child = std::process::Command::new(&exe)
+            .args(["/c", "ping -n 30 127.0.0.1 >nul"])
+            .spawn()
+            .unwrap();
+        remove_shim_link(&exe).unwrap();
+        assert!(!exe.exists());
+        assert!(!crate::shim_format::config_path(&exe).exists());
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert!(remove_shim_link(&exe).is_err());
     }
 
     #[test]
