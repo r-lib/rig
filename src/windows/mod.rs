@@ -168,6 +168,39 @@ pub(crate) fn shim_link_up_to_date(path: &Path, target: &str, marker: &str) -> b
     }
 }
 
+// Rewrite the shim at `path` in the current format, keeping its target and
+// marker, if it is not in the current format yet: a link from rig 0.11.1 or
+// earlier, with a footer, or a shim from an older `rig-shim.exe`. Returns
+// whether it rewrote the link. Does nothing if `path` is not a rig shim.
+pub(crate) fn upgrade_shim_link(path: &Path) -> Result<bool, Box<dyn Error>> {
+    let (target, marker) = match read_shim_link(path) {
+        Some(tm) => tm,
+        None => return Ok(false),
+    };
+    if shim_link_up_to_date(path, &target, &marker) {
+        return Ok(false);
+    }
+    write_shim_link(path, &target, &marker)?;
+    Ok(true)
+}
+
+// `upgrade_shim_link()` for `rig system make-links`. A failure is only a
+// warning: an old-format link cannot be rewritten while it is running, and
+// it keeps working until the next `make-links`.
+fn report_shim_upgrade(path: &Path, what: &str) {
+    match upgrade_shim_link(path) {
+        Ok(true) => {
+            OUTPUT.status(&format!("Updated {}", what));
+            info!("Updated {}", what);
+        }
+        Ok(false) => {}
+        Err(e) => {
+            OUTPUT.warn(&format!("Failed to update {}: {}", what, e));
+            warn!("Failed to update {}: {}", what, e);
+        }
+    }
+}
+
 // Remove the shim at `path` and its config file. A missing config file is
 // not an error, links from rig 0.11.1 and earlier do not have one.
 pub(crate) fn remove_shim_link(path: &Path) -> std::io::Result<()> {
@@ -1282,6 +1315,12 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    // Bring the default-version links up to date with the current shim
+    // format, keeping the version they point to.
+    for name in ["R.exe", "RS.exe", "Rscript.exe"] {
+        report_shim_upgrade(&linkdir.join(name), name);
+    }
+
     for ver in vers {
         let filename = "R-".to_string() + &ver + ".exe";
         let linkfile = linkdir.join(&filename);
@@ -1358,6 +1397,9 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     };
                     let realname = "R-".to_string() + &rver + ".exe";
                     if new_links.contains(&realname) {
+                        // Keep the alias, but in the current shim format.
+                        let alias = &filename[2..filename.len() - 4];
+                        report_shim_upgrade(&path.path(), &format!("R-{} alias", alias));
                         continue;
                     }
                 }
@@ -2865,6 +2907,52 @@ pub fn get_r_binary_x64(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A link as rig 0.11.1 and earlier wrote it: the template with a V1
+    // footer appended. See src/shim_format.rs.
+    fn legacy_link(target: &str, marker: &str) -> Vec<u8> {
+        let mut out = std::fs::read(find_shim_template().unwrap()).unwrap();
+        out.extend_from_slice(target.as_bytes());
+        out.extend_from_slice(marker.as_bytes());
+        out.extend_from_slice(&(target.len() as u32).to_le_bytes());
+        out.extend_from_slice(&(marker.len() as u32).to_le_bytes());
+        out.extend_from_slice(b"RIGSHIM1");
+        out
+    }
+
+    #[test]
+    fn upgrade_shim_link_rewrites_legacy_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let template = std::fs::read(find_shim_template().unwrap()).unwrap();
+        let target = "C:\\R\\R-4.5.2\\bin\\R.exe";
+        for (name, marker) in [("R.exe", "4.5.2"), ("R-release.exe", "")] {
+            let link = dir.path().join(name);
+            std::fs::write(&link, legacy_link(target, marker)).unwrap();
+            assert!(!shim_link_up_to_date(&link, target, marker));
+
+            assert!(upgrade_shim_link(&link).unwrap());
+            assert_eq!(std::fs::read(&link).unwrap(), template);
+            assert!(shim_link_up_to_date(&link, target, marker));
+            assert_eq!(
+                read_shim_link(&link),
+                Some((target.to_string(), marker.to_string()))
+            );
+
+            // Already up to date: nothing to do.
+            assert!(!upgrade_shim_link(&link).unwrap());
+        }
+    }
+
+    #[test]
+    fn upgrade_shim_link_ignores_other_files() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!upgrade_shim_link(&dir.path().join("R.exe")).unwrap());
+        let other = dir.path().join("R-foo.exe");
+        std::fs::write(&other, b"not a shim").unwrap();
+        assert!(!upgrade_shim_link(&other).unwrap());
+        assert_eq!(std::fs::read(&other).unwrap(), b"not a shim");
+        assert!(!crate::shim_format::config_path(&other).exists());
+    }
 
     #[test]
     fn ensure_dir_root_restores_the_drive_separator() {
