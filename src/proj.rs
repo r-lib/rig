@@ -2675,7 +2675,7 @@ fn lock_target_preferences(
         return HashMap::new();
     };
     if target.r_version != rver || target.platform != platform_key {
-        info!(
+        debug!(
             "Preferring the versions of R {} / {} for R {} / {}",
             target.r_version, target.platform, rver, platform_key
         );
