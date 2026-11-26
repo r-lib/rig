@@ -21,7 +21,7 @@ a project's lock file and library, use [`rig audit`](audit.qmd).
 
 Packages installed from GitHub, git, a URL or a local directory are not in
 any repository, so they are not checked. The CRAN package history at
-<https://ppm.r-pkg.org> reports known vulnerabilities. A CRAN repository of
+<https://ppm.r-pkg.org/v1> reports known vulnerabilities. A CRAN repository of
 Posit Package Manager that serves its own extended metadata may also report
 blocked versions, see [`rig audit`](audit.qmd#where-the-data-comes-from).
 

@@ -18,6 +18,7 @@
 #
 #   --prefix=DIR       Install prefix              (RIG_PREFIX, default $HOME/.local)
 #   --version=X.Y.Z    Version to install          (RIG_VERSION, default: latest)
+#                      Use 'nightly' for the latest development build.
 #   --no-modify-path   Do not edit shell rc files  (RIG_NO_MODIFY_PATH=1)
 #   -h, --help         Show this help and exit
 
@@ -33,7 +34,7 @@ err() { echo "rig install: $*" >&2; exit 1; }
 info() { echo "$*"; }
 
 usage() {
-  sed -n '3,22p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'
+  sed -n '3,23p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'
 }
 
 for arg in "$@"; do
@@ -70,28 +71,49 @@ esac
 # The moving `latest` release serves `...-latest.*` assets under the
 # `latest` tag; versioned releases serve `...-X.Y.Z.*` assets under the
 # `vX.Y.Z` tag.
+#
+# The moving `nightly` release serves `...-nightly.*` assets under the
+# `nightly` tag. While a new nightly build is being swapped in, `nightly`
+# can briefly return 404 and the new build is under `nightly-staging`
+# instead (see .github/workflows/nightly.yml). So we try `nightly`, then
+# `nightly-staging`, then `nightly` once more, in case the swap finished
+# between the first two tries.
 if [ "$VERSION" = "latest" ]; then
-  tag="latest"; vtoken="latest"
+  tags="latest"; vtoken="latest"
+elif [ "$VERSION" = "nightly" ]; then
+  tags="nightly nightly-staging nightly"; vtoken="nightly"
 else
-  tag="v${VERSION}"; vtoken="${VERSION}"
+  tags="v${VERSION}"; vtoken="${VERSION}"
 fi
 
 asset="rig-${plat}-${arch}-${vtoken}.tar.gz"
-url="https://github.com/${REPO}/releases/download/${tag}/${asset}"
 
 # --- Download and extract -----------------------------------------------
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/rig-install.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
-info "Downloading $asset ..."
 if command -v curl >/dev/null 2>&1; then
-  curl -fLsS "$url" -o "$tmp/rig.tar.gz" || err "download failed: $url"
+  download() { curl -fLsS "$1" -o "$2"; }
 elif command -v wget >/dev/null 2>&1; then
-  wget -q "$url" -O "$tmp/rig.tar.gz" || err "download failed: $url"
+  download() { wget -q "$1" -O "$2"; }
 else
   err "neither curl nor wget is available"
 fi
+
+info "Downloading $asset ..."
+ntags=$(echo $tags | wc -w)
+i=0
+for tag in $tags; do
+  i=$((i + 1))
+  url="https://github.com/${REPO}/releases/download/${tag}/${asset}"
+  if [ "$i" -lt "$ntags" ]; then
+    # Not the last try: a failure here is expected now and then, stay quiet.
+    download "$url" "$tmp/rig.tar.gz" 2>/dev/null && break
+  else
+    download "$url" "$tmp/rig.tar.gz" || err "download failed: $url"
+  fi
+done
 
 info "Installing into $PREFIX ..."
 mkdir -p "$PREFIX"

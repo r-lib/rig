@@ -29,14 +29,15 @@ use crate::solver::{BinaryArtifact, BinaryIndexLoader, PackageArtifacts};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BinaryTarget {
     /// P3M platform name: `macos`, `windows`, or a Linux codename such as
-    /// `jammy`.
+    /// `jammy`. Used for P3M's own repository URLs, not for the binary index.
     pub platform: String,
-    /// `x86_64` or `arm64`.
+    /// `x86_64` or `arm64`, P3M's spelling.
     pub arch: String,
     /// Minor R version, e.g. `4.5`.
     pub r_version: String,
     /// The canonical rig platform string of the target, e.g.
     /// `aarch64-apple-darwin`, see [`crate::platform::parse_platform_string`].
+    /// This is the `platform` of the binary index rows of the target.
     pub triple: String,
 }
 
@@ -354,13 +355,10 @@ pub fn artifacts_for_target(index: &BinaryIndex, target: &BinaryTarget) -> Packa
                     .or_insert_with(|| row.url().to_string());
                 out.source_sha256
                     .entry(parsed.clone())
-                    .or_insert_with(|| row.sha256().to_string());
+                    .or_insert_with(|| row.source_id().to_string());
                 continue;
             }
-            if row.platform() != target.platform
-                || row.arch() != target.arch
-                || row.r_version() != target.r_version
-            {
+            if row.platform() != target.triple || row.r_version() != target.r_version {
                 continue;
             }
             let mut linkingto = Vec::new();
@@ -390,10 +388,10 @@ pub fn artifacts_for_target(index: &BinaryIndex, target: &BinaryTarget) -> Packa
                 version: parsed.clone(),
                 row: row.row_index() as u32,
                 url: row.url().to_string(),
-                sha256: row.sha256().to_string(),
+                sha256: row.source_id().to_string(),
                 linkingto,
                 repository: None,
-                built: None,
+                built: row.built().map(String::from),
             });
         }
     }
@@ -416,11 +414,18 @@ mod tests {
     }
 
     fn target(platform: &str, arch: &str, r_version: &str) -> BinaryTarget {
+        let triple_arch = if arch == "arm64" { "aarch64" } else { arch };
+        let triple = match platform {
+            "macos" => format!("{}-apple-darwin", triple_arch),
+            "windows" => format!("{}-w64-mingw32", triple_arch),
+            "xenial" => format!("{}-unknown-linux-gnu-ubuntu-16.04", triple_arch),
+            other => format!("{}-{}", triple_arch, other),
+        };
         BinaryTarget {
             platform: platform.to_string(),
             arch: arch.to_string(),
             r_version: r_version.to_string(),
-            triple: format!("{}-{}", platform, arch),
+            triple,
         }
     }
 
@@ -512,8 +517,7 @@ mod tests {
                 .rows_for_version(&bin.version.original)
                 .find(|r| r.row_index() as u32 == bin.row)
                 .unwrap();
-            assert_eq!(row.platform(), "macos");
-            assert_eq!(row.arch(), "arm64");
+            assert_eq!(row.platform(), "aarch64-apple-darwin");
             assert_eq!(row.r_version(), "4.5");
             assert_eq!(row.url(), bin.url);
         }
@@ -521,7 +525,7 @@ mod tests {
 
     #[test]
     fn several_builds_of_one_version_differ_by_linkingto() {
-        // dplyr 0.7.4 on xenial/R 3.4 has several builds that differ only in the
+        // dplyr 0.7.4 on Ubuntu 16.04/R 3.4 has several builds that differ only in the
         // plogr version they were compiled against.
         let index = fixture_index("dplyr.tsv.zst");
         let artifacts = artifacts_for_target(&index, &target("xenial", "x86_64", "3.4"));

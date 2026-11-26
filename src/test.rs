@@ -104,9 +104,9 @@ fn sc_test_binary_index(
         None => crate::platform::detect_platform()?,
     };
     let status = PpmStatus::load(None)?;
-    let ppm = status.ppm_platform(&platform);
-    match &ppm {
-        Some((p, a)) => println!("Target:     platform={} arch={}", p, a),
+    let target = status.ppm_target(&platform);
+    match &target {
+        Some(t) => println!("Target:     {}", t.triple),
         None => println!("Target:     no P3M builds for this platform"),
     }
 
@@ -129,7 +129,7 @@ fn sc_test_binary_index(
 
     println!("Platforms:  {}", index.platforms_for(&version).join(" "));
 
-    if let Some((ppm_plat, ppm_arch)) = ppm {
+    if let Some(target) = target {
         let r_version = args.get_one::<String>("r-version");
         let r_minor = match r_version {
             Some(v) => crate::repos::cranlike_metadata::minor_r_version(v)?,
@@ -138,7 +138,7 @@ fn sc_test_binary_index(
                 return Ok(());
             }
         };
-        let rows = index.binary_rows(&version, &ppm_plat, &ppm_arch, &r_minor);
+        let rows = index.binary_rows(&version, &target.triple, &r_minor);
         println!("\nBinaries for R {} ({} candidates):", r_minor, rows.len());
         for row in rows.iter() {
             println!("  {}", row.url());
@@ -153,7 +153,7 @@ fn sc_test_binary_index(
         // Several candidates mean several builds against different LinkingTo
         // versions; nothing here knows which one is right.
         if rows.len() > 1 {
-            if let Some(row) = index.latest_binary_row(&version, &ppm_plat, &ppm_arch, &r_minor) {
+            if let Some(row) = index.latest_binary_row(&version, &target.triple, &r_minor) {
                 println!(
                     "\nNewest snapshot (arbitrary among the above):\n  {}",
                     row.url()

@@ -31,7 +31,7 @@ any repository, so they are not checked.
 Only a repositories that serve their own extended metadata with
 vulnerabilities and blocked versions, and repositories that rig can expand
 (see [`rig proj lock`](proj.qmd#repositories)) are supported.
-<https://ppm.r-pkg.org>, if the repository has it.
+<https://ppm.r-pkg.org/v1>, if the repository has it.
 
 Independently of `rig audit`, rig never picks a package version blocked
 by PPM, version when it installs or locks packages, and it warns if it

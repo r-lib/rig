@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use flate2::read::GzDecoder;
-use log::{debug, error, info, warn};
+use log::debug;
 use rds2rust::RObject;
 use rds2rust::RObject::*;
 use rds2rust::VectorData;
@@ -23,7 +23,7 @@ use crate::download::{
     download_first_available_, fetch_optional_if_modified_, fetch_range_suffix_, ConditionalFetch,
     RangeFetch,
 };
-use crate::output::OUTPUT;
+use crate::output::{Context, OUTPUT};
 use crate::rds::*;
 use crate::repos::feed::{
     resolve_download_url, CranlikeRepo, MetadataFeed, PkgRepo, RepoFilter, RepoId,
@@ -85,8 +85,6 @@ pub(crate) fn package_type_to_path(
             Ok(format!("bin/{}/contrib/{}", os, r_version))
         }
     } else {
-        OUTPUT.error(&format!("Invalid package type: {}", pkg_type));
-        error!("Invalid package type {}", pkg_type);
         bail!("Invalid package type: {}", pkg_type);
     }
 }
@@ -216,7 +214,7 @@ pub(crate) fn ensure_feeds_fresh(
         match ensure_feed_fresh(feed) {
             Ok(()) => out.push(feed.clone()),
             Err(e) => {
-                warn!(
+                debug!(
                     "Cannot load Bioconductor metadata from {}, using CRAN only: {}",
                     feed.allpackages_url, e
                 );
@@ -258,7 +256,7 @@ fn ensure_cranlike_sources_fresh(repos: &[PkgRepo]) -> Vec<PkgRepo> {
         match ensure_cranlike_index(cranlike, "src/contrib", "source", None, ".tar.gz") {
             Ok(()) => out.push(repo.clone()),
             Err(e) => {
-                warn!("Cannot load package metadata from {}: {}", key, e);
+                debug!("Cannot load package metadata from {}: {}", key, e);
                 OUTPUT.warn(&format!(
                     "Cannot load package metadata from repository {}, skipping it.",
                     cranlike.name
@@ -309,7 +307,7 @@ pub(crate) fn ensure_cranlike_index(
             ConditionalFetch::Fetched { bytes, etag } => {
                 let data = decompress_gzip_maybe(bytes)?;
                 let packages = parse_cranlike_packages(&data, repo, path, ext)?;
-                info!("Parsed {} packages from {}", packages.len(), url);
+                debug!("Parsed {} packages from {}", packages.len(), url);
                 save_packages_to_db(
                     &packages,
                     &db,
@@ -597,21 +595,11 @@ fn metadata_db_file() -> Result<PathBuf, Box<dyn Error>> {
     repo_db_file(&repo_local)
 }
 
-/// The P3M snapshot date, `YYYY-MM-DD`, in an ALLPACKAGES `DownloadURL`, e.g.
-/// `2026-06-08` for
-/// `https://p3m.dev/cran/2026-06-08/src/contrib/pak_0.10.0.tar.gz`. This is
-/// the date the version was first published in a snapshot.
-pub fn snapshot_date(url: &str) -> Option<&str> {
-    lazy_static::lazy_static! {
-        static ref SNAPSHOT: regex::Regex = regex::Regex::new(r"/(\d{4}-\d{2}-\d{2})/").unwrap();
-    }
-    Some(SNAPSHOT.captures(url)?.get(1)?.as_str())
-}
-
-/// Whether a version with `download_url` is published on or before `cutoff`
-/// (`YYYY-MM-DD`). Versions without a snapshot date are kept.
-fn published_by(download_url: Option<&str>, cutoff: Option<&str>) -> bool {
-    let (Some(cutoff), Some(date)) = (cutoff, download_url.and_then(snapshot_date)) else {
+/// Whether a version first seen on `snapshot`, the ALLPACKAGES `Snapshot`
+/// field (`YYYY-MM-DD`), is published on or before `cutoff` (`YYYY-MM-DD`).
+/// Versions without a snapshot date are kept.
+fn published_by(snapshot: Option<&str>, cutoff: Option<&str>) -> bool {
+    let (Some(cutoff), Some(date)) = (cutoff, snapshot) else {
         return true;
     };
     date <= cutoff
@@ -670,7 +658,8 @@ impl PackageVersionLoader for DbSourcePackageLoader {
         let mut hidden_blocked: Vec<(String, String)> = vec![];
         let mut stmt = self.conn.prepare_cached(
             "SELECT version, dependencies, sha256sum, repo_id, download_url, \
-             system_requirements, built, os_type, policy FROM packages WHERE name = ?1",
+             system_requirements, built, os_type, policy, snapshot FROM packages \
+             WHERE name = ?1",
         )?;
         let rows = stmt.query_map(params![package], |row| {
             Ok((
@@ -683,11 +672,22 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                 row.get::<_, Option<String>>(6)?,
                 row.get::<_, Option<String>>(7)?,
                 row.get::<_, Option<String>>(8)?,
+                row.get::<_, Option<String>>(9)?,
             ))
         })?;
         for row in rows {
-            let (ver, deps_json, sha256sum, repo_id, download_url, sysreqs, built, os_type, policy) =
-                row?;
+            let (
+                ver,
+                deps_json,
+                sha256sum,
+                repo_id,
+                download_url,
+                sysreqs,
+                built,
+                os_type,
+                policy,
+                snapshot,
+            ) = row?;
             let Some((rank, repo)) = self.repo_of(repo_id) else {
                 continue; // row from a repo we do not source from
             };
@@ -698,7 +698,7 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                 hidden_os_type = os_type;
                 continue; // does not work on the target OS
             }
-            if !published_by(download_url.as_deref(), self.exclude_newer.as_deref()) {
+            if !published_by(snapshot.as_deref(), self.exclude_newer.as_deref()) {
                 continue; // published after the --exclude-newer cutoff
             }
             if let Some(s) = &sysreqs {
@@ -796,8 +796,8 @@ pub struct AuditVersion {
     /// installed package.
     pub sha256sum: Option<String>,
     pub policy: Option<VersionPolicy>,
-    /// The day the version was published, `YYYY-MM-DD`, see
-    /// [`snapshot_date`], if known.
+    /// The day the version was published, `YYYY-MM-DD`, the ALLPACKAGES
+    /// `Snapshot` field, if known.
     pub published: Option<String>,
 }
 
@@ -847,7 +847,7 @@ impl DbSourcePackageLoader {
     /// filters of [`PackageVersionLoader::load_versions`]. For `rig audit`.
     pub fn audit_versions(&self, package: &str) -> Result<Vec<AuditVersion>, Box<dyn Error>> {
         let mut stmt = self.conn.prepare_cached(
-            "SELECT version, sha256sum, repo_id, policy, download_url FROM packages WHERE name = ?1",
+            "SELECT version, sha256sum, repo_id, policy, snapshot FROM packages WHERE name = ?1",
         )?;
         let rows = stmt.query_map(params![package], |row| {
             Ok((
@@ -860,7 +860,7 @@ impl DbSourcePackageLoader {
         })?;
         let mut out = vec![];
         for row in rows {
-            let (ver, sha256sum, repo_id, policy, download_url) = row?;
+            let (ver, sha256sum, repo_id, policy, snapshot) = row?;
             if self.repo_of(repo_id).is_none() {
                 continue;
             }
@@ -871,10 +871,7 @@ impl DbSourcePackageLoader {
                 version,
                 sha256sum,
                 policy: policy.and_then(|p| serde_json::from_str(&p).ok()),
-                published: download_url
-                    .as_deref()
-                    .and_then(snapshot_date)
-                    .map(|d| d.to_string()),
+                published: snapshot,
             });
         }
         out.sort_by(|a, b| a.version.cmp(&b.version));
@@ -915,18 +912,18 @@ pub fn feed_package_names(
 #[derive(Debug, Clone)]
 pub struct AllPackagesVersion {
     pub version: RPackageVersion,
-    /// P3M snapshot URL of the source tarball, e.g.
-    /// `https://p3m.dev/cran/2026-06-08/src/contrib/pak_0.10.0.tar.gz`.
-    pub download_url: Option<String>,
-    /// sha256 of the original CRAN tarball (ALLPACKAGES' `SHA256Original`).
+    /// The `Id` of the version, for P3M the sha256 of the original CRAN
+    /// tarball.
     pub sha256sum: Option<String>,
+    /// The date the version first appeared in P3M, `YYYY-MM-DD`, the
+    /// ALLPACKAGES `Snapshot` field.
+    pub snapshot: Option<String>,
 }
 
 impl AllPackagesVersion {
-    /// The P3M snapshot date the version was published in, as `YYYY-MM-DD`,
-    /// taken from the date component of [`Self::download_url`].
+    /// The P3M snapshot date the version was published in, as `YYYY-MM-DD`.
     pub fn snapshot(&self) -> Option<String> {
-        snapshot_date(self.download_url.as_deref()?).map(|s| s.to_string())
+        self.snapshot.clone()
     }
 }
 
@@ -942,28 +939,27 @@ pub fn allpackages_versions(package: &str) -> Result<Vec<AllPackagesVersion>, Bo
     // Query by name only, for the same reason as `load_versions()` above: it
     // keeps SQLite on the `(name, ...)` index instead of scanning the whole
     // ALLPACKAGES repo.
-    let mut stmt = conn.prepare(
-        "SELECT version, download_url, sha256sum, repo_id FROM packages WHERE name = ?1",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT version, sha256sum, repo_id, snapshot FROM packages WHERE name = ?1")?;
     let rows = stmt.query_map(params![package], |row| {
         Ok((
             row.get::<_, String>(0)?,
             row.get::<_, Option<String>>(1)?,
-            row.get::<_, Option<String>>(2)?,
-            row.get::<_, i64>(3)?,
+            row.get::<_, i64>(2)?,
+            row.get::<_, Option<String>>(3)?,
         ))
     })?;
 
     let mut out: Vec<AllPackagesVersion> = vec![];
     for row in rows {
-        let (ver, download_url, sha256sum, repo_id) = row?;
+        let (ver, sha256sum, repo_id, snapshot) = row?;
         if !repo_ids.contains(&repo_id) {
             continue; // row from a repo we do not source from
         }
         out.push(AllPackagesVersion {
             version: RPackageVersion::from_str(&ver)?,
-            download_url,
             sha256sum,
+            snapshot,
         });
     }
 
@@ -1335,7 +1331,7 @@ fn force_full_download(
     use_etag: bool,
 ) -> Result<CacheState, Box<dyn Error>> {
     create_parent_dir_if_needed(repo_local)?;
-    info!(
+    debug!(
         "Checking for repo metadata updates from {}",
         candidate_urls[0]
     );
@@ -1364,13 +1360,8 @@ fn force_full_download(
         if use_etag {
             return Ok(CacheState::Cached);
         }
-        OUTPUT.error("Failed to load package metadata, database is corrupt?");
-        error!(
-            "Failed to recover package metadata from {}",
-            candidate_urls[0]
-        );
         bail!(
-            "Failed to refresh package metadata from {}",
+            "Failed to refresh package metadata from {}, database is corrupt?",
             candidate_urls[0]
         );
     }
@@ -1420,19 +1411,19 @@ fn ensure_packages_cached(
     let should_download = match is_repo_cache_recent(&repo_db, repo_url_key, pkg_type) {
         Ok(is_recent) => {
             if is_recent {
-                info!("Database cache is recent, skipping download");
+                debug!("Database cache is recent, skipping download");
             }
             !is_recent
         }
         Err(_) => {
             // No database entry, need to download
-            info!("No database cache found, will download");
+            debug!("No database cache found, will download");
             true
         }
     };
 
     if !should_download {
-        info!("Repo metadata is up to date (cached)");
+        debug!("Repo metadata is up to date (cached)");
         // The database should hold the rows. It may not if a previous run
         // downloaded the metadata but was interrupted (or aborted) before
         // storing it: the cached download file then looks fresh while the
@@ -1446,7 +1437,7 @@ fn ensure_packages_cached(
         {
             return Ok(CacheState::Cached);
         }
-        info!("Cached metadata missing from database, forcing a fresh download");
+        debug!("Cached metadata missing from database, forcing a fresh download");
         announce_update(display_name);
         return force_full_download(
             candidate_urls,
@@ -1477,7 +1468,7 @@ fn ensure_packages_cached(
                 let packages = parse_dcf_bytes(new_suffix)?;
                 let new_parsed_len = parsed_len + new_suffix.len() as i64;
                 let new_tail_hash = hash_bytes(tail_slice(&data));
-                info!(
+                debug!(
                     "Appended {} new package record(s) from {}",
                     packages.len(),
                     plain_url
@@ -1497,6 +1488,7 @@ fn ensure_packages_cached(
                 return Ok(CacheState::FreshlyParsed);
             }
             Ok(TrailingOutcome::Full(data)) => {
+                check_feed_version(&data, plain_url)?;
                 let packages = parse_dcf_bytes(&data)?;
                 let new_tail_hash = hash_bytes(tail_slice(&data));
                 store_packages(
@@ -1514,7 +1506,8 @@ fn ensure_packages_cached(
                 return Ok(CacheState::FreshlyParsed);
             }
             Err(e) => {
-                warn!(
+                // Hidden: the full download below gives the same result.
+                debug!(
                     "Trailing refresh of {} failed, falling back to a full download: {}",
                     plain_url, e
                 );
@@ -1561,6 +1554,19 @@ fn repo_has_packages(
     Ok(count > 0)
 }
 
+/// Fail unless `data`, a whole ALLPACKAGES or ARCHIVEDPACKAGES file from
+/// `url`, starts with a format version rig reads. The DCF parser skips
+/// comment lines, so the version comment has to be checked on its own. A
+/// trailing-only refresh does not see the start of the file, and does not
+/// need to: the file was checked when it was first downloaded, and a new
+/// major version is served under a new URL.
+fn check_feed_version(data: &[u8], url: &str) -> Result<(), Box<dyn Error>> {
+    crate::repos::format_version::check(
+        crate::repos::format_version::FormatVersion::from_first_line(data),
+        url,
+    )
+}
+
 /// Parse a freshly downloaded metadata file, store it in the database, delete
 /// the temporary download, and return the parsed packages.
 ///
@@ -1577,9 +1583,13 @@ fn parse_store_and_cleanup(
     etag: Option<&str>,
     feed: Feed,
 ) -> Result<Vec<Package>, Box<dyn Error>> {
-    info!("Downloaded new repo metadata to {}", repo_local.display());
+    debug!("Downloaded new repo metadata to {}", repo_local.display());
     // Parse DCF/RDS file and save to database
     let (packages, data) = parse_packages(repo_local)?;
+    if let Err(e) = check_feed_version(&data, repo_url_key) {
+        let _ = std::fs::remove_file(repo_local);
+        return Err(e);
+    }
     let tail_hash = hash_bytes(tail_slice(&data));
 
     // Save to database with the etag from the download, recording how much of
@@ -1600,14 +1610,15 @@ fn parse_store_and_cleanup(
 
     // Delete the temporary data file after saving to database
     if let Err(e) = std::fs::remove_file(repo_local) {
-        info!(
+        // Hidden: a leftover file is harmless, it is not used as a cache.
+        debug!(
             "Could not delete temporary file {}: {}",
             repo_local.display(),
             e
         );
     }
 
-    info!("Saved {} packages to database cache", packages.len());
+    debug!("Saved {} packages to database cache", packages.len());
     match feed {
         Feed::Cranlike => Ok(packages),
         Feed::Archived => Ok(vec![]),
@@ -1627,7 +1638,7 @@ fn parse_packages(dcf_path: &PathBuf) -> Result<(Vec<Package>, Vec<u8>), Box<dyn
     // Rewind to start
     file.seek(SeekFrom::Start(0))?;
 
-    info!("Parsing repo metadata from {}", dcf_path.display());
+    debug!("Parsing repo metadata from {}", dcf_path.display());
 
     // Decompress if needed and read into memory to check format
     let data: Vec<u8> = if bytes_read >= 2 && magic[0..2] == [0x1f, 0x8b] {
@@ -1662,9 +1673,10 @@ fn parse_packages(dcf_path: &PathBuf) -> Result<(Vec<Package>, Vec<u8>), Box<dyn
         let is_rds = (data[0] == 0x58 || data[0] == 0x41 || data[0] == 0x42) && data[1] == 0x00;
 
         if is_rds {
-            info!("Detected RDS format, parsing as RDS");
+            debug!("Detected RDS format, parsing as RDS");
             let robj = read_rds(&data)?;
-            let packages = parse_packages_from_rds_object(robj)?;
+            let packages = parse_packages_from_rds_object(robj)
+                .context("Failed to parse PACKAGES.rds file")?;
             return Ok((packages, data));
         }
     }
@@ -1677,9 +1689,9 @@ fn parse_packages(dcf_path: &PathBuf) -> Result<(Vec<Package>, Vec<u8>), Box<dyn
 /// RDS detection — for feeds known to be plain DCF text, such as a
 /// trailing-only refresh's fetched suffix).
 fn parse_dcf_bytes(data: &[u8]) -> Result<Vec<Package>, Box<dyn Error>> {
-    info!("Parsing as DCF format");
+    debug!("Parsing as DCF format");
     let desc = parse_dcf_reader(data)?;
-    info!("Parsed {} packages from repo metadata", desc.len());
+    debug!("Parsed {} packages from repo metadata", desc.len());
 
     let mut packages: Vec<Package> = vec![];
 
@@ -1705,7 +1717,8 @@ fn parse_dcf_bytes(data: &[u8]) -> Result<Vec<Package>, Box<dyn Error>> {
         }
     }
     if skipped > 0 {
-        info!("Skipped {} package(s) with unparseable metadata", skipped);
+        // Hidden: expected for some repositories, and not actionable.
+        debug!("Skipped {} package(s) with unparseable metadata", skipped);
     }
 
     Ok(packages)
@@ -1715,8 +1728,6 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
     let (data, attr) = match robj {
         WithAttributes { object, attributes } => (object, attributes),
         _ => {
-            OUTPUT.error("Failed to parse PACKAGES.rds file.");
-            error!("Expected R object with attributes when reading PACKAGES.rds.");
             bail!("Expected R object with attributes when reading PACKAGES.rds.")
         }
     };
@@ -1726,14 +1737,10 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
             if let VectorData::Owned(v) = vd {
                 v
             } else {
-                OUTPUT.error("Failed to parse PACKAGES.rds file.");
-                error!("Expected data to be owned character vector in PACKAGES.rds.");
                 bail!("Expected data to be owned character vector in PACKAGES.rds.");
             }
         }
         _ => {
-            OUTPUT.error("Failed to parse PACKAGES.rds file.");
-            error!("Expected data to be a character vector in PACKAGES.rds.");
             bail!("Expected data to be a character vector in PACKAGES.rds.");
         }
     };
@@ -1747,19 +1754,13 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
                 if let [nrow, ncol] = &v[..] {
                     (*nrow as usize, *ncol as usize)
                 } else {
-                    OUTPUT.error("Failed to parse PACKAGES.rds file.");
-                    error!("Expected 'dim' to have length 2 in PACKAGES.rds.");
                     bail!("Expected 'dim' to have length 2 in PACKAGES.rds.");
                 }
             } else {
-                OUTPUT.error("Failed to parse PACKAGES.rds file.");
-                error!("Expected 'dim' to be owned integer vector in PACKAGES.rds.");
                 bail!("Expected 'dim' to be owned integer vector in PACKAGES.rds.");
             }
         }
         _ => {
-            OUTPUT.error("Failed to parse PACKAGES.rds file.");
-            error!("Expected 'dim' to be an integer vector in PACKAGES.rds.");
             bail!("Expected 'dim' to be an integer vector in PACKAGES.rds.");
         }
     };
@@ -1769,29 +1770,19 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
     let names = match dimnames {
         RObject::List(dn) => {
             if dn.len() != 2 {
-                OUTPUT.error("Failed to parse PACKAGES.rds file.");
-                error!("Expected 'dimnames' to have length 2 in PACKAGES.rds.");
                 bail!("Expected 'dimnames' to have length 2 in PACKAGES.rds.");
             }
             if let Character(vd) = &dn[1] {
                 if let VectorData::Owned(v) = vd {
                     v
                 } else {
-                    OUTPUT.error("Failed to parse PACKAGES.rds file.");
-                    error!("Expected 'dimnames' second element to be owned character vector in PACKAGES.rds.");
                     bail!("Expected 'dimnames' second element to be owned character vector in PACKAGES.rds.");
                 }
             } else {
-                OUTPUT.error("Failed to parse PACKAGES.rds file.");
-                error!(
-                    "Expected 'dimnames' second element to be character vector in PACKAGES.rds."
-                );
                 bail!("Expected 'dimnames' second element to be character vector in PACKAGES.rds.");
             }
         }
         _ => {
-            OUTPUT.error("Failed to parse PACKAGES.rds file.");
-            error!("Expected 'dimnames' to be a list in PACKAGES.rds.");
             bail!("Expected 'dimnames' to be a list in PACKAGES.rds.");
         }
     };
@@ -1887,7 +1878,9 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
             internals_id: na_to_none(&internals_id),
             filesize: na_to_none(&filesize).and_then(|s| s.parse::<u64>().ok()),
             sha256sum: na_to_none(&sha256sum),
-            // Only the ARCHIVEDPACKAGES DCF feed has this, no RDS repo does.
+            // Only the extended metadata DCF feeds have these, no RDS repo
+            // does.
+            snapshot: None,
             archived: None,
             repository: None,
             system_requirements: normalize_system_requirements(&system_requirements),
@@ -1904,6 +1897,7 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
 pub fn parse_packages_from_rds(rds_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
     let robj = read_rds_file(rds_path)?;
     parse_packages_from_rds_object(robj)
+        .with_context(|| format!("Failed to parse {}", rds_path.display()))
 }
 
 fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
@@ -1957,24 +1951,26 @@ fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
             system_requirements TEXT,
             os_type TEXT,
             policy TEXT,
+            snapshot TEXT,
             FOREIGN KEY (repo_id) REFERENCES repos(id)
         )",
         [],
     )?;
 
-    // Databases created before rig stored `SystemRequirements`, `OS_type`
-    // or the repository policy fields (`Blocked`, `Vulnerabilities`, etc.,
-    // as JSON, see [`crate::repos::policy::VersionPolicy`]) lack the column. Their rows have no value for it, so after adding it,
+    // Databases created before rig stored `SystemRequirements`, `OS_type`,
+    // the repository policy fields (`Blocked`, `Vulnerabilities`, etc.,
+    // as JSON, see [`crate::repos::policy::VersionPolicy`]) or the
+    // ALLPACKAGES `Snapshot` field lack the column. Their rows have no value for it, so after adding it,
     // forget every repo's cache state: the next lookup then downloads and
     // parses each feed again, in full, instead of a trailing-only refresh
     // that would only fill in the new rows.
-    for column in ["system_requirements", "os_type", "policy"] {
+    for column in ["system_requirements", "os_type", "policy", "snapshot"] {
         match conn.execute(
             &format!("ALTER TABLE packages ADD COLUMN {} TEXT", column),
             [],
         ) {
             Ok(_) => {
-                info!("Added {} column, invalidating cached metadata", column);
+                debug!("Added {} column, invalidating cached metadata", column);
                 conn.execute(
                     "UPDATE repos SET etag = NULL, parsed_len = NULL, tail_hash = NULL,
                      last_updated = '1970-01-01 00:00:00'",
@@ -2128,8 +2124,9 @@ fn save_packages_to_db(
         "INSERT INTO packages
          (name, version, dependencies, download_url, file, path, built,
           license, platform, arch, graphics_api_version, internals_id, filesize,
-          sha256sum, repo_id, system_requirements, os_type, policy)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+          sha256sum, repo_id, system_requirements, os_type, policy, snapshot)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18,
+                 ?19)",
     )?;
 
     for pkg in packages {
@@ -2162,6 +2159,7 @@ fn save_packages_to_db(
             &pkg.system_requirements,
             &pkg.os_type,
             policy_json,
+            &pkg.snapshot,
         ])?;
     }
 
@@ -2252,7 +2250,7 @@ fn save_archived_to_db(
     drop(stmt); // Drop statement before committing
     tx.commit()?;
 
-    info!("Saved {} archived packages to database cache", stored);
+    debug!("Saved {} archived packages to database cache", stored);
     Ok(())
 }
 
@@ -2423,24 +2421,12 @@ Version: 2.1.0
     }
 
     #[test]
-    fn snapshot_date_is_read_from_the_download_url() {
-        assert_eq!(
-            snapshot_date("https://p3m.dev/cran/2026-06-08/src/contrib/pak_0.10.0.tar.gz"),
-            Some("2026-06-08")
-        );
-        assert_eq!(
-            snapshot_date("https://cran.r-project.org/src/contrib/pak_0.10.0.tar.gz"),
-            None
-        );
-    }
-
-    #[test]
     fn published_by_compares_the_snapshot_date_to_the_cutoff() {
-        let url = Some("https://p3m.dev/cran/2020-01-09/src/contrib/cli_2.0.1.tar.gz");
-        assert!(published_by(url, None));
-        assert!(published_by(url, Some("2020-01-09")));
-        assert!(published_by(url, Some("2020-01-10")));
-        assert!(!published_by(url, Some("2020-01-08")));
+        let snapshot = Some("2020-01-09");
+        assert!(published_by(snapshot, None));
+        assert!(published_by(snapshot, Some("2020-01-09")));
+        assert!(published_by(snapshot, Some("2020-01-10")));
+        assert!(!published_by(snapshot, Some("2020-01-08")));
         // No snapshot date to go by: kept.
         assert!(published_by(None, Some("2020-01-08")));
     }
@@ -2450,14 +2436,19 @@ Version: 2.1.0
         use std::io::Write;
 
         let url = "https://example.com/ALLPACKAGES.zst";
+        // The date in the URL does not matter, only `Snapshot`.
         let dcf = "\
+# Format-Version: 1.0
+
 Package: cli
 Version: 2.0.0
-DownloadURL: https://p3m.dev/cran/2019-12-10/src/contrib/cli_2.0.0.tar.gz
+Snapshot: 2019-12-10
+DownloadURL: 2019-12-11/src/contrib/cli_2.0.0.tar.gz
 
 Package: cli
 Version: 2.0.1
-DownloadURL: https://p3m.dev/cran/2020-01-09/src/contrib/cli_2.0.1.tar.gz
+Snapshot: 2020-01-09
+DownloadURL: 2019-12-11/src/contrib/cli_2.0.1.tar.gz
 ";
         let compressed = zstd::stream::encode_all(dcf.as_bytes(), 0).unwrap();
         let mut path = std::env::temp_dir();
@@ -2999,17 +2990,20 @@ DownloadURL: https://elsewhere.com/pkgD.tar.gz
     }
 
     #[test]
-    fn test_parse_packages_reads_sha256original() {
+    fn test_parse_packages_reads_id() {
         use std::io::Write;
 
-        // ALLPACKAGES carries both hashes: `SHA256Original` is the upstream CRAN
-        // tarball's hash (what we keep as `sha256sum`), `SHA256` is P3M's
-        // rewritten tarball (ignored).
+        // ALLPACKAGES carries a hash and an id: `Id` is the identity of the
+        // source tarball, for P3M the upstream CRAN tarball's hash (what we
+        // keep as `sha256sum`), `SHA256` is P3M's rewritten tarball (ignored).
         let dcf = "\
+# Format-Version: 1.0
+
 Package: pkgA
 Version: 1.0.0
 SHA256: a03ad0480203b160eea4dab532ceec78e924c9d4c6f793fe9d4e9ca3666697f3
-SHA256Original: 43901f7baa265b0262b708dd4c09072768cbb1f8e32123bb07824e0ebfadda5a
+Id: 43901f7baa265b0262b708dd4c09072768cbb1f8e32123bb07824e0ebfadda5a
+Snapshot: 2026-04-10
 
 Package: pkgB
 Version: 2.1.0
@@ -3024,12 +3018,13 @@ Version: 2.1.0
         let result = parse_packages(&path);
         let _ = std::fs::remove_file(&path);
 
-        let (packages, _data) = result.expect("parse PACKAGES with SHA256Original");
+        let (packages, _data) = result.expect("parse ALLPACKAGES with Id");
         let a = packages.iter().find(|p| p.name == "pkgA").unwrap();
         assert_eq!(
             a.sha256sum.as_deref(),
             Some("43901f7baa265b0262b708dd4c09072768cbb1f8e32123bb07824e0ebfadda5a")
         );
+        assert_eq!(a.snapshot.as_deref(), Some("2026-04-10"));
         let b = packages.iter().find(|p| p.name == "pkgB").unwrap();
         assert_eq!(b.sha256sum, None);
     }

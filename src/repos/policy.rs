@@ -12,10 +12,14 @@
 //! * `Vulnerabilities`: a comma separated list of vulnerability ids, each
 //!   followed by its highest CVSS base score in parentheses, if it has one,
 //!   e.g. `CVE-2024-27322 (8.8), GHSA-xxxx-xxxx-xxxx`.
+//! * `Yanked`: the time the version was yanked, RFC 3339. A yanked version
+//!   is still served, but clients should not pick it for a new solve.
+//! * `YankedReason`: why the version was yanked, for people.
 //!
 //! A repository blocks a version by refusing to serve it, so rig never picks
 //! a blocked version. A vulnerable version is not blocked, but rig warns
-//! about it, and `rig audit` reports it.
+//! about it, and `rig audit` reports it. rig records yanks, but does not act
+//! on them yet.
 
 use std::fmt;
 
@@ -35,6 +39,10 @@ pub struct VersionPolicy {
     pub blocked_until: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub vulnerabilities: Vec<Vulnerability>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub yanked: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub yanked_reason: Option<String>,
 }
 
 /// A known vulnerability of a package version.
@@ -74,6 +82,8 @@ impl VersionPolicy {
             vulnerabilities: get("Vulnerabilities")
                 .map(parse_vulnerabilities)
                 .unwrap_or_default(),
+            yanked: field("Yanked"),
+            yanked_reason: field("YankedReason"),
         };
         if policy == VersionPolicy::default() {
             None
@@ -207,6 +217,20 @@ mod tests {
         // An invalid time is blocked.
         let p = policy(&[("BlockedUntil", "soon")]).unwrap();
         assert!(p.is_blocked_at(after));
+    }
+
+    #[test]
+    fn yanked_fields_are_parsed() {
+        let p = policy(&[
+            ("Yanked", "2026-11-20T10:00:00Z"),
+            ("YankedReason", "Broken build"),
+        ])
+        .unwrap();
+        assert_eq!(p.yanked.as_deref(), Some("2026-11-20T10:00:00Z"));
+        assert_eq!(p.yanked_reason.as_deref(), Some("Broken build"));
+        // A yank is not a block.
+        assert!(!p.is_blocked());
+        assert!(!p.is_vulnerable());
     }
 
     #[test]

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use clap::ArgMatches;
-use log::{debug, error, info, warn};
+use log::debug;
 use nix::sys::stat::umask;
 use nix::sys::stat::Mode;
 use nix::unistd::{access, AccessFlags};
@@ -175,14 +175,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
         Some(s) => s.to_string(),
         None => {
             let archarg: &String = args.get_one("arch").unwrap();
-            OUTPUT.error(&format!(
-                "Cannot find a download url for R version {}, {}",
-                verstr, archarg
-            ));
-            error!(
-                "Cannot find a download url for R version {}, {}",
-                verstr, archarg
-            );
             bail!(
                 "Cannot find a download url for R version {}, {}",
                 verstr,
@@ -197,7 +189,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
         if let (Some(v), Some(a)) = (&ver, &arch) {
             if let Some(name) = find_installed_version_arch(v, a, Some(str))? {
                 if installed_etag_matches(&name, etag.as_deref()) {
-                    info!("The R-{} installer at {} has not changed", str, url);
+                    debug!("The R-{} installer at {} has not changed", str, url);
                     return report_already_installed(&name, alias_with_arch_suffix(alias, a));
                 }
             }
@@ -236,7 +228,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
         let dirname = safe_user_install(target, &fver, install_dir)?;
         if let Err(e) = ensure_positron_setup(None) {
             OUTPUT.warn(&format!("Could not update Positron settings: {}", e));
-            warn!("Could not update Positron settings: {}", e);
         }
         dirname
     } else {
@@ -306,12 +297,7 @@ fn unpack_and_patch(target: &Path) -> Result<(PathBuf, PathBuf), Box<dyn Error>>
         .arg(&tmp)
         .output()?;
     if !output.status.success() {
-        OUTPUT.error(&format!(
-            "Failed to expand installer with pkgutil: {}",
-            output.status
-        ));
-        error!("Failed to expand installer with pkgutil: {}", output.status);
-        bail!("pkgutil exited with {}", output.status.to_string());
+        bail!("Failed to expand installer with pkgutil: {}", output.status);
     }
 
     let wd1 = tmp.join("r.pkg");
@@ -321,8 +307,6 @@ fn unpack_and_patch(target: &Path) -> Result<(PathBuf, PathBuf), Box<dyn Error>>
     } else if wd1.exists() {
         wd1
     } else {
-        OUTPUT.error("Failed to patch installer, could not find framework");
-        error!("Failed to patch installer, could not find framework");
         bail!("Failed to patch installer, could not find framework");
     };
 
@@ -332,8 +316,6 @@ fn unpack_and_patch(target: &Path) -> Result<(PathBuf, PathBuf), Box<dyn Error>>
         .output()?;
     if !output.status.success() {
         let err = output.status.to_string();
-        OUTPUT.error(&format!("Failed to extract installer: {}", err));
-        error!("Failed to extract installer: {}", err);
         bail!("Failed to extract installer: {}", err);
     }
 
@@ -349,7 +331,6 @@ fn run_fc_cache(fc_cache: &Path) {
     match Command::new(fc_cache).output() {
         Err(err) => {
             OUTPUT.warn(&format!("Failed to run {}: {}", fc_cache.display(), err));
-            warn!("Failed to run {}: {}", fc_cache.display(), err);
         }
         Ok(output) if !output.status.success() => {
             OUTPUT.warn(&format!(
@@ -357,7 +338,6 @@ fn run_fc_cache(fc_cache: &Path) {
                 fc_cache.display(),
                 output.status
             ));
-            warn!("{} exited with {}", fc_cache.display(), output.status);
         }
         Ok(_) => {}
     }
@@ -381,8 +361,6 @@ fn safe_install(
         .output()?;
     if !output.status.success() {
         let err = output.status.to_string();
-        OUTPUT.error(&format!("Failed to re-package installer (cpio): {}", err));
-        error!("Failed to re-package installer (cpio): {}", err);
         bail!("Failed to re-package installer (cpio): {}", err);
     }
 
@@ -398,11 +376,6 @@ fn safe_install(
         .output()?;
     if !output.status.success() {
         let err = output.status.to_string();
-        OUTPUT.error(&format!(
-            "Failed to re-package installer (pkgutil): {}",
-            err
-        ));
-        error!("Failed to re-package installer (pkgutil): {}", err);
         bail!("Failed to re-package installer (pkgutil): {}", err);
     }
 
@@ -422,7 +395,6 @@ fn safe_install(
     args.push(os("/"));
 
     OUTPUT.status("Running installer");
-    info!("Running installer");
     run(cmd, args, "installer")?;
 
     let fc_cache = Path::new(R_ROOT_)
@@ -438,7 +410,6 @@ fn safe_install(
             pkg.display(),
             err
         ));
-        warn!("Failed to remove temporary file {}: {}", pkg.display(), err);
     }
     if let Err(err) = std::fs::remove_dir_all(&tmp) {
         OUTPUT.warn(&format!(
@@ -446,11 +417,6 @@ fn safe_install(
             tmp.display(),
             err
         ));
-        warn!(
-            "Failed to remove temporary directory {}: {}",
-            tmp.display(),
-            err
-        );
     }
 
     Ok(())
@@ -504,6 +470,22 @@ fn patch_user_scripts(source_dir: &Path, home_dir: &Path) -> Result<(), Box<dyn 
         let re = Regex::new(r"/Library/Frameworks/R\.framework/Resources")?;
         debug!("Patching fontconfig in {}", fonts.display());
         replace_in_file(&fonts, &re, &home_escaped)?;
+
+        // The fontconfig in cairo.so has the admin-mode framework path
+        // compiled in as its default config location, so point it at our
+        // copy, unless the user set FONTCONFIG_FILE themselves.
+        let mut content = std::fs::read_to_string(&renviron)?;
+        if !content.lines().any(|l| l.starts_with("FONTCONFIG_FILE=")) {
+            if !content.is_empty() && !content.ends_with('\n') {
+                content.push('\n');
+            }
+            content.push_str(&format!(
+                "FONTCONFIG_FILE=${{FONTCONFIG_FILE-{}/fontconfig/fonts/fonts.conf}}\n",
+                home_dir.display()
+            ));
+            debug!("Adding FONTCONFIG_FILE to {}", renviron.display());
+            std::fs::write(&renviron, content)?;
+        }
     } else {
         debug!(
             "Skipping fonts.conf patch; {} does not exist",
@@ -651,8 +633,6 @@ fn safe_user_install(
         .output()?;
     if !output.status.success() {
         let err = output.status.to_string();
-        OUTPUT.error(&format!("Failed to copy R framework: {}", err));
-        error!("Failed to copy R framework: {}", err);
         bail!("Failed to copy R framework: {}", err);
     }
 
@@ -675,11 +655,6 @@ fn safe_user_install(
             tmp.display(),
             err
         ));
-        warn!(
-            "Failed to remove temporary directory {}: {}",
-            tmp.display(),
-            err
-        );
     }
 
     crate::cache::remove_download_if_no_cache(&target);
@@ -753,10 +728,6 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
                     ver,
                     "rig default <version>".bold(),
                 ));
-                warn!(
-                    "Removing default version, set new default with {}",
-                    "rig default <version>".bold()
-                );
             }
         }
 
@@ -764,11 +735,8 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         let dir = Path::new(&rroot);
         let dir = dir.join(&ver);
         OUTPUT.status(&format!("Removing {}", dir.display()));
-        info!("Removing {}", dir.display());
         sc_system_forget()?;
         if let Err(err) = std::fs::remove_dir_all(&dir) {
-            OUTPUT.error(&format!("Cannot remove {}: {}", dir.display(), err));
-            error!("Cannot remove {}: {}", dir.display(), err);
             bail!("Cannot remove {}: {}", dir.display(), err.to_string())
         };
     }
@@ -781,7 +749,6 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
                 "Could not remove RSTUDIO_WHICH_R LaunchAgent: {}",
                 e
             ));
-            warn!("Could not remove RSTUDIO_WHICH_R LaunchAgent: {}", e);
         }
     }
 
@@ -804,7 +771,6 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     let base = Path::new(&rroot);
 
     OUTPUT.status("Updating R-* quick links (as needed)");
-    info!("Updating R-* quick links (as needed)");
 
     // https://github.com/r-lib/rig/issues/197
     let old_umask = umask(Mode::from_bits(0o022).unwrap());
@@ -823,10 +789,6 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                 "Refusing to create quick link for non-orthogonal R version: {}.\n Call `rig system make-orthogonal` to fix this.",
                 ver
             ));
-            warn!(
-              "Refusing to create quick link for non-orthogonal R version: {}.\n Call `rig system make-orthogonal` to fix this.",
-              ver
-            );
             continue;
         }
         let linkfile = Path::new(&binary_dir).join("R-".to_string() + &ver);
@@ -835,12 +797,6 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
             debug!("Adding {} -> {}", linkfile.display(), target.display());
             if let Err(err) = symlink(&target, &linkfile) {
                 umask(old_umask);
-                OUTPUT.error(&format!(
-                    "Cannot create symlink {}: {}",
-                    linkfile.display(),
-                    err
-                ));
-                error!("Cannot create symlink {}: {}", linkfile.display(), err);
                 bail!(
                     "Cannot create symlink {}: {}",
                     linkfile.display(),
@@ -876,7 +832,6 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                         debug!("Cleaning up {}", target.display());
                         if let Err(err) = std::fs::remove_file(&path) {
                             OUTPUT.warn(&format!("Failed to remove {}: {}", path.display(), err));
-                            warn!("Failed to remove {}: {}", path.display(), err)
                         }
                     }
                 }
@@ -997,7 +952,6 @@ pub fn sc_system_allow_core_dumps(args: &ArgMatches) -> Result<(), Box<dyn Error
     }
     sc_system_allow_debugger(args)?;
     OUTPUT.status("Updating permissions of /cores");
-    info!("Updating permissions of /cores");
     Command::new("chmod").args(["1777", "/cores"]).output()?;
     Ok(())
 }
@@ -1032,16 +986,12 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
 
 pub fn sc_system_allow_debugger_rstudio(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if !is_rstudio_installed() {
-        OUTPUT.error("RStudio is not installed, at least not in /Applications/RStudio.app");
-        error!("RStudio is not installed, at least not in /Applications/RStudio.app");
         bail!("RStudio is not installed, at least not in /Applications/RStudio.app");
     }
 
     let sessions = rstudio_rsession_paths();
     if sessions.is_empty() {
         let msg = "Could not find the rsession binary in /Applications/RStudio.app";
-        OUTPUT.error(msg);
-        error!("{}", msg);
         bail!(msg);
     }
 
@@ -1075,7 +1025,6 @@ pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
     let tmp_dir = ensure_download_dir()?;
 
     OUTPUT.status(&format!("Updating entitlements of {}", path.display()));
-    info!("Updating entitlements of {}", path.display());
 
     let out = Command::new("codesign")
         .args(["-d", "--entitlements", ":-"])
@@ -1085,17 +1034,12 @@ pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
         let stderr = match std::str::from_utf8(&out.stderr) {
             Ok(v) => v,
             Err(e) => {
-                OUTPUT.error(&format!("Invalid UTF-8 output from codesign: {}", e));
-                error!("Invalid UTF-8 output from codesign: {}", e);
                 bail!("Invalid UTF-8 output from codesign: {}", e)
             }
         };
         if stderr.contains("is not signed") {
             OUTPUT.status(&format!("{} is not signed.", path.display()));
-            info!("{} is not signed.", path.display());
         } else {
-            OUTPUT.error(&format!("Cannot query entitlements:\n   {}", stderr));
-            error!("Cannot query entitlements:\n   {}", stderr);
             bail!("Cannot query entitlements:\n   {}", stderr);
         }
         return Ok(());
@@ -1113,22 +1057,16 @@ pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
         let stderr = match std::str::from_utf8(&out.stderr) {
             Ok(v) => v,
             Err(e) => {
-                OUTPUT.error(&format!("Invalid UTF-8 output from codesign: {}", e));
-                error!("Invalid UTF-8 output from codesign: {}", e);
                 bail!("Invalid UTF-8 output from codesign: {}", e)
             }
         };
         if stderr.contains("Entry Already Exists") {
             OUTPUT.status(&format!("{} already allows debugging", path.display()));
-            info!("{} already allows debugging", path.display());
             return Ok(());
         } else if stderr.contains("zero-length data") {
             OUTPUT.status(&format!("{} is not signed.", path.display()));
-            info!("{} is not signed.", path.display());
             return Ok(());
         } else {
-            OUTPUT.error(&format!("Cannot update entitlements: {}", stderr));
-            error!("Cannot update entitlements: {}", stderr);
             bail!("Cannot update entitlements: {}", stderr);
         }
     }
@@ -1140,12 +1078,9 @@ pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
         .output()?;
 
     if !out.status.success() {
-        OUTPUT.error("Cannot update entitlements");
-        error!("Cannot update entitlements");
         bail!("Cannot update entitlements");
     } else {
         OUTPUT.success(&format!("Updated entitlements of {}", path.display()));
-        info!("Updated entitlements of {}", path.display());
     }
 
     Ok(())
@@ -1350,16 +1285,10 @@ fn system_make_orthogonal(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
                 if x.len() > 1 { "s" } else { "" },
                 str
             ));
-            info!(
-                "Making R version{} {} orthogonal",
-                if x.len() > 1 { "s" } else { "" },
-                str
-            );
             x
         }
         None => {
             OUTPUT.status("Making all R versions orthogonal");
-            info!("Making all R versions orthogonal");
             sc_get_list()?
         }
     };
@@ -1445,7 +1374,6 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
     };
 
     OUTPUT.status("Fixing permissions");
-    info!("Fixing permissions");
 
     for ver in vers {
         let ver = check_installed(&ver)?;
@@ -1461,14 +1389,12 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
 
         if !output.status.success() {
             OUTPUT.warn(&format!("Failed to update permissions for {}", ver));
-            warn!("Failed to update permissions for {}", ver);
         }
 
         let output = Command::new("chgrp").args(["admin"]).arg(&path).output()?;
 
         if !output.status.success() {
             OUTPUT.warn(&format!("Failed to update group for {}", ver));
-            warn!("Failed to update group for {}", ver);
         }
     }
 
@@ -1482,10 +1408,6 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
             "Failed to update permissions of link at {}",
             current.display()
         ));
-        warn!(
-            "Failed to update permissions of link at {}",
-            current.display()
-        );
     }
 
     let output = Command::new("chgrp")
@@ -1497,7 +1419,6 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
             "Failed to update group of link at {}",
             current.display()
         ));
-        warn!("Failed to update group of link at {}", current.display());
     }
 
     Ok(())
@@ -1515,15 +1436,12 @@ pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
     let output = match String::from_utf8(out.stdout) {
         Ok(v) => v,
         Err(_) => {
-            OUTPUT.error("Invalid UTF-8 output from pkgutil");
-            error!("Invalid UTF-8 output from pkgutil");
             bail!("Invalid UTF-8 output from pkgutil")
         }
     };
 
     if output.lines().count() > 0 {
         OUTPUT.status("Forgetting installed versions");
-        info!("Forgetting installed versions");
     }
 
     // TODO: this can fail, but if it fails it will still have exit
@@ -1554,7 +1472,6 @@ pub fn sc_system_user_mode(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     if sudo::check() == sudo::RunningAs::Root {
         OUTPUT.warn("`rig system user-mode` is meant to be run as a normal user, not with `sudo`.");
-        warn!("rig system user-mode is running as root");
     }
 
     // 1. Capture the admin-mode setup from the system locations, before we
@@ -1755,7 +1672,6 @@ fn reinstall_in_user_mode(
                     "R '{}' is already installed in user mode, not reinstalling",
                     udir
                 ));
-                info!("R '{}' already installed in user mode, skipping", udir);
                 map.push((admin_dir.clone(), udir));
                 continue;
             }
@@ -1764,7 +1680,6 @@ fn reinstall_in_user_mode(
             Ok(x) => x,
             Err(e) => {
                 OUTPUT.warn(&format!("Skipping reinstall of '{}': {}", admin_dir, e));
-                warn!("Skipping reinstall of '{}': {}", admin_dir, e);
                 continue;
             }
         };
@@ -1772,14 +1687,12 @@ fn reinstall_in_user_mode(
             "Reinstalling R '{}' ({}) in user mode",
             spec, arch
         ));
-        info!("Reinstalling R '{}' ({}) in user mode", spec, arch);
         let before = sc_get_list()?;
         let status = Command::new(&exe)
             .args(["add", &spec, "--arch", &arch, "--without-pak"])
             .status()?;
         if !status.success() {
             OUTPUT.warn(&format!("Failed to reinstall R '{}' in user mode", spec));
-            warn!("Failed to reinstall R '{}' in user mode", spec);
             continue;
         }
         let after = sc_get_list()?;
@@ -1803,10 +1716,8 @@ fn clean_admin_installations(keep_install: bool, keep_links: bool) -> Result<(),
     }
     if keep_install {
         OUTPUT.status("Removing admin-mode links, keeping installations (this needs `sudo`)");
-        info!("Removing admin-mode links, keeping installations");
     } else {
         OUTPUT.status("Removing admin-mode R installations (this needs `sudo`)");
-        info!("Removing admin-mode R installations");
     }
     let exe = std::env::current_exe()?;
     let mut cmd = Command::new(&exe);
@@ -1877,10 +1788,8 @@ pub fn sc_system_clean_admin_r(args: &ArgMatches) -> Result<(), Box<dyn Error>> 
         for ver in list_admin_versions(admin_root)? {
             let dir = admin_root.join(&ver);
             OUTPUT.status(&format!("Removing {}", dir.display()));
-            info!("Removing {}", dir.display());
             if let Err(e) = std::fs::remove_dir_all(&dir) {
                 OUTPUT.warn(&format!("Cannot remove {}: {}", dir.display(), e));
-                warn!("Cannot remove {}: {}", dir.display(), e);
             }
         }
         let current = admin_root.join("Current");
@@ -1909,7 +1818,6 @@ fn forget_admin_packages() -> Result<(), Box<dyn Error>> {
     };
     if output.lines().count() > 0 {
         OUTPUT.status("Forgetting installed versions");
-        info!("Forgetting installed versions");
     }
     for line in output.lines() {
         Command::new("pkgutil")
@@ -1943,10 +1851,8 @@ fn remove_admin_links() -> Result<(), Box<dyn Error>> {
         if let Ok(tgt) = std::fs::read_link(&path) {
             if tgt.to_string_lossy().contains("R.framework") {
                 OUTPUT.status(&format!("Removing {}", path.display()));
-                info!("Removing {}", path.display());
                 if let Err(e) = std::fs::remove_file(&path) {
                     OUTPUT.warn(&format!("Cannot remove {}: {}", path.display(), e));
-                    warn!("Cannot remove {}: {}", path.display(), e);
                 }
             }
         }
@@ -1989,8 +1895,6 @@ fn system_no_openmp(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
         match replace_in_file(&makevars, &re, "") {
             Ok(_) => {}
             Err(err) => {
-                OUTPUT.error(&format!("Failed to update {}: {}", makevars.display(), err));
-                error!("Failed to update {}: {}", makevars.display(), err);
                 bail!("Failed to update {}: {}", makevars.display(), err);
             }
         };
@@ -2067,11 +1971,10 @@ fn system_blas_set(which: &str, vers: Option<Vec<String>>) -> Result<(), Box<dyn
         let ver = check_installed(&ver)?;
         let lib = blas_lib_dir(&ver)?;
         if !lib.join(target_name).exists() {
-            OUTPUT.error(&format!(
+            OUTPUT.warn(&format!(
                 "R {} does not have {}, skipping",
                 ver, target_name
             ));
-            error!("R {} does not have {}, skipping", ver, target_name);
             continue;
         }
         let link = lib.join("libRblas.dylib");
@@ -2117,7 +2020,6 @@ pub fn sc_rstudio_(
                 "Could not register default R version in RStudio: {}",
                 e
             ));
-            warn!("Could not activate RSTUDIO_WHICH_R LaunchAgent: {}", e);
         }
     }
 
@@ -2132,16 +2034,6 @@ pub fn sc_rstudio_(
     if let Some(ver) = version {
         let ver = check_installed(&ver.to_string())?;
         if !is_orthogonal(&ver)? {
-            OUTPUT.error(&format!(
-                "R {} is not orthogonal, it cannot run as a non-default. \
-                   Run `rig system make-orthogonal`.",
-                ver
-            ));
-            error!(
-                "R {} is not orthogonal, it cannot run as a non-default. \
-                   Run `rig system make-orthogonal`.",
-                ver
-            );
             bail!(
                 "R {} is not orthogonal, it cannot run as a non-default. \
                    Run `rig system make-orthogonal`.",
@@ -2160,11 +2052,8 @@ pub fn sc_rstudio_(
 
     let cmdline = osjoin(args.to_owned(), " ");
     OUTPUT.status(&format!("Running open {}", cmdline));
-    info!("Running open {}", cmdline);
 
     if let Err(e) = run(os("open"), args, "open") {
-        OUTPUT.error(&format!("RStudio failed to start: {}", e));
-        error!("RStudio failed to start: {}", e);
         bail!("RStudio failed to start: {}", e.to_string());
     };
 
@@ -2198,8 +2087,6 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
             let msg = "Could not change the default R version. :( To be able to\n        \
                 change the default R version, you need to be an admin.\n        \
                 See the 'Users & Groups' section in the 'System Settings' app.";
-            OUTPUT.error(msg);
-            error!("{}", msg);
             bail!(msg);
         }
     };
@@ -2216,7 +2103,6 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
         let tgt = Path::new(&get_r_default_bindir()?).join("R");
         if let Err(e) = std::os::unix::fs::symlink(&tgt, &r) {
             OUTPUT.warn(&format!("Cannot create missing {}/R: {}", binary_dir, e));
-            warn!("Cannot create missing {}/R: {}", binary_dir, e)
         };
     }
 
@@ -2229,7 +2115,6 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
                 "Cannot create missing {}/Rscript: {}",
                 binary_dir, e
             ));
-            warn!("Cannot create missing {}/Rscript: {}", binary_dir, e)
         };
     }
 
@@ -2239,14 +2124,12 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
                 "Could not register default R version in RStudio: {}",
                 e
             ));
-            warn!("Could not install RSTUDIO_WHICH_R LaunchAgent: {}", e);
         }
         if let Err(e) = ensure_positron_setup(Some(&ver)) {
             OUTPUT.warn(&format!(
                 "Could not register rig R versions in Positron: {}",
                 e
             ));
-            warn!("Could not update Positron settings: {}", e);
         }
     }
 
@@ -2309,7 +2192,7 @@ fn ensure_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
         let plist_dir = Path::new(&plist_path).parent().unwrap();
         std::fs::create_dir_all(plist_dir)?;
         std::fs::write(&plist_path, &plist)?;
-        info!("Installed LaunchAgent {}", plist_path);
+        debug!("Installed LaunchAgent {}", plist_path);
         installed = true;
     }
 
@@ -2346,8 +2229,6 @@ fn ensure_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
             verb,
             String::from_utf8_lossy(&out.stderr)
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!(msg);
     }
 
@@ -2420,13 +2301,11 @@ fn remove_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
             plist_path,
             String::from_utf8_lossy(&out.stderr)
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!(msg);
     }
 
     std::fs::remove_file(&plist_path)?;
-    info!("Removed LaunchAgent {}", plist_path);
+    debug!("Removed LaunchAgent {}", plist_path);
 
     Ok(())
 }
@@ -2536,16 +2415,6 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
     let std = match String::from_utf8(out.stdout) {
         Ok(v) => v,
         Err(err) => {
-            OUTPUT.error(&format!(
-                "Cannot extract version from .pkg file {}: {}",
-                filename.to_string_lossy(),
-                err
-            ));
-            error!(
-                "Cannot extract version from .pkg file {}: {}",
-                filename.to_string_lossy(),
-                err
-            );
             bail!(
                 "Cannot extract version from .pkg file {}: {}",
                 filename.to_string_lossy(),
@@ -2559,14 +2428,6 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
     let lines: Vec<&str> = lines.filter(|l| re.is_match(l)).collect();
 
     if lines.is_empty() {
-        OUTPUT.error(&format!(
-            "Cannot extract version from .pkg file {}: no line with R version found",
-            filename.to_string_lossy()
-        ));
-        error!(
-            "Cannot extract version from .pkg file {}: no line with R version found",
-            filename.to_string_lossy()
-        );
         bail!(
             "Cannot extract version from .pkg file {}: no line with R version found",
             filename.to_string_lossy()
@@ -2593,16 +2454,6 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
         let std = match String::from_utf8(out.stdout) {
             Ok(v) => v,
             Err(err) => {
-                OUTPUT.error(&format!(
-                    "Cannot extract version from .pkg file {}: {}",
-                    filename.to_string_lossy(),
-                    err
-                ));
-                error!(
-                    "Cannot extract version from .pkg file {}: {}",
-                    filename.to_string_lossy(),
-                    err
-                );
                 bail!(
                     "Cannot extract version from .pkg file {}: {}",
                     filename.to_string_lossy(),
@@ -2640,7 +2491,6 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
     };
 
     OUTPUT.success(&format!("This is R {} for {}.", ver, arch));
-    info!("This is R {} for {}.", ver, arch);
 
     let res = RversionDir {
         version: ver.to_string(),
@@ -2916,6 +2766,27 @@ mod tests {
         // Surrounding lines untouched.
         assert!(content.contains("R_PAPERSIZE=letter"));
         assert!(content.contains("R_BROWSER=open"));
+    }
+
+    #[test]
+    fn patch_user_scripts_sets_fontconfig_file() {
+        let dir = tempfile::tempdir().unwrap();
+        write_fake_makeconf(dir.path(), "LIBR = -framework R\n");
+        write_fake_renviron(dir.path(), "R_QPDF=qpdf");
+        write_fake_fonts_conf(dir.path(), "<fontconfig></fontconfig>\n");
+        write_fake_libpc(dir.path(), STUB_LIBPC);
+        let home_dir = Path::new("/opt/r/4.6.2");
+
+        patch_user_scripts(dir.path(), home_dir).unwrap();
+        let content = fs::read_to_string(dir.path().join("etc/Renviron")).unwrap();
+        assert!(content.contains(
+            "\nFONTCONFIG_FILE=${FONTCONFIG_FILE-/opt/r/4.6.2/fontconfig/fonts/fonts.conf}\n"
+        ));
+
+        // Patching again does not add a second line.
+        patch_user_scripts(dir.path(), home_dir).unwrap();
+        let content = fs::read_to_string(dir.path().join("etc/Renviron")).unwrap();
+        assert_eq!(content.matches("FONTCONFIG_FILE=").count(), 1);
     }
 
     #[test]

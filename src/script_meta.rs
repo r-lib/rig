@@ -25,13 +25,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
-use log::{error, info, trace};
+use log::trace;
 use serde::{Deserialize, Serialize};
 use toml_edit::DocumentMut;
 
 use crate::cache::get_cache_dir;
 use crate::common::get_r_version_data_version;
-use crate::output::OUTPUT;
+use crate::output::{Context, OUTPUT};
 use crate::proj::{
     add_repos_to_manifest, add_spec_to_manifest, is_foreign_arch, lock_file_label,
     lock_fits_manifest, parse_add_arg, parse_add_repos, parse_upgrade_packages, proj_lock_host,
@@ -473,7 +473,6 @@ fn prepare_script_env(
             None => {
                 let msg = format!("Would create an environment for {}", script.display());
                 OUTPUT.info(&msg);
-                info!("{}", msg);
                 return Ok(None);
             }
         },
@@ -501,7 +500,6 @@ fn prepare_script_env(
                     why
                 );
                 OUTPUT.info(&msg);
-                info!("{}", msg);
             } else {
                 let msg = format!(
                     "Re-creating the environment of {}, because {}",
@@ -509,7 +507,6 @@ fn prepare_script_env(
                     why
                 );
                 OUTPUT.info(&msg);
-                info!("{}", msg);
                 fs::remove_dir_all(&envdir)?;
             }
         }
@@ -524,7 +521,6 @@ fn prepare_script_env(
                 envdir.display()
             );
             OUTPUT.info(&msg);
-            info!("{}", msg);
             return Ok(Some(envdir));
         }
         if !envdir.exists() {
@@ -561,11 +557,9 @@ fn prepare_script_env(
         if dry_run {
             let msg = format!("Would re-lock the environment of {}", script.display());
             OUTPUT.info(&msg);
-            info!("{}", msg);
         } else {
             let msg = format!("Re-locking the environment of {}", script.display());
             OUTPUT.info(&msg);
-            info!("{}", msg);
             proj_lock_host(
                 &envdir,
                 rver.clone(),
@@ -586,7 +580,6 @@ fn prepare_script_env(
                 why
             );
             OUTPUT.info(&msg);
-            info!("{}", msg);
         }
         Some(why) => {
             let msg = format!(
@@ -595,7 +588,6 @@ fn prepare_script_env(
                 why
             );
             OUTPUT.info(&msg);
-            info!("{}", msg);
             if !envdir.join(RPROJ_LOCK_FILE).exists() {
                 proj_lock_host(&envdir, rver, r_arch.as_deref(), false, vec![], args)?;
             }
@@ -652,7 +644,6 @@ fn prepare_locked_script_env(
             envdir.display()
         );
         OUTPUT.info(&msg);
-        info!("{}", msg);
         return Ok(Some(envdir));
     }
     if !dry_run {
@@ -692,7 +683,6 @@ fn prepare_locked_script_env(
             script.display()
         );
         OUTPUT.info(&msg);
-        info!("{}", msg);
     }
 
     if !dry_run {
@@ -717,7 +707,6 @@ fn prepare_locked_script_env(
     } else if upgrade || !upgrade_packages.is_empty() {
         let msg = format!("Would re-lock {} and update {}", script.display(), label);
         OUTPUT.info(&msg);
-        info!("{}", msg);
     }
 
     if !sync {
@@ -734,7 +723,6 @@ fn prepare_locked_script_env(
                 why
             );
             OUTPUT.info(&msg);
-            info!("{}", msg);
         }
         Some(why) => {
             let msg = format!(
@@ -744,7 +732,6 @@ fn prepare_locked_script_env(
                 why
             );
             OUTPUT.info(&msg);
-            info!("{}", msg);
             // `--r-version` picks the lock file target, and the R build of
             // that target is what the environment uses. An R of another
             // architecture than the machine's, e.g. `4.6.1-x86_64` on an
@@ -850,7 +837,6 @@ fn update_script_lock(
     }
     if let Some(msg) = why {
         OUTPUT.info(&msg);
-        info!("{}", msg);
         proj_lock_keep_targets(envdir, upgrade, upgrade_packages, label, args)?;
         write_atomically(lock_path, &fs::read(&env_lock)?)?;
     }
@@ -927,7 +913,6 @@ pub fn sc_proj_init_script(script: &Path, args: &ArgMatches) -> Result<(), Box<d
         format!("Added a `{}` block to {}", BLOCK_START, script.display())
     };
     OUTPUT.success(&msg);
-    info!("{}", msg);
     OUTPUT.info(&format!(
         "Script set up for R {}. Next: add dependencies with \
          `rig proj add --script {}`, then run it with `rig run {}`.",
@@ -988,7 +973,6 @@ pub fn sc_proj_add_script(script: &Path, args: &ArgMatches) -> Result<(), Box<dy
     write_script_block(script, &text, block.as_ref(), &body)?;
     for msg in messages.iter() {
         OUTPUT.success(msg);
-        info!("{}", msg);
     }
 
     update_script_env(script, &text, &body, args)
@@ -1038,7 +1022,6 @@ pub fn sc_proj_remove_script(script: &Path, args: &ArgMatches) -> Result<(), Box
     write_script_block(script, &text, Some(&block), &body)?;
     for msg in messages.iter() {
         OUTPUT.success(msg);
-        info!("{}", msg);
     }
 
     update_script_env(script, &text, &body, args)
@@ -1082,9 +1065,7 @@ fn update_script_env(
             "Could not resolve the dependencies, {} unchanged",
             script.display()
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
-        return Err(err);
+        return Err(err).context(msg);
     }
     Ok(())
 }

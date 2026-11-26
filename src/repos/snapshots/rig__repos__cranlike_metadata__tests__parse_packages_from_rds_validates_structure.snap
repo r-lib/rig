@@ -244,6 +244,7 @@ Package {
     internals_id: None,
     filesize: None,
     sha256sum: None,
+    snapshot: None,
     archived: None,
     repository: None,
     system_requirements: None,

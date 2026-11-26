@@ -67,7 +67,8 @@ leaves them out. See [`rig proj lock`](reference/proj.qmd#rig-proj-lock).
 resolves it with rig's built-in solver into an exact, reproducible set of
 package versions, each with the URL it downloads from. It never runs R.
 Both files are meant to be committed, `rig proj add`/`remove` update both
-for you.
+for you. The exception is R packages set up with `rig proj import`, which
+do not commit `rproj.lock`, see [below](#r-packages).
 
 ## Platforms and R versions
 
@@ -118,13 +119,34 @@ the lock file names first, if it is not already installed.
 it to `.gitignore` for you, and it can be deleted and rebuilt at any time.
 `rproj.toml` and `rproj.lock` need to be committed for a fresh clone of
 the project to work, together with the boilerplate files `.Renviron` and
-`.rvenvlib`.
+`.rvenvlib`. R packages do not commit `rproj.lock`, see the next section.
+
+## R packages
+
+`rig proj import` sets up a project from an R package's `DESCRIPTION`
+file, and adds `rproj.lock` to `.gitignore`. A package is checked against
+many versions of its dependencies, so it should not commit a lock file.
+
+After cloning a package, run `rig proj sync`. It runs `rig proj lock`
+first, because there is no `rproj.lock`. `rig run` syncs the project itself
+if needed, so it works in a fresh clone right away.
 
 Projects also get a `tools` package library automatically added to every R
 session in the project. Install development tools you use but the project
 itself does not depend on, e.g. `devtools`, `usethis`, `roxygen2`, there
 with `rig pkg install -l tools <pkgs>`, so they don't end up in
 `rproj.toml`.
+
+## Project secrets
+
+In rig's usual workflow the project `.Renviron` is committed, so put
+secrets, e.g. API keys, in `.Renviron.rig` instead. It
+has the same format, `rig proj init` adds it to `.gitignore`, and R reads it
+after `~/.Renviron` in a synced project.
+
+Alternatively, add `.Renviron` itself to `.gitignore`; `rig proj sync`
+recreates rig's part of it. But then R in a fresh clone uses your own
+library until the first sync, without a warning.
 
 ## Inspecting a project
 

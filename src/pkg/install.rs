@@ -24,7 +24,7 @@ use std::fs;
 use std::io::ErrorKind;
 
 use clap::ArgMatches;
-use log::{debug, info};
+use log::debug;
 use tabular::*;
 
 #[cfg(target_os = "macos")]
@@ -89,16 +89,26 @@ pub fn sc_pkg_install(
         .collect();
     let dev = args.get_flag("dev");
     let (mut deps, git_deps, cran_names, dev_packages) = requested_deps(&names)?;
-    // The packages named on the command line, by their real names, before
-    // `--dev` adds their dev dependencies to `deps`.
-    let named: HashSet<String> = deps.dependencies.iter().map(|d| d.name.clone()).collect();
+    // `--no-install-self` leaves out the local packages (paths) named on the
+    // command line, by their real names. Packages named by repository name,
+    // git/GitHub reference or URL are always installed.
+    let no_install_self = args.get_flag("no-install-project");
+    let local_named: HashSet<String> = git_deps
+        .iter()
+        .filter(|(_, table)| table.path.is_some())
+        .map(|(name, _)| name.clone())
+        .collect();
+    if no_install_self && local_named.is_empty() {
+        let msg = "--no-install-self needs a local package, e.g. `.`, \
+            a package directory or a package file";
+        bail!(msg);
+    }
     let exclude_newer =
         match exclude_newer_arg(args)?.map_or_else(config_exclude_newer, |s| Ok(Some(s)))? {
             Some(spec) => {
                 let cutoff = spec.cutoff()?;
                 let msg = format!("Ignoring package versions published after {}", cutoff);
                 OUTPUT.info(&msg);
-                info!("{}", msg);
                 Some(cutoff)
             }
             None => None,
@@ -142,7 +152,7 @@ pub fn sc_pkg_install(
         None => config_prefer_binary()?,
     };
     if prefer_binary.is_some() && target.is_none() {
-        info!("Ignoring prefer-binary: solving for source packages only");
+        debug!("Ignoring prefer-binary: solving for source packages only");
     }
 
     let roots = [SolveRoot::request(deps.clone())?];
@@ -164,7 +174,6 @@ pub fn sc_pkg_install(
         true,
     )?;
     OUTPUT.success("Solved dependencies");
-    info!("Solved dependencies");
     let mut policy_notes = crate::proj::PolicyNotes::default();
     policy_notes.add(&registry, &solution);
     policy_notes.print();
@@ -175,8 +184,8 @@ pub fn sc_pkg_install(
     // provenance hashes. `rig pkg install` builds one in memory and never
     // writes it.
     let mut lockfile = RprojLockTarget::from_solution(&registry, &solution);
-    if args.get_flag("no-install-project") {
-        lockfile.packages = drop_named_packages(lockfile.packages, &named);
+    if no_install_self {
+        lockfile.packages = drop_named_packages(lockfile.packages, &local_named);
     }
 
     // A library that does not exist yet holds nothing; rig creates it below,
@@ -214,7 +223,7 @@ pub fn sc_pkg_install(
 
     if dry_run {
         crate::sysreqs::ensure(&todo, sysreqs, true)?;
-        info!("--dry-run, not installing anything");
+        debug!("--dry-run, not installing anything");
         return Ok(());
     }
 
@@ -222,7 +231,6 @@ pub fn sc_pkg_install(
         if !json {
             OUTPUT.success(&format!("Everything is up to date {}", lib.tag()));
         }
-        info!("Nothing to install");
         return Ok(());
     }
 
@@ -246,14 +254,13 @@ pub fn sc_pkg_install(
     let packages: Vec<PackageInfo> = todo
         .iter()
         .map(|p| {
-            let mut info = lockfile_package_info(p, &cache_dir, built.as_ref());
-            // A package whose dependency is already installed must not wait for
-            // it: the installer only starts a package once every name in its
-            // `dependencies` has been installed *by this run*, and a name that
-            // is not being installed at all would stall the whole batch.
-            info.dependencies
-                .retain(|d| installing.contains(d.as_str()));
-            info
+            lockfile_package_info(
+                p,
+                &lockfile.packages,
+                &installing,
+                &cache_dir,
+                built.as_ref(),
+            )
         })
         .collect();
 
@@ -263,7 +270,7 @@ pub fn sc_pkg_install(
         let word = if n == 1 { "package" } else { "packages" };
         OUTPUT.success(&format!("Installed {} {} {}", n, word, lib.tag()));
     }
-    info!("Installed {} packages into {}", n, lib.path.display());
+    debug!("Installed {} packages into {}", n, lib.path.display());
 
     Ok(())
 }
@@ -314,9 +321,7 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
             continue;
         }
 
-        let source = parse_pkg_source(name).inspect_err(|err| {
-            OUTPUT.error(&err.to_string());
-        })?;
+        let source = parse_pkg_source(name)?;
         let mut constraints: Vec<crate::dcf::VersionConstraint> = vec![];
         let resolved_name = match source {
             PkgSource::Cran => {
@@ -330,23 +335,16 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
                 let git_url = table.git.clone().unwrap_or_default();
                 OUTPUT.status(&format!("Fetching {}", git_url));
                 let (pkg, _source, _remotes) =
-                    fetch_and_read_git_package(&git_url, &table, &HashMap::new(), &HashMap::new())
-                        .inspect_err(|err| {
-                            OUTPUT.error(&err.to_string());
-                        })?;
+                    fetch_and_read_git_package(&git_url, &table, &HashMap::new(), &HashMap::new())?;
                 dev_packages.push(pkg.clone());
                 let resolved_name = r.name_override.unwrap_or(pkg.name);
                 git_deps.push((resolved_name.clone(), table));
                 resolved_name
             }
             PkgSource::Local(l) => {
-                let path = resolve_local_path(&l.path).inspect_err(|err| {
-                    OUTPUT.error(&err.to_string());
-                })?;
+                let path = resolve_local_path(&l.path)?;
                 let table = dep_table_from_local(&path);
-                let (pkg, _source, _remotes) = read_local_package(&path).inspect_err(|err| {
-                    OUTPUT.error(&err.to_string());
-                })?;
+                let (pkg, _source, _remotes) = read_local_package(&path)?;
                 dev_packages.push(pkg.clone());
                 let resolved_name = l.name_override.unwrap_or(pkg.name);
                 git_deps.push((resolved_name.clone(), table));
@@ -355,10 +353,7 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
             PkgSource::Url(u) => {
                 let table = dep_table_from_url(&u);
                 OUTPUT.status(&format!("Fetching {}", u.url));
-                let (pkg, _source, _remotes) = fetch_and_read_url_package(&u.url, &table)
-                    .inspect_err(|err| {
-                        OUTPUT.error(&err.to_string());
-                    })?;
+                let (pkg, _source, _remotes) = fetch_and_read_url_package(&u.url, &table)?;
                 dev_packages.push(pkg.clone());
                 let resolved_name = u.name_override.unwrap_or(pkg.name);
                 git_deps.push((resolved_name.clone(), table));
@@ -384,7 +379,6 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
             base.join(", "),
             if base.len() == 1 { "is" } else { "are" }
         );
-        OUTPUT.error(&msg);
         bail!(msg);
     }
 
@@ -450,12 +444,7 @@ fn add_dev_deps(
                 "Skipping {}, not available in the repositories",
                 unavailable.join(", ")
             ));
-            info!(
-                "Skipping unavailable dev dependencies: {}",
-                unavailable.join(", ")
-            );
         } else {
-            OUTPUT.error(&msg);
             bail!(msg);
         }
     }
@@ -501,13 +490,13 @@ fn add_dev_deps_of_package(
     Ok(())
 }
 
-/// `--no-install-self`: leave the packages named on the command line out
-/// of the solution, keeping only their dependencies -- the same thing
+/// `--no-install-self`: leave the local packages named on the command line
+/// out of the solution, keeping only their dependencies -- the same thing
 /// `rig proj sync --no-install-project` does for a project's own package.
 ///
-/// A named package still stays if some package that stays depends on it,
-/// e.g. `rig pkg install --no-install-self cli pkgA` where `pkgA` imports
-/// `cli`, or a `--dev` dependency that imports the named package. That is
+/// A local package still stays if some package that stays depends on it,
+/// e.g. a `--dev` dependency that imports it, or a git/GitHub package named
+/// on the command line next to it that does. That is
 /// iterated to a fixpoint, since a named package kept that way can in turn
 /// depend on another named package.
 fn drop_named_packages(

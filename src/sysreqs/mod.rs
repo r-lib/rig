@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Mutex;
 
-use log::{info, warn};
+use log::debug;
 
 use crate::output::OUTPUT;
 use crate::platform::detect_platform;
@@ -268,7 +268,7 @@ pub fn check(packages: &[(String, String)]) -> Result<Checked, Box<dyn Error>> {
             platform.version.as_deref().unwrap_or("")
         )));
     };
-    info!("Checking system requirements on {}", system.display());
+    debug!("Checking system requirements on {}", system.display());
     let db = RuleDb::load()?;
     let matched = resolve(&db, &system, packages);
     let all: Vec<&MatchedRule> = matched.iter().collect();
@@ -307,7 +307,7 @@ pub fn ensure(
     }
     let settings = settings(cli)?;
     if settings.mode == Mode::Off {
-        info!("System requirements are turned off");
+        debug!("System requirements are turned off");
         return Ok(());
     }
     let wanted = requirements(packages);
@@ -328,7 +328,7 @@ pub fn ensure(
         if matches!(settings.mode, Mode::On | Mode::Print) {
             OUTPUT.warn(&msg);
         }
-        info!("{}", msg);
+        debug!("{}", msg);
         return Ok(());
     }
 
@@ -349,7 +349,7 @@ pub fn ensure(
                     word
                 ));
             }
-            info!(
+            debug!(
                 "All system requirements are installed: {}",
                 needed.join(", ")
             );
@@ -359,7 +359,6 @@ pub fn ensure(
         Err(e) => {
             let msg = format!("Cannot check which system packages are installed: {}", e);
             OUTPUT.warn(&msg);
-            warn!("{}", msg);
             return Ok(());
         }
     };
@@ -380,7 +379,6 @@ pub fn ensure(
             found.needed_by(os).join(", ")
         ));
     }
-    info!("Missing system packages: {}", missing.join(", "));
 
     let steps = found.steps(settings.update);
     let print_only = dry_run || settings.mode == Mode::Print;
@@ -410,12 +408,11 @@ pub fn ensure(
         Ok(()) => {
             remember_missing(&[], &[]);
             OUTPUT.success(&format!("Installed {} system {}", missing.len(), word));
-            info!("Installed system packages: {}", missing.join(", "));
+            debug!("Installed system packages: {}", missing.join(", "));
         }
         Err(e) => {
             let msg = format!("Failed to install system packages: {}", e);
             OUTPUT.warn(&msg);
-            warn!("{}", msg);
         }
     }
     Ok(())

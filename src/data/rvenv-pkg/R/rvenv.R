@@ -69,7 +69,14 @@
   # `file.exists()` rather than `dir.exists()`, which is R >= 3.2.0.
   if (!file.exists(lib)) {
     restore_r_libs_user(libname, lib)
-    Sys.unsetenv("R_DEFAULT_PACKAGES")
+    # For child processes set R_DEFAULT_PACKAGES to the default, so .Renviron
+    # does not override it to load rvenv.
+    pkgs <- paste(setdiff(getOption("defaultPackages"), "rvenv"), collapse = ",")
+    user <- Sys.getenv("R_LIBS_USER")
+    Sys.setenv(
+      R_DEFAULT_PACKAGES = if (nzchar(pkgs)) pkgs else "NULL",
+      RVENV_CHILD_R_LIBS_USER = if (nzchar(user)) user else "NULL"
+    )
     # One warning per project is enough; child processes are quiet. RVENV is
     # not set in this code path -- nothing was activated -- so the "did a
     # parent already do this?" flag is a separate variable here.

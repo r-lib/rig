@@ -6,13 +6,14 @@
 // Version discovery deliberately avoids the GitHub API (which would need a
 // token to get a decent rate limit for anonymous use): the stable path reads
 // the `Location` header of the redirect that
-// `https://github.com/<repo>/releases/latest` returns, and the
-// `--pre-release` path scrapes release tags out of the plain releases page.
+// `https://github.com/<repo>/releases/latest` returns, the
+// `--pre-release` path scrapes release tags out of the plain releases page,
+// and the `--nightly` path reads the `VERSION` asset of the `nightly`
+// release.
 
 use std::error::Error;
 
 use clap::ArgMatches;
-use log::info;
 use regex::Regex;
 
 use crate::install::unpack_package;
@@ -40,19 +41,24 @@ fn detect_plat_arch() -> Result<(String, String), Box<dyn Error>> {
         bail!("unsupported operating system");
     };
 
-    let arch = match std::env::consts::ARCH {
-        "aarch64" | "arm64" => {
-            if plat == "macos" {
-                "arm64"
-            } else {
-                "aarch64"
-            }
-        }
-        "x86_64" => "x86_64",
-        other => bail!("unsupported architecture: {}", other),
-    };
+    let arch = arch_token(plat, std::env::consts::ARCH)?;
 
     Ok((plat.to_string(), arch.to_string()))
+}
+
+// Linux assets use `aarch64`, macOS and Windows assets use `arm64`.
+fn arch_token(plat: &str, arch: &str) -> Result<&'static str, Box<dyn Error>> {
+    match arch {
+        "aarch64" | "arm64" => {
+            if plat == "linux" {
+                Ok("aarch64")
+            } else {
+                Ok("arm64")
+            }
+        }
+        "x86_64" => Ok("x86_64"),
+        other => bail!("unsupported architecture: {}", other),
+    }
 }
 
 fn asset_name(plat: &str, arch: &str, vtoken: &str) -> String {
@@ -110,6 +116,39 @@ async fn all_tags() -> Result<Vec<String>, Box<dyn Error>> {
     Ok(tags_from_releases_page(&html))
 }
 
+// The rolling nightly release, see `.github/workflows/nightly.yml`. While a
+// new build is being swapped in, `nightly` can briefly return 404 and the
+// new build is under `nightly-staging` instead. So we try `nightly`, then
+// `nightly-staging`, then `nightly` once more, in case the swap finished
+// between the first two tries. The install scripts do the same.
+const NIGHTLY_TAGS: [&str; 3] = ["nightly", "nightly-staging", "nightly"];
+
+// Returns the version of the current nightly build, and the index of the
+// first tag in `NIGHTLY_TAGS` that served it.
+#[tokio::main]
+async fn nightly_version() -> Result<(String, usize), Box<dyn Error>> {
+    let client = http_client();
+    let mut last_err = String::new();
+    for (idx, tag) in NIGHTLY_TAGS.iter().enumerate() {
+        let url = format!(
+            "https://github.com/{}/releases/download/{}/VERSION",
+            REPO, tag
+        );
+        match client.get(&url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                let version = resp.text().await?.trim().to_string();
+                if version.is_empty() {
+                    bail!("empty nightly version at {}", url);
+                }
+                return Ok((version, idx));
+            }
+            Ok(resp) => last_err = format!("HTTP {} at {}", resp.status(), url),
+            Err(err) => last_err = format!("HTTP error at {}: {}", url, err),
+        }
+    }
+    bail!("cannot find the nightly build: {}", last_err)
+}
+
 fn resolve_target_tag(pre_release: bool) -> Result<(String, semver::Version), Box<dyn Error>> {
     if pre_release {
         let tags = all_tags()?;
@@ -130,12 +169,33 @@ pub fn sc_self_update(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), B
 
     let current = semver::Version::parse(env!("CARGO_PKG_VERSION"))?;
     let pre_release = args.get_flag("pre-release");
-    let (tag, latest) = resolve_target_tag(pre_release)?;
+    let nightly = args.get_flag("nightly");
 
-    if latest <= current {
-        OUTPUT.success(&format!("rig {} is already the latest version", current));
-        return Ok(());
-    }
+    // The tags to try, in order, the version token in the asset name, and
+    // the version we are updating to.
+    let (tags, vtoken, latest): (Vec<String>, String, String) = if nightly {
+        let (version, idx) = nightly_version()?;
+        // Nightly versions from the same day differ only in the commit hash,
+        // so semver order does not tell which one is newer. Update whenever
+        // the nightly differs from the running version.
+        if version == current.to_string() {
+            OUTPUT.success(&format!(
+                "rig {} is already the latest nightly build",
+                current
+            ));
+            return Ok(());
+        }
+        let tags = NIGHTLY_TAGS[idx..].iter().map(|t| t.to_string()).collect();
+        (tags, "nightly".to_string(), version)
+    } else {
+        let (tag, latest) = resolve_target_tag(pre_release)?;
+        if latest <= current {
+            OUTPUT.success(&format!("rig {} is already the latest version", current));
+            return Ok(());
+        }
+        let vtoken = tag.strip_prefix('v').unwrap_or(&tag).to_string();
+        (vec![tag], vtoken, latest.to_string())
+    };
 
     if args.get_flag("dry-run") {
         OUTPUT.status(&format!(
@@ -146,18 +206,23 @@ pub fn sc_self_update(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), B
     }
 
     let (plat, arch) = detect_plat_arch()?;
-    let vtoken = tag.strip_prefix('v').unwrap_or(&tag);
-    let asset = asset_name(&plat, &arch, vtoken);
-    let url = format!(
-        "https://github.com/{}/releases/download/{}/{}",
-        REPO, tag, asset
-    );
+    let asset = asset_name(&plat, &arch, &vtoken);
 
     let tmp_dir = tempfile::tempdir()?;
     let archive_path = tmp_dir.path().join(&asset);
     OUTPUT.status(&format!("Downloading {} ...", asset));
     let client = http_client();
-    crate::download::download_file(&client, &url, archive_path.as_os_str())?;
+    for (i, tag) in tags.iter().enumerate() {
+        let url = format!(
+            "https://github.com/{}/releases/download/{}/{}",
+            REPO, tag, asset
+        );
+        match crate::download::download_file(&client, &url, archive_path.as_os_str()) {
+            Ok(()) => break,
+            Err(err) if i + 1 == tags.len() => return Err(err),
+            Err(_) => continue,
+        }
+    }
 
     let extract_dir = tmp_dir.path().join("extracted");
     std::fs::create_dir_all(&extract_dir)?;
@@ -182,7 +247,7 @@ pub fn sc_self_update(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), B
     }
 
     let updated_receipt = Receipt {
-        rig_version: vtoken.to_string(),
+        rig_version: vtoken.clone(),
         installed_at: rfc3339_now(),
         ..receipt
     };
@@ -192,7 +257,6 @@ pub fn sc_self_update(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), B
     )?;
 
     OUTPUT.success(&format!("rig updated: {} -> {}", current, latest));
-    info!("rig self update: {} -> {}", current, latest);
 
     Ok(())
 }
@@ -244,9 +308,24 @@ mod tests {
 
     #[test]
     fn pick_highest_tag_ignores_unparseable() {
-        let tags = vec!["latest".to_string(), "v0.9.0".to_string()];
+        // `--pre-release` must never pick the rolling nightly releases.
+        let tags = vec![
+            "latest".to_string(),
+            "nightly".to_string(),
+            "nightly-staging".to_string(),
+            "v0.9.0".to_string(),
+        ];
         let (tag, _) = pick_highest_tag(&tags).unwrap();
         assert_eq!(tag, "v0.9.0");
+    }
+
+    #[test]
+    fn arch_token_matches_install_scripts() {
+        assert_eq!(arch_token("macos", "aarch64").unwrap(), "arm64");
+        assert_eq!(arch_token("windows", "aarch64").unwrap(), "arm64");
+        assert_eq!(arch_token("linux", "aarch64").unwrap(), "aarch64");
+        assert_eq!(arch_token("windows", "x86_64").unwrap(), "x86_64");
+        assert!(arch_token("linux", "riscv64").is_err());
     }
 
     #[test]
@@ -262,6 +341,14 @@ mod tests {
         assert_eq!(
             asset_name("windows", "x86_64", "0.10.0"),
             "rig-windows-x86_64-0.10.0.zip"
+        );
+        assert_eq!(
+            asset_name("windows", "arm64", "latest"),
+            "rig-windows-arm64-latest.zip"
+        );
+        assert_eq!(
+            asset_name("linux", "aarch64", "0.10.0"),
+            "rig-linux-aarch64-0.10.0.tar.gz"
         );
     }
 

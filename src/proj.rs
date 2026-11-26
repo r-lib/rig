@@ -6,8 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::ArgMatches;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use log::{debug, error, info, warn};
+use log::debug;
 use pubgrub::resolve;
 use rayon::prelude::*;
 use simple_error::SimpleError;
@@ -29,7 +28,7 @@ use crate::install::{
     REMOTE_LINKINGTO_FIELD, REMOTE_SHA_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
 };
 use crate::library::get_library_path;
-use crate::output::{ExitStatusError, ReportedError, OUTPUT};
+use crate::output::{Context, ExitStatusError, ReportedError, OUTPUT};
 use crate::pkg::default_r_feeds;
 use crate::pkg::deps::{
     dep_count, print_deps_json, print_deps_recursive, print_header, type_list, walk_deps,
@@ -160,7 +159,6 @@ fn sc_proj_init(
     for path in &created {
         let name = path.strip_prefix(&root).unwrap_or(path).to_string_lossy();
         OUTPUT.success(&format!("Created {}", name));
-        info!("Created {}", name);
     }
     OUTPUT.info(&format!(
         "Project set up for R {}. Next: add dependencies to {}, \
@@ -193,8 +191,6 @@ pub fn check_project_conflicts(root: &Path) -> Result<(), Box<dyn Error>> {
         names.join(", "),
         if names.len() == 1 { "s" } else { "" }
     );
-    OUTPUT.error(&msg);
-    error!("{}", msg);
     bail!("{}", msg);
 }
 
@@ -223,7 +219,6 @@ pub fn init_rvenv_files(root: &Path, manifest_path: &Path) -> Result<(), Box<dyn
     for path in &created {
         let name = path.strip_prefix(root).unwrap_or(path).to_string_lossy();
         OUTPUT.success(&format!("Created {}", name));
-        info!("Created {}", name);
     }
     Ok(())
 }
@@ -250,14 +245,11 @@ pub(crate) fn resolve_project_r_version(args: &ArgMatches) -> Result<String, Box
                 "No default R version, using the current release (R {}).",
                 rv
             ));
-            info!("No default R version, using the current release (R {})", rv);
             Ok(rv)
         }
         None => {
             let msg = "Cannot determine R version. Install R with `rig add`, \
                        or set the version with --r-version.";
-            OUTPUT.error(msg);
-            error!("{}", msg);
             bail!("{}", msg)
         }
     }
@@ -268,7 +260,10 @@ fn resolve_release_r_version(args: &ArgMatches) -> Option<String> {
     let platform = match get_platform(args) {
         Ok(p) => p,
         Err(err) => {
-            info!("Cannot detect platform to resolve R release: {}", err);
+            OUTPUT.warn(&format!(
+                "Cannot detect platform to resolve R release: {}",
+                err
+            ));
             return None;
         }
     };
@@ -276,7 +271,7 @@ fn resolve_release_r_version(args: &ArgMatches) -> Option<String> {
     match resolve_versions(vec!["release".to_string()], &platform, &arch) {
         Ok(vers) => vers.first().and_then(|v| v.version.clone()),
         Err(err) => {
-            info!("Cannot resolve the current R release: {}", err);
+            OUTPUT.warn(&format!("Cannot resolve the current R release: {}", err));
             None
         }
     }
@@ -335,8 +330,6 @@ fn sc_proj_import(
              remove it first.",
             RPROJ_MANIFEST_FILE
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -363,7 +356,6 @@ fn sc_proj_import(
                 "{} does not exist, creating a new one",
                 RPROJ_MANIFEST_FILE
             ));
-            info!("{} does not exist, creating a new one", RPROJ_MANIFEST_FILE);
             Rproj::minimal(&pkg.name)
         }
         None => Rproj::minimal(&pkg.name),
@@ -456,6 +448,14 @@ fn sc_proj_import(
         if build != Build::default() {
             manifest.build = Some(build);
         }
+        // Record the field order, so `rig proj export` can write the fields
+        // in the same order. rig's own note field is always written first.
+        let order: Vec<String> = paragraph
+            .iter()
+            .map(|(key, _)| key.to_string())
+            .filter(|key| key != DESCRIPTION_RIG_NOTE_FIELD)
+            .collect();
+        manifest.set_description_field_order(&order);
     }
 
     manifest.merge_description(&pkg);
@@ -494,7 +494,6 @@ fn sc_proj_import(
                                 entry
                             );
                             OUTPUT.warn(&msg);
-                            info!("{}", msg);
                         }
                     }
                 }
@@ -518,7 +517,6 @@ fn sc_proj_import(
                             entry
                         );
                         OUTPUT.warn(&msg);
-                        info!("{}", msg);
                     }
                 },
                 Ok(crate::pkgsource::PkgSource::Cran)
@@ -530,7 +528,6 @@ fn sc_proj_import(
                         entry
                     );
                     OUTPUT.warn(&msg);
-                    info!("{}", msg);
                 }
             }
         }
@@ -647,12 +644,36 @@ fn sc_proj_import(
         )
     };
     OUTPUT.success(&msg);
-    info!("{}", msg);
+
+    // A full import also rewrites the project's `DESCRIPTION` from the new
+    // manifest, like `rig proj export --force`, so that the two files start
+    // out in sync, and later exports produce no unexpected changes.
+    // `--dependencies` merges into a manifest that was not created from this
+    // `DESCRIPTION`, so it never rewrites it.
+    if !dependencies_only && !args.get_flag("keep-description") {
+        let description = root.join("DESCRIPTION");
+        let manifest = proj_read_manifest(&root)?;
+        write_description_to(&description, &manifest)?;
+        let msg = format!("Rewrote DESCRIPTION from {}", RPROJ_MANIFEST_FILE);
+        OUTPUT.success(&msg);
+    }
 
     // A full import sets up a whole project, not just its manifest, so it
     // creates the same `.rvenv` layout as `rig proj init`.
+    // An imported project is an R package, so rig's own files must not end
+    // up in its tarball, and its lock file is not committed either.
     if !dependencies_only {
         init_rvenv_for_manifest(args, &root, path)?;
+        if crate::rvenv::update_rbuildignore(&root)? {
+            let msg = format!("Updated {}", crate::rvenv::RBUILDIGNORE_FILE);
+            OUTPUT.success(&msg);
+        }
+        // R packages should not commit `rproj.lock`, see
+        // `root_gitignore_block()`.
+        if crate::rvenv::set_package_gitignore(&root)? {
+            let msg = format!("Updated {}", crate::rvenv::RVENV_GITIGNORE_FILE);
+            OUTPUT.success(&msg);
+        }
     }
 
     Ok(())
@@ -671,8 +692,6 @@ fn sc_proj_export(
 
     if path.exists() && !force && !description_is_rig_generated(path) {
         let msg = format!("{} already exists, use --force to overwrite", output);
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -684,7 +703,6 @@ fn sc_proj_export(
 
     let msg = format!("Exported {} to {}", RPROJ_MANIFEST_FILE, output);
     OUTPUT.success(&msg);
-    info!("{}", msg);
     Ok(())
 }
 
@@ -986,11 +1004,7 @@ fn sc_proj_add(
     // in the last one does not leave the earlier ones added.
     let mut specs: Vec<AddSpec> = Vec::new();
     for spec in args.get_many::<String>("package").unwrap_or_default() {
-        specs.push(parse_add_arg(spec, &root).map_err(|err| {
-            OUTPUT.error(&err.to_string());
-            error!("{}", err);
-            err
-        })?);
+        specs.push(parse_add_arg(spec, &root)?);
     }
 
     let mut messages: Vec<String> = Vec::new();
@@ -1052,7 +1066,6 @@ fn sc_proj_add(
     }
     for msg in messages.iter() {
         OUTPUT.success(msg);
-        info!("{}", msg);
     }
 
     if args.get_flag("no-lock") {
@@ -1072,8 +1085,7 @@ fn sc_proj_add(
                 "Could not resolve the dependencies, {} unchanged",
                 RPROJ_MANIFEST_FILE
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
+            return Err(err).context(msg);
         }
         return Err(err);
     }
@@ -1138,8 +1150,6 @@ fn sc_proj_remove(
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -1158,7 +1168,6 @@ fn sc_proj_remove(
     }
     for msg in messages.iter() {
         OUTPUT.success(msg);
-        info!("{}", msg);
     }
 
     if args.get_flag("no-lock") {
@@ -1176,8 +1185,7 @@ fn sc_proj_remove(
                 "Could not resolve the dependencies, {} unchanged",
                 RPROJ_MANIFEST_FILE
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
+            return Err(err).context(msg);
         }
         return Err(err);
     }
@@ -1198,12 +1206,8 @@ fn read_description_paragraph(
     if !quiet {
         OUTPUT.status(&format!("Reading dependencies from {}", input));
     }
-    info!("Reading dependencies from {}", input);
-    let df: File = File::open(input).map_err(|e| {
-        OUTPUT.error(&format!("Cannot read {}: {}", input, e));
-        error!("Cannot read {}: {}", input, e);
-        e
-    })?;
+    debug!("Reading dependencies from {}", input);
+    let df: File = File::open(input).map_err(|e| format!("Cannot read {}: {}", input, e))?;
     parse_description_paragraph(df)
 }
 
@@ -1217,14 +1221,10 @@ pub(crate) fn parse_description_paragraph<R: std::io::Read>(
     let desc = parse_dcf_reader(reader)?;
 
     if desc.is_empty() {
-        OUTPUT.error("Empty DESCRIPTION file");
-        error!("Empty DESCRIPTION file");
         bail!("Empty DESCRIPTION file");
     }
 
     if desc.len() > 1 {
-        OUTPUT.error("Invalid DESCRIPTION file, empty lines are not allowed");
-        error!("Invalid DESCRIPTION file, empty lines are not allowed");
         bail!("Invalid DESCRIPTION file, empty lines are not allowed");
     }
 
@@ -1237,24 +1237,16 @@ pub(crate) fn parse_description_paragraph<R: std::io::Read>(
 fn proj_read_manifest(root: &Path) -> Result<Rproj, Box<dyn Error>> {
     let path = root.join(RPROJ_MANIFEST_FILE);
     if !path.exists() {
-        OUTPUT.error(&format!(
+        bail!(
             "{} not found, run `rig proj init` first",
             RPROJ_MANIFEST_FILE
-        ));
-        error!("{} not found", RPROJ_MANIFEST_FILE);
-        bail!("{} not found", RPROJ_MANIFEST_FILE);
+        );
     }
 
-    let manifest: Rproj = toml::from_str(&fs::read_to_string(path)?).map_err(|e| {
-        OUTPUT.error(&format!("Cannot parse {}: {}", RPROJ_MANIFEST_FILE, e));
-        error!("Cannot parse {}: {}", RPROJ_MANIFEST_FILE, e);
-        e
-    })?;
+    let manifest: Rproj = toml::from_str(&fs::read_to_string(path)?)
+        .map_err(|e| format!("Cannot parse {}: {}", RPROJ_MANIFEST_FILE, e))?;
     if let Err(e) = manifest.check_repositories() {
-        let msg = format!("Invalid {}: {}", RPROJ_MANIFEST_FILE, e);
-        OUTPUT.error(&msg);
-        error!("{}", msg);
-        bail!(ReportedError(msg));
+        bail!("Invalid {}: {}", RPROJ_MANIFEST_FILE, e);
     }
     Ok(manifest)
 }
@@ -1282,7 +1274,6 @@ pub(crate) fn proj_read_manifest_deps(
         "Reading dependencies from {}",
         RPROJ_MANIFEST_FILE
     ));
-    info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
     let manifest = proj_read_manifest(root)?;
 
     let deps = manifest.to_dep_version_specs(dev)?;
@@ -1311,7 +1302,6 @@ fn proj_read_manifest_deps_with_remotes(
         "Reading dependencies from {}",
         RPROJ_MANIFEST_FILE
     ));
-    info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
     let manifest = proj_read_manifest(root)?;
 
     let deps = manifest.to_dep_version_specs(dev)?;
@@ -1417,7 +1407,6 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
                 "Reading dependencies from {}",
                 RPROJ_MANIFEST_FILE
             ));
-            info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
             let deps = manifest.to_dep_version_specs(true)?;
             let group_roots = manifest.main_and_group_roots()?;
             let extra_roots = manifest.optional_dependency_roots();
@@ -1465,7 +1454,6 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
         dirs.len(),
         if dirs.len() == 1 { "member" } else { "members" }
     ));
-    info!("Reading dependencies from {} workspace members", dirs.len());
 
     let mut roots: Vec<SolveRoot> = vec![];
     let mut merged = PackageDependencies {
@@ -1494,7 +1482,6 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
                 RPROJ_MANIFEST_FILE
             );
             OUTPUT.warn(&msg);
-            info!("{}", msg);
         }
         let name = member.project.name.clone();
         git_deps.extend(member.git_dependencies(dir));
@@ -1831,7 +1818,7 @@ pub(crate) fn proj_binary_target_quiet(
     let spec = platform;
     let platform = match platform {
         Some(p) if p == "source" => {
-            info!("Solving for source packages only");
+            debug!("Solving for source packages only");
             return Ok((None, None));
         }
         Some(p) => parse_platform_string(p)?,
@@ -1849,21 +1836,18 @@ pub(crate) fn proj_binary_target_quiet(
     let target = match BinaryTarget::detect(&platform, r_version) {
         Ok(target) => target,
         Err(err) => {
-            // The error itself is reported by the download layer and again by
-            // main, so this only adds the way out.
-            OUTPUT.error(
+            debug!("Cannot look up binary package targets: {}", err);
+            return Err(err).context(
                 "Cannot look up binary package targets. \
                 Use --platform source to solve for source packages only.",
             );
-            error!("Cannot look up binary package targets: {}", err);
-            return Err(err);
         }
     };
 
     let requested = || spec.cloned().unwrap_or_else(|| platform_string(&platform));
     let note = match &target {
         Some(target) => {
-            info!("Solving for binary target {}", target.name());
+            debug!("Solving for binary target {}", target.name());
             // A specific distro P3M has no build for (or not for this arch)
             // gets the generic glibc build, see `PpmStatus::ppm_platform`. A
             // plain glibc Linux platform asks for exactly that.
@@ -1894,7 +1878,6 @@ impl TargetNote {
             TargetNote::NoBinaries(name) => {
                 let msg = format!("No binary packages for {}, using source packages", name);
                 OUTPUT.warn(&msg);
-                info!("{}", msg);
             }
             TargetNote::Generic { requested, target } => {
                 let msg = format!(
@@ -1902,7 +1885,6 @@ impl TargetNote {
                     requested, target
                 );
                 OUTPUT.info(&msg);
-                info!("{}", msg);
             }
         }
     }
@@ -2027,7 +2009,7 @@ pub(crate) fn sc_proj_solve_deps(
     pins: &SolvePins,
     report_status: bool,
 ) -> Result<(RPackageRegistry, RegistrySolution), Box<dyn Error>> {
-    info!("Solving dependencies");
+    debug!("Solving dependencies");
 
     // `r_version` may be a symbolic, installed R name (e.g. "devel", "next")
     // rather than a numeric version: resolve it before it reaches package
@@ -2102,7 +2084,7 @@ pub(crate) fn sc_proj_solve_deps(
         if report_status {
             OUTPUT.status("Registering git/GitHub/URL package sources");
         }
-        info!("Registering git/GitHub/URL package sources");
+        debug!("Registering git/GitHub/URL package sources");
         register_git_sources(&reg, git_sources);
     }
 
@@ -2128,7 +2110,7 @@ pub(crate) fn sc_proj_solve_deps(
     if report_status {
         OUTPUT.status("Downloading binary package metadata");
     }
-    info!("Downloading binary package metadata");
+    debug!("Downloading binary package metadata");
     // A root is a local directory, or synthetic, so there is no binary index
     // to fetch for it, however many members depend on it. Same for a
     // git/URL/path-sourced package (`git_sources`, despite the name, covers
@@ -2167,7 +2149,7 @@ pub(crate) fn sc_proj_solve_deps(
             );
             // Parallel callers print the one failure that aborts the command
             // themselves; N copies of the same report would say less, not more.
-            error!("{}", msg);
+            debug!("{}", msg);
             if report_status {
                 report_solve_failure(&msg);
                 bail!(ReportedError(msg))
@@ -2223,7 +2205,6 @@ fn record_r_universe_remotes(reg: &RPackageRegistry, solution: &RegistrySolution
                     req.package, req.version, req.repo_url
                 );
                 OUTPUT.warn(&msg);
-                warn!("{}", msg);
             }
         }
     }
@@ -2551,7 +2532,7 @@ fn absolute_local_paths(lock: &mut RprojLock, root: &Path) {
 /// its content digest (`compute_dir_stat_digest`, empty/`None` if it could not
 /// be computed). Mirrors the "local" `RemoteType` case
 /// [`RprojLockTarget::from_solution`] already writes for a real `path`
-/// dependency, so [`lockfile_package_info`]/[`fetch_git_lockfile_packages`]
+/// dependency, so [`lockfile_package_path`]/[`fetch_git_lockfile_packages`]
 /// handle it with no changes: `target` is empty, since the installer reads
 /// `RemoteUrl` directly instead of downloading or caching anything.
 /// `sources` holds the project's `file://` URL, see [`project_source_url`],
@@ -2670,7 +2651,6 @@ fn warn_unknown_upgrade_packages(
                 name
             );
             OUTPUT.warn(&msg);
-            info!("{}", msg);
         }
     }
 }
@@ -3433,9 +3413,7 @@ fn sc_proj_lock(
 fn proj_lock_check(root: &Path, label: &str, update: &str) -> Result<(), Box<dyn Error>> {
     // Not a project at all, so there is nothing to be out of date.
     if !root.join(RPROJ_MANIFEST_FILE).exists() {
-        let msg = format!("No {} found in {}", RPROJ_MANIFEST_FILE, root.display());
-        OUTPUT.error(&msg);
-        bail!(ReportedError(msg));
+        bail!("No {} found in {}", RPROJ_MANIFEST_FILE, root.display());
     }
     let msg = if !root.join(RPROJ_LOCK_FILE).exists() {
         format!("No {} found, create it with `{}`", label, update)
@@ -3445,16 +3423,14 @@ fn proj_lock_check(root: &Path, label: &str, update: &str) -> Result<(), Box<dyn
         OUTPUT.info(&format!("{} is up to date", label));
         return Ok(());
     };
-    OUTPUT.error(&msg);
     Err(check_failed(msg))
 }
 
 /// The error of a `--check` that found something out of date: exit status 1.
-/// `msg` must have been shown already.
 fn check_failed(msg: String) -> Box<dyn Error> {
     Box::new(ExitStatusError {
         status: 1,
-        error: Box::new(ReportedError(msg)),
+        error: msg.into(),
     })
 }
 
@@ -3769,7 +3745,6 @@ pub(crate) fn proj_lock_root() -> Result<PathBuf, Box<dyn Error>> {
         if workspace != cwd {
             let msg = format!("Using the workspace at {}", workspace.display());
             OUTPUT.info(&msg);
-            info!("{}", msg);
         }
         return Ok(workspace);
     }
@@ -4168,7 +4143,7 @@ pub(crate) fn proj_lock_r_version(
         if allowed(&rv) {
             return Ok(rv);
         }
-        info!(
+        debug!(
             "The default R ({}) does not satisfy the project's R {}",
             rv,
             r_requirement(req)
@@ -4191,7 +4166,6 @@ pub(crate) fn proj_lock_r_version(
             r_requirement(req)
         );
         OUTPUT.info(&msg);
-        info!("{}", msg);
         return Ok(rv.original);
     }
 
@@ -4206,7 +4180,6 @@ pub(crate) fn proj_lock_r_version(
                 r_requirement(req)
             );
             OUTPUT.info(&msg);
-            info!("{}", msg);
             Ok(rv)
         }
         _ => {
@@ -4214,8 +4187,6 @@ pub(crate) fn proj_lock_r_version(
                 "No R version satisfies the project's R {}, specify one with --r-version.",
                 r_requirement(req)
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
             bail!("{}", msg)
         }
     }
@@ -4269,7 +4240,7 @@ fn lock_platform_specs(opts: &ProjLockOptions, manifest: Option<&[String]>) -> V
         vec![
             None,
             Some("x86_64-w64-mingw32".to_string()),
-            Some("x86_64-unknown-linux-gnu".to_string()),
+            Some("x86_64-unknown-linux-gnu-manylinux_2_28".to_string()),
             Some("aarch64-apple-darwin".to_string()),
             Some("source".to_string()),
         ]
@@ -4322,7 +4293,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             names
         );
         OUTPUT.info(&msg);
-        info!("{}", msg);
     }
 
     // Each R version has to satisfy the manifest's own `R` requirement,
@@ -4380,7 +4350,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 // Not worth a warning: with the default platform set, "this
                 // machine" routinely resolves to the same target as one of
                 // the three fixed platforms.
-                info!("Skipping duplicate target R {} / {}", key.0, key.1);
+                debug!("Skipping duplicate target R {} / {}", key.0, key.1);
                 continue;
             }
 
@@ -4454,7 +4424,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     if let Some(cutoff) = &lock_options.exclude_newer {
         let msg = format!("Ignoring package versions published after {}", cutoff);
         OUTPUT.info(&msg);
-        info!("{}", msg);
     }
     // The cutoff can choose between the Bioconductor releases of an R version.
     let bioc = repos.bioc_setting();
@@ -4564,7 +4533,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     let label = opts.lockfile_label.as_deref().unwrap_or(RPROJ_LOCK_FILE);
     if to_solve.is_empty() && reused.len() == existing_count {
         OUTPUT.success(&format!("{} is already up to date", label));
-        info!("{} is already up to date, nothing to solve", label);
         return Ok(());
     }
 
@@ -4602,7 +4570,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         let source_only = solve_targets.iter().all(|t| t.target.is_none());
         if opts.prefer_binary.is_some_and(|n| n > 0) && source_only {
             OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
-            info!("Ignoring --prefer-binary: solving for source packages only");
         }
 
         // The solves below run in parallel, so each one printing its own status
@@ -4723,7 +4690,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 constraint: format_constraints(&d.constraints),
             })
             .collect();
-        info!("Solved dependencies for R {} / {}", rver, platform_key);
+        debug!("Solved dependencies for R {} / {}", rver, platform_key);
 
         summaries.push(TargetSolution {
             r_version: rver.clone(),
@@ -4786,7 +4753,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     relative_local_paths(&mut rproj_lock, root, &solve.relative_paths);
     fs::write(root.join(RPROJ_LOCK_FILE), rproj_lock.to_toml()?)?;
     OUTPUT.success(&format!("Written project lockfile to {}", label));
-    info!("Written project lockfile to {}", label);
 
     Ok(())
 }
@@ -4835,11 +4801,9 @@ impl PolicyNotes {
 
     pub fn print(&self) {
         for msg in &self.blocked {
-            info!("{}", msg);
             OUTPUT.info(msg);
         }
         for msg in &self.vulnerable {
-            info!("{}", msg);
             OUTPUT.warn(msg);
         }
         if !self.vulnerable.is_empty() {
@@ -4885,7 +4849,7 @@ fn solution_rows(
         // that a version an ordinary constraint pushed back is not reported as
         // if the flag had done it.
         let held_back_from = registry.held_back_from(pkg, ver).map(|latest| {
-            info!(
+            debug!(
                 "Held {} back to {} for a binary package, latest is {}",
                 pkg, ver.version, latest
             );
@@ -5219,8 +5183,6 @@ fn rvenv_r_installation(
             arch,
             add_args[1..].join(" ")
         );
-        OUTPUT.info(&msg);
-        info!("{}", msg);
         bail!("{}", msg);
     }
     if !install {
@@ -5231,8 +5193,6 @@ fn rvenv_r_installation(
             arch,
             add_args[1..].join(" ")
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -5248,8 +5208,6 @@ fn rvenv_r_installation(
                 "Installed R {} ({}), but cannot find it now",
                 r_version, arch
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
             bail!("{}", msg)
         }
     }
@@ -5273,10 +5231,6 @@ fn install_r_with_rig_add(r_version: &str, arch: &str) -> Result<(), Box<dyn Err
         "R {} ({}) is not installed, installing it now",
         r_version, arch
     ));
-    info!(
-        "R {} ({}) is not installed, installing it now",
-        r_version, arch
-    );
     // In admin mode `rig add` escalates by re-running the whole current
     // command line with sudo (gsudo on Windows), so everything after the R
     // installation would run as root too, e.g. installing the packages into
@@ -5341,8 +5295,6 @@ fn install_r_with_rig_add_process(r_version: &str, arch: &str) -> Result<(), Box
     let status = cmd.status()?;
     if !status.success() {
         let msg = format!("Failed to install R {} ({})", r_version, arch);
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
     Ok(())
@@ -5378,7 +5330,6 @@ pub(crate) fn requested_r_installation(
                 r_add_args(r_version, &arch)[1..].join(" ")
             );
             OUTPUT.info(&msg);
-            info!("{}", msg);
             return Ok(None);
         }
         None => {
@@ -5667,8 +5618,6 @@ fn select_sync_target<'a>(
                 available.join(", ")
             }
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -6062,7 +6011,6 @@ fn sync_check_result(opts: &ProjSyncOptions, stale: &[String]) -> Result<(), Box
         "The project environment is out of date: {}. Run `rig proj sync` to update it",
         stale.join("; ")
     );
-    OUTPUT.error(&msg);
     Err(check_failed(msg))
 }
 
@@ -6095,8 +6043,6 @@ pub(crate) fn proj_sync(
     // `rig pkg sync` installs the lock file as it is, it never locks.
     if opts.pkg_sync.is_some() && !lock_path.is_file() {
         let msg = format!("Lock file {} does not exist", lock_path.display());
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
     if opts.locked {
@@ -6108,8 +6054,6 @@ pub(crate) fn proj_sync(
                 "No {} found, run `rig proj lock` first (without --frozen)",
                 RPROJ_LOCK_FILE
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
             bail!("{}", msg);
         }
         if opts.dry_run {
@@ -6122,8 +6066,7 @@ pub(crate) fn proj_sync(
                     RPROJ_LOCK_FILE,
                     root.display()
                 );
-                OUTPUT.error(&msg);
-                bail!(ReportedError(msg));
+                bail!("{}", msg);
             }
             OUTPUT.info(&format!(
                 "No {}, `rig proj sync` would run `rig proj lock` first",
@@ -6135,7 +6078,6 @@ pub(crate) fn proj_sync(
             "No {}, running `rig proj lock` first",
             RPROJ_LOCK_FILE
         ));
-        info!("No {}, running `rig proj lock` first", RPROJ_LOCK_FILE);
         proj_lock(root, &lock_opts, args)?;
     } else if opts.exclude_newer.is_some() || opts.repos.is_some() {
         // Re-lock with the new cutoff or repositories. `proj_lock` keeps the
@@ -6181,8 +6123,6 @@ pub(crate) fn proj_sync(
                     inst.describe()
                 );
                 if inst.explicit {
-                    OUTPUT.error(&msg);
-                    error!("{}", msg);
                     bail!("{}", msg);
                 }
                 None
@@ -6210,7 +6150,6 @@ pub(crate) fn proj_sync(
                     fallback.r_version
                 );
                 OUTPUT.info(&msg);
-                info!("{}", msg);
             }
             fallback
         }
@@ -6232,7 +6171,6 @@ pub(crate) fn proj_sync(
     for name in &skipped.incompatible {
         let msg = format!("Skipping {}, it does not work on {}", name, os_name);
         OUTPUT.info(&msg);
-        info!("{}", msg);
     }
     if !skipped.unneeded.is_empty() {
         let msg = format!(
@@ -6247,7 +6185,6 @@ pub(crate) fn proj_sync(
             skipped.unneeded.join(", ")
         );
         OUTPUT.info(&msg);
-        info!("{}", msg);
     }
     let wanted: &[RprojLockPackage] = &wanted;
 
@@ -6278,8 +6215,6 @@ pub(crate) fn proj_sync(
                 RPROJ_MANIFEST_FILE,
                 root.display()
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
             bail!("{}", msg);
         }
         if opts.dry_run {
@@ -6401,7 +6336,6 @@ pub(crate) fn proj_sync(
                     library_path.display()
                 );
                 OUTPUT.warn(&msg);
-                info!("{}", msg);
             }
         }
 
@@ -6440,7 +6374,7 @@ pub(crate) fn proj_sync(
         } else {
             let written = rvenv_sync(root, &cfg, repos, target.bioc_version.as_deref())?;
             if written.is_empty() {
-                info!(
+                debug!(
                     "Project environment for R {} ({}) is already up to date",
                     r_name,
                     r_binary.display()
@@ -6448,7 +6382,7 @@ pub(crate) fn proj_sync(
             } else {
                 for path in &written {
                     let path = path.strip_prefix(root).unwrap_or(path);
-                    info!("Updated {}", path.display());
+                    debug!("Updated {}", path.display());
                 }
                 OUTPUT.success(&format!(
                     "Updated the project environment for R {} ({})",
@@ -6533,7 +6467,7 @@ pub(crate) fn proj_sync(
                         RPROJ_LOCK_FILE,
                         names
                     ));
-                    info!("Removed {} from {}", names, library_path.display());
+                    debug!("Removed {} from {}", names, library_path.display());
                 }
                 if !failed.is_empty() {
                     bail!("Failed to remove {}", failed.join(", "));
@@ -6570,7 +6504,7 @@ pub(crate) fn proj_sync(
                 library_path.display()
             ));
         }
-        info!("Nothing to install in {}", library_path.display());
+        debug!("Nothing to install in {}", library_path.display());
         return sync_check_result(opts, &stale);
     }
 
@@ -6595,7 +6529,6 @@ pub(crate) fn proj_sync(
 
     // Download only the packages that are actually going to be installed
     OUTPUT.status("Downloading packages");
-    info!("Downloading packages");
     let to_download: Vec<RprojLockPackage> = todo.iter().map(|p| (*p).clone()).collect();
     download_lockfile_packages(&to_download)?;
 
@@ -6613,12 +6546,7 @@ pub(crate) fn proj_sync(
     let installing: HashSet<&str> = todo.iter().map(|p| p.package.as_str()).collect();
     let packages: Vec<PackageInfo> = todo
         .iter()
-        .map(|pkg| {
-            let mut info = lockfile_package_info(pkg, &cache_dir, built.as_ref());
-            info.dependencies
-                .retain(|d| installing.contains(d.as_str()));
-            info
-        })
+        .map(|pkg| lockfile_package_info(pkg, wanted, &installing, &cache_dir, built.as_ref()))
         .collect();
 
     let max_concurrent = match opts.max_concurrent {
@@ -6633,12 +6561,6 @@ pub(crate) fn proj_sync(
         wanted.len(),
         library_path.display()
     ));
-    info!(
-        "Installing {} of {} packages to {}",
-        total_packages,
-        wanted.len(),
-        library_path.display()
-    );
 
     let installed = install_packages(packages, &library_path, r_binary, max_concurrent)?;
 
@@ -6650,7 +6572,6 @@ pub(crate) fn proj_sync(
         "Deployment complete, installed {} packages",
         installed
     ));
-    info!("Deployment complete, installed {} packages", installed);
     Ok(())
 }
 
@@ -6659,9 +6580,18 @@ pub(crate) fn proj_sync(
 ///
 /// `built` is the cache of packages rig compiled itself, and only a source
 /// package has anything to do with it: a binary is already built, and rig has
-/// nothing to add to it.
+/// nothing to add to it. A source package's place in it is keyed on what the
+/// lock records about its build, if anything.
+///
+/// A package whose lock entry records nothing is identified by its
+/// downloaded file instead, see [`identify_build`].
+///
+/// `lock_packages` is every package the lock has for the target, and
+/// `installing` names the ones being installed, `pkg` among them.
 pub(crate) fn lockfile_package_info(
     pkg: &RprojLockPackage,
+    lock_packages: &[RprojLockPackage],
+    installing: &HashSet<&str>,
     cache_dir: &Path,
     built: Option<&BuiltCache>,
 ) -> PackageInfo {
@@ -6671,23 +6601,7 @@ pub(crate) fn lockfile_package_info(
             remote.insert(field.to_string(), value.clone());
         }
     }
-    // Where to install from comes from `sources` alone, see `LockSource`: a
-    // local package is installed from where it already is; a git/GitHub/url
-    // package from its fetched directory (a git checkout or an extracted
-    // archive), or `<target>/<subdir>` within it; an ordinary CRAN/PPM
-    // package from the downloaded file itself.
-    let source = lock_package_source(pkg);
-    let local = matches!(source, Some(LockSource::Local { .. }));
-    let mut file_path = match &source {
-        Some(LockSource::Local { path }) => PathBuf::from(path),
-        _ => {
-            let base = cache_dir.join("packages").join(&pkg.target);
-            match source.as_ref().and_then(|s| s.subdir()) {
-                Some(subdir) => base.join(subdir),
-                None => base,
-            }
-        }
-    };
+    let mut file_path = lockfile_package_path(pkg, cache_dir);
     // An r-universe package that had to be built from git, see
     // `download_r_universe_packages`: its file is not there, its git
     // checkout is, and it is installed from source.
@@ -6709,7 +6623,16 @@ pub(crate) fn lockfile_package_info(
         version: pkg.version.clone(),
         binary,
         file_path,
-        dependencies: pkg.dependencies.clone(),
+        // A package whose dependency is already installed must not wait for
+        // it: the installer only starts a package once every name in its
+        // `dependencies` has been installed *by this run*, and a name that is
+        // not being installed at all would stall the whole batch.
+        dependencies: pkg
+            .dependencies
+            .iter()
+            .filter(|d| installing.contains(d.as_str()))
+            .cloned()
+            .collect(),
         hash: pkg.metadata.get(REMOTE_HASH_FIELD).cloned(),
         linkingto: pkg
             .metadata
@@ -6719,14 +6642,89 @@ pub(crate) fn lockfile_package_info(
         built: None,
         remote,
     };
-    // The build cache is keyed on the source's content hash -- a stat digest
-    // (path/size/mtime, not content) for a local directory, a real content
-    // sha256 for a local file (see `read_local_package`) -- recorded as
-    // `RemoteSha` in `info.remote` just like a git/GitHub/url source's.
-    if !info.binary && (!local || info.remote.contains_key(REMOTE_SHA_FIELD)) {
-        info.built = built.and_then(|cache| cache.path(&info));
+    let Some(cache) = built.filter(|_| !info.binary) else {
+        return info;
+    };
+    match lock_package_source(pkg) {
+        // A local package is keyed on its `RemoteSha`, which is a stat digest
+        // (path/size/mtime, not content) for a directory and a real content
+        // sha256 for a file (see `read_local_package`).
+        Some(LockSource::Local { .. }) => {
+            if info.remote.contains_key(REMOTE_SHA_FIELD) {
+                info.built = cache.path(&info);
+            }
+        }
+        _ => {
+            if !info.hash.is_some() && !info.remote.contains_key(REMOTE_SHA_FIELD) {
+                identify_build(&mut info, lock_packages, installing, cache_dir);
+            }
+            info.built = cache.path(&info);
+        }
     }
     info
+}
+
+/// Where to install a lockfile entry from.
+fn lockfile_package_path(pkg: &RprojLockPackage, cache_dir: &Path) -> PathBuf {
+    let source = lock_package_source(pkg);
+    match &source {
+        Some(LockSource::Local { path }) => PathBuf::from(path),
+        _ => {
+            let base = cache_dir.join("packages").join(&pkg.target);
+            match source.as_ref().and_then(|s| s.subdir()) {
+                Some(subdir) => base.join(subdir),
+                None => base,
+            }
+        }
+    }
+}
+
+/// Identify the build of `info` by its downloaded file (when possible).
+fn identify_build(
+    info: &mut PackageInfo,
+    lock_packages: &[RprojLockPackage],
+    installing: &HashSet<&str>,
+    cache_dir: &Path,
+) {
+    let digest = |path: &Path| crate::utils::calculate_file_hash(path).ok();
+    let Some(description) = crate::built::read_archive_description(&info.file_path) else {
+        debug!("Not caching {}: no readable DESCRIPTION", info.name);
+        return;
+    };
+    let Some(identity) = digest(&info.file_path) else {
+        debug!("Not caching {}: cannot hash its source", info.name);
+        return;
+    };
+
+    let mut linkingto: Vec<(String, String, String)> = vec![];
+    for name in crate::built::linkingto_names(&description) {
+        let Some(dep) = lock_packages.iter().find(|p| p.package == name) else {
+            continue;
+        };
+        let recorded = dep
+            .metadata
+            .get(REMOTE_HASH_FIELD)
+            .or_else(|| dep.metadata.get(REMOTE_SHA_FIELD))
+            .cloned();
+        let dep_identity = match recorded {
+            Some(identity) => Some(identity),
+            None if installing.contains(name.as_str()) => {
+                digest(&lockfile_package_path(dep, cache_dir))
+            }
+            None => None,
+        };
+        let Some(dep_identity) = dep_identity else {
+            debug!(
+                "Not caching {}: cannot identify its LinkingTo package {}",
+                info.name, name
+            );
+            return;
+        };
+        linkingto.push((name, dep.version.clone(), dep_identity));
+    }
+    linkingto.sort();
+    info.hash = Some(identity);
+    info.linkingto = linkingto;
 }
 
 /// Cache package files forever. They are immutable on PPM.
@@ -6865,7 +6863,6 @@ fn download_r_universe_packages(
             pkg.package, pkg.version, problem, url, commit
         );
         OUTPUT.warn(&msg);
-        info!("{}", msg);
         create_parent_dir_if_needed(&checkout)?;
         crate::pkgsource::git::fetch_git_checkout(
             &url,
@@ -6960,17 +6957,6 @@ fn download_http_lockfile_packages(
         return Ok(());
     }
 
-    // Create progress bars
-    let multi_progress = MultiProgress::new();
-    let overall_pb = multi_progress.add(ProgressBar::new(total as u64));
-    overall_pb.set_style(
-        ProgressStyle::default_bar()
-            .template("{msg} [{bar:40.green/blue}] {pos}/{len} packages")
-            .unwrap()
-            .progress_chars("=>-"),
-    );
-    overall_pb.set_message("Downloading");
-
     // Track results using Cell for interior mutability
     let success_count = Cell::new(0);
     let cached_count = Cell::new(0);
@@ -6978,8 +6964,8 @@ fn download_http_lockfile_packages(
 
     // Download all packages concurrently with progress updates
     OUTPUT.status(&format!("Downloading {} packages", total));
-    info!("Downloading {} packages", total);
-    download_multiple_first_available_with_progress(
+    let overall_pb = OUTPUT.progress(total as u64, "Downloading");
+    let result = download_multiple_first_available_with_progress(
         downloads,
         Some(PACKAGE_FILE_TTL),
         None,
@@ -6987,19 +6973,20 @@ fn download_http_lockfile_packages(
             Ok((downloaded, _etag)) => {
                 if *downloaded {
                     success_count.set(success_count.get() + 1);
-                    overall_pb.println(format!("✓ Downloaded: {}", packages[idx].package));
+                    overall_pb.println(&format!("Downloaded: {}", packages[idx].package));
                 } else {
                     cached_count.set(cached_count.get() + 1);
-                    overall_pb.println(format!("✓ Cached: {}", packages[idx].package));
+                    overall_pb.println(&format!("Cached: {}", packages[idx].package));
                 }
                 overall_pb.inc(1);
             }
             Err(e) => {
                 errors.borrow_mut().push((idx, e.to_string()));
-                overall_pb.finish_and_clear();
             }
         },
-    )?;
+    );
+    overall_pb.finish();
+    result?;
 
     // Report every failure, in package order, before failing
     let mut errors = errors.into_inner();
@@ -7008,9 +6995,6 @@ fn download_http_lockfile_packages(
         .iter()
         .map(|(idx, err)| format!("Failed to download {}: {}", packages[*idx].package, err))
         .collect();
-    for msg in &messages {
-        error!("{}", msg);
-    }
     match messages.len() {
         0 => {}
         1 => bail!("{}", messages[0]),
@@ -7022,8 +7006,8 @@ fn download_http_lockfile_packages(
         }
     }
 
-    overall_pb.finish_with_message(format!(
-        "Complete: {} downloaded, {} cached",
+    OUTPUT.success(&format!(
+        "{} packages downloaded, {} already cached",
         success_count.get(),
         cached_count.get()
     ));
@@ -7121,7 +7105,8 @@ mod tests {
             .path()
             .join("packages")
             .join(git_fallback_target(&commit));
-        let good = lockfile_package_info(&pkgs[0], cache.path(), None);
+        let installing: HashSet<&str> = pkgs.iter().map(|p| p.package.as_str()).collect();
+        let good = lockfile_package_info(&pkgs[0], &pkgs, &installing, cache.path(), None);
         assert!(good.binary);
         assert_eq!(
             good.file_path,
@@ -7129,7 +7114,7 @@ mod tests {
         );
         assert!(good.file_path.exists());
         for pkg in &pkgs[1..] {
-            let info = lockfile_package_info(pkg, cache.path(), None);
+            let info = lockfile_package_info(pkg, &pkgs, &installing, cache.path(), None);
             assert!(!info.binary, "{}", pkg.package);
             assert_eq!(info.file_path, checkout, "{}", pkg.package);
             assert!(checkout.join("DESCRIPTION").exists());
@@ -7967,7 +7952,7 @@ mod tests {
             vec![
                 None,
                 Some("x86_64-w64-mingw32".to_string()),
-                Some("x86_64-unknown-linux-gnu".to_string()),
+                Some("x86_64-unknown-linux-gnu-manylinux_2_28".to_string()),
                 Some("aarch64-apple-darwin".to_string()),
                 Some("source".to_string()),
                 Some("ubuntu-24.04".to_string()),
@@ -8091,7 +8076,7 @@ mod tests {
         assert_eq!(windows.arch, "x86_64");
         assert_eq!(windows.os, "mingw32");
 
-        let manylinux = parse_platform_string("x86_64-unknown-linux-gnu").unwrap();
+        let manylinux = parse_platform_string("x86_64-unknown-linux-gnu-manylinux_2_28").unwrap();
         assert_eq!(manylinux.arch, "x86_64");
         assert!(manylinux.os.starts_with("linux"));
         assert_eq!(manylinux.distro, None);
@@ -8110,7 +8095,10 @@ mod tests {
         assert_eq!(target_os_family("linux-ubuntu-24.04-x86_64"), Some("linux"));
         assert_eq!(target_os_family("aarch64-apple-darwin"), Some("macos"));
         assert_eq!(target_os_family("x86_64-w64-mingw32"), Some("windows"));
-        assert_eq!(target_os_family("x86_64-unknown-linux-gnu"), Some("linux"));
+        assert_eq!(
+            target_os_family("x86_64-unknown-linux-gnu-manylinux_2_28"),
+            Some("linux")
+        );
         assert_eq!(
             target_os_family("aarch64-unknown-linux-gnu-ubuntu-24.04"),
             Some("linux")
@@ -8167,17 +8155,339 @@ mod tests {
         pkg
     }
 
+    // ----------------------------------------------------------------
+    // Packages whose lock entry does not identify their build
+
+    /// A source tarball of `name` at `path`, with the given `DESCRIPTION`
+    /// fields and a distinguishing `payload`.
+    fn source_tarball(path: &Path, name: &str, fields: &str, payload: &str) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let enc = flate2::write::GzEncoder::new(
+            fs::File::create(path).unwrap(),
+            flate2::Compression::fast(),
+        );
+        let mut ar = tar::Builder::new(enc);
+        let description = format!("Package: {name}\nVersion: 1.0.0\n{fields}");
+        for (entry, text) in [
+            ("DESCRIPTION", description.as_str()),
+            ("src/code.c", payload),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(text.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            ar.append_data(&mut header, format!("{name}/{entry}"), text.as_bytes())
+                .unwrap();
+        }
+        ar.into_inner().unwrap().finish().unwrap();
+    }
+
+    /// A lock entry without a hash, as a repository without checksums gives
+    /// it, for the file `<cache>/packages/<target>`.
+    fn unrecorded(name: &str, deps: &[&str], binary: bool) -> RprojLockPackage {
+        let mut pkg = locked(name, deps);
+        pkg.binary = binary;
+        pkg.target = if binary {
+            format!("bin/linux/jammy-x86_64/4.4/{name}_1.0.0.tar.gz")
+        } else {
+            format!("src/contrib/{name}_1.0.0.tar.gz")
+        };
+        pkg
+    }
+
+    /// Where each of `lock` would be cached, after the lock is planned.
+    fn planned_builds(
+        lock: &[RprojLockPackage],
+        cache: &Path,
+        built: &BuiltCache,
+    ) -> Vec<PackageInfo> {
+        let installing: HashSet<&str> = lock.iter().map(|p| p.package.as_str()).collect();
+        lock.iter()
+            .map(|p| lockfile_package_info(p, lock, &installing, cache, Some(built)))
+            .collect()
+    }
+
+    fn built_of(infos: &[PackageInfo], name: &str) -> Option<PathBuf> {
+        infos.iter().find(|i| i.name == name).unwrap().built.clone()
+    }
+
+    #[test]
+    fn a_build_without_a_recorded_identity_is_keyed_by_its_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = tmp.path().join("cache");
+        let built = BuiltCache::in_dir(&tmp.path().join("built"));
+        let packages = cache.join("packages");
+        source_tarball(
+            &packages.join("src/contrib/cpp11_1.0.0.tar.gz"),
+            "cpp11",
+            "",
+            "a",
+        );
+        source_tarball(
+            &packages.join("src/contrib/foo_1.0.0.tar.gz"),
+            "foo",
+            "LinkingTo: cpp11 (>= 0.1), notinthelock\n",
+            "foo",
+        );
+        // A binary package is not built, so it has no place in the cache.
+        source_tarball(
+            &packages.join("bin/linux/jammy-x86_64/4.4/bar_1.0.0.tar.gz"),
+            "bar",
+            "Built: R 4.4.0; x86_64-pc-linux-gnu; 2024-01-01 00:00:00 UTC; unix\n",
+            "bar",
+        );
+        let lock = vec![
+            unrecorded("cpp11", &[], false),
+            unrecorded("foo", &["cpp11"], false),
+            unrecorded("bar", &[], true),
+        ];
+
+        let infos = planned_builds(&lock, &cache, &built);
+        for name in ["cpp11", "foo"] {
+            assert!(built_of(&infos, name).is_some(), "{name}");
+        }
+        assert_eq!(built_of(&infos, "bar"), None);
+        assert!(infos.iter().find(|i| i.name == "bar").unwrap().binary);
+        // The identities are recorded as the packages' provenance.
+        let cpp11 = infos.iter().find(|i| i.name == "cpp11").unwrap();
+        let foo = infos.iter().find(|i| i.name == "foo").unwrap();
+        let cpp11_hash = cpp11.hash.clone().unwrap();
+        assert_eq!(
+            foo.linkingto,
+            vec![("cpp11".to_string(), "1.0.0".to_string(), cpp11_hash)]
+        );
+        assert!(foo.hash.is_some());
+        let bar = infos.iter().find(|i| i.name == "bar").unwrap();
+        assert!(bar.hash.is_none() && bar.linkingto.is_empty());
+
+        // The same files give the same keys.
+        let again = planned_builds(&lock, &cache, &built);
+        for name in ["cpp11", "foo"] {
+            assert_eq!(built_of(&infos, name), built_of(&again, name), "{name}");
+        }
+
+        // A different file for a package that is linked to changes the
+        // dependent's key as well as its own.
+        source_tarball(
+            &packages.join("src/contrib/cpp11_1.0.0.tar.gz"),
+            "cpp11",
+            "",
+            "b",
+        );
+        let changed = planned_builds(&lock, &cache, &built);
+        assert_ne!(built_of(&infos, "cpp11"), built_of(&changed, "cpp11"));
+        assert_ne!(built_of(&infos, "foo"), built_of(&changed, "foo"));
+
+        // So does a different version of it.
+        source_tarball(
+            &packages.join("src/contrib/cpp11_1.0.0.tar.gz"),
+            "cpp11",
+            "",
+            "a",
+        );
+        let mut newer = lock.clone();
+        newer[0].version = "1.0.1".to_string();
+        let versioned = planned_builds(&newer, &cache, &built);
+        assert_ne!(built_of(&infos, "foo"), built_of(&versioned, "foo"));
+    }
+
+    #[test]
+    fn a_recorded_identity_is_left_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = tmp.path().join("cache");
+        let built = BuiltCache::in_dir(&tmp.path().join("built"));
+        source_tarball(
+            &cache.join("packages/src/contrib/foo_1.0.0.tar.gz"),
+            "foo",
+            "",
+            "x",
+        );
+        let mut pkg = unrecorded("foo", &[], false);
+        pkg.metadata
+            .insert(REMOTE_HASH_FIELD.to_string(), "abc".to_string());
+        let lock = vec![pkg];
+        let after = planned_builds(&lock, &cache, &built);
+        assert_eq!(after[0].hash.as_deref(), Some("abc"));
+        assert!(after[0].built.is_some());
+        assert_eq!(after[0].built, built.path(&after[0]));
+    }
+
+    #[test]
+    fn a_build_that_cannot_be_identified_is_not_cached() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = tmp.path().join("cache");
+        let built = BuiltCache::in_dir(&tmp.path().join("built"));
+        let packages = cache.join("packages");
+        source_tarball(
+            &packages.join("src/contrib/foo_1.0.0.tar.gz"),
+            "foo",
+            "LinkingTo: cpp11\n",
+            "x",
+        );
+        // `cpp11` is in the lock but its file is not there.
+        let lock = vec![
+            unrecorded("cpp11", &[], false),
+            unrecorded("foo", &["cpp11"], false),
+        ];
+        let infos = planned_builds(&lock, &cache, &built);
+        assert_eq!(built_of(&infos, "foo"), None);
+    }
+
+    /// A `LinkingTo` package without a hash that is installed already is not
+    /// known to be the file the lock points at, so it does not identify the
+    /// build of a package compiled against it.
+    #[test]
+    fn an_installed_linkingto_package_without_a_hash_is_not_identified() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = tmp.path().join("cache");
+        let built = BuiltCache::in_dir(&tmp.path().join("built"));
+        let packages = cache.join("packages");
+        source_tarball(
+            &packages.join("src/contrib/cpp11_1.0.0.tar.gz"),
+            "cpp11",
+            "",
+            "a",
+        );
+        source_tarball(
+            &packages.join("src/contrib/foo_1.0.0.tar.gz"),
+            "foo",
+            "LinkingTo: cpp11\n",
+            "foo",
+        );
+        let lock = vec![
+            unrecorded("cpp11", &[], false),
+            unrecorded("foo", &["cpp11"], false),
+        ];
+        // Only `foo` is installed, `cpp11` is up to date in the library.
+        let installing = HashSet::from(["foo"]);
+        let info = lockfile_package_info(&lock[1], &lock, &installing, &cache, Some(&built));
+        assert_eq!(info.built, None);
+
+        // With a hash in the lock, the installed one is the one the lock has.
+        let mut recorded = lock.clone();
+        recorded[0]
+            .metadata
+            .insert(REMOTE_HASH_FIELD.to_string(), "abc".to_string());
+        let info =
+            lockfile_package_info(&recorded[1], &recorded, &installing, &cache, Some(&built));
+        assert!(info.built.is_some());
+    }
+
+    /// An `R` that installs what `R CMD INSTALL ... -l LIB TARBALL` is given
+    /// by writing a built package, and logs every install it does. The library
+    /// is the argument after `-l`, the tarball the last argument.
+    #[cfg(unix)]
+    fn fake_r(dir: &Path) -> (String, PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let log = dir.join("installs.log");
+        let r = dir.join("R");
+        fs::write(
+            &r,
+            format!(
+                "#!/bin/sh\n\
+                 while [ $# -gt 0 ]; do\n\
+                 \x20 if [ \"$1\" = \"-l\" ]; then lib=\"$2\"; fi\n\
+                 \x20 pkg=\"$1\"\n\
+                 \x20 shift\n\
+                 done\n\
+                 name=$(basename \"$pkg\" | cut -d_ -f1)\n\
+                 echo \"$name\" >> '{}'\n\
+                 mkdir -p \"$lib/$name/libs\"\n\
+                 printf 'Package: %s\\nVersion: 1.0.0\\nBuilt: R 4.4.0\\n' \"$name\" > \"$lib/$name/DESCRIPTION\"\n\
+                 echo compiled > \"$lib/$name/libs/$name.so\"\n",
+                log.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&r, fs::Permissions::from_mode(0o755)).unwrap();
+        (r.to_str().unwrap().to_string(), log)
+    }
+
+    #[cfg(unix)]
+    fn compiled(log: &Path) -> Vec<String> {
+        let mut names: Vec<String> = fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .map(String::from)
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// The second library a lock is synced into gets the packages the first
+    /// one compiled, also without a `RemoteHash` in the lock.
+    #[cfg(unix)]
+    #[test]
+    fn a_second_library_reuses_what_the_first_one_compiled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = tmp.path().join("cache");
+        let built = BuiltCache::in_dir(&tmp.path().join("built"));
+        let packages = cache.join("packages");
+        source_tarball(
+            &packages.join("src/contrib/cpp11_1.0.0.tar.gz"),
+            "cpp11",
+            "",
+            "a",
+        );
+        source_tarball(
+            &packages.join("src/contrib/foo_1.0.0.tar.gz"),
+            "foo",
+            "LinkingTo: cpp11\n",
+            "foo",
+        );
+        let lock = vec![
+            unrecorded("cpp11", &[], false),
+            unrecorded("foo", &["cpp11"], false),
+        ];
+        let (r, log) = fake_r(tmp.path());
+        let sync = |library: &str| {
+            let library = tmp.path().join(library);
+            fs::create_dir_all(&library).unwrap();
+            let infos = planned_builds(&lock, &cache, &built);
+            install_packages(infos, &library, &r, 2).unwrap();
+            library
+        };
+
+        let first = sync("lib1");
+        assert_eq!(compiled(&log), vec!["cpp11", "foo"]);
+        let second = sync("lib2");
+        assert_eq!(compiled(&log), vec!["cpp11", "foo"]);
+        for lib in [&first, &second] {
+            for name in ["cpp11", "foo"] {
+                assert!(lib.join(name).join(format!("libs/{name}.so")).exists());
+            }
+            // What it was built from is recorded.
+            let desc = fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
+            assert!(desc.contains("RemoteHash"), "{desc}");
+            assert!(
+                desc.contains("RemoteLinkingToHashes: cpp11@1.0.0="),
+                "{desc}"
+            );
+        }
+
+        // A changed dependency compiles it and what is linked to it again,
+        // but not the rest.
+        source_tarball(
+            &packages.join("src/contrib/cpp11_1.0.0.tar.gz"),
+            "cpp11",
+            "",
+            "b",
+        );
+        sync("lib3");
+        assert_eq!(compiled(&log), vec!["cpp11", "cpp11", "foo", "foo"]);
+    }
+
     /// Where to install from comes from `sources`, not from `metadata`: a
     /// git package's subdir, and a local package's path.
     #[test]
-    fn lockfile_package_info_reads_the_install_location_from_sources() {
+    fn lockfile_package_path_reads_the_install_location_from_sources() {
         let cache = Path::new("/cache");
         let mut git = locked("mypkg", &[]);
         git.metadata.clear();
         git.sources = vec!["git+https://example.com/repo.git#commit=3f2a&subdir=pkgs/mypkg".into()];
         git.target = "git/git/3f2a".to_string();
         assert_eq!(
-            lockfile_package_info(&git, cache, None).file_path,
+            lockfile_package_path(&git, cache),
             cache
                 .join("packages")
                 .join("git/git/3f2a")
@@ -8190,8 +8500,7 @@ mod tests {
         local.sources = vec![reqwest::Url::from_directory_path(&dir).unwrap().to_string()];
         local.target = String::new();
         assert_eq!(
-            lockfile_package_info(&local, cache, None)
-                .file_path
+            lockfile_package_path(&local, cache)
                 .components()
                 .collect::<Vec<_>>(),
             dir.components().collect::<Vec<_>>()
@@ -8518,12 +8827,12 @@ mod tests {
         // The generic glibc target is used instead.
         let targets = vec![
             target("4.6.1", "x86_64-unknown-linux-gnu-ubuntu-22.04"),
-            target("4.6.1", "x86_64-unknown-linux-gnu"),
+            target("4.6.1", "x86_64-unknown-linux-gnu-manylinux_2_28"),
             target("4.6.1", "source"),
         ];
         for host in [&fedora, &noble] {
             let picked = select_sync_target(&targets, None, None, host).unwrap();
-            assert_eq!(picked.platform, "x86_64-unknown-linux-gnu");
+            assert_eq!(picked.platform, "x86_64-unknown-linux-gnu-manylinux_2_28");
         }
     }
 
@@ -8531,7 +8840,7 @@ mod tests {
     fn select_sync_target_prefers_this_distro_over_generic_linux() {
         let jammy = linux_host(false, Some(("ubuntu", "22.04")));
         let specific = target("4.6.1", "x86_64-unknown-linux-gnu-ubuntu-22.04");
-        let generic = target("4.6.1", "x86_64-unknown-linux-gnu");
+        let generic = target("4.6.1", "x86_64-unknown-linux-gnu-manylinux_2_28");
         for targets in [
             vec![specific.clone(), generic.clone()],
             vec![generic.clone(), specific.clone()],
@@ -8541,16 +8850,19 @@ mod tests {
         }
 
         // A higher R version still wins.
-        let targets = vec![specific, target("4.6.2", "x86_64-unknown-linux-gnu")];
+        let targets = vec![
+            specific,
+            target("4.6.2", "x86_64-unknown-linux-gnu-manylinux_2_28"),
+        ];
         let picked = select_sync_target(&targets, None, None, &jammy).unwrap();
-        assert_eq!(picked.platform, "x86_64-unknown-linux-gnu");
+        assert_eq!(picked.platform, "x86_64-unknown-linux-gnu-manylinux_2_28");
     }
 
     #[test]
     fn select_sync_target_keeps_glibc_and_musl_apart() {
         let alpine = linux_host(true, None);
         let targets = vec![
-            target("4.6.1", "x86_64-unknown-linux-gnu"),
+            target("4.6.1", "x86_64-unknown-linux-gnu-manylinux_2_28"),
             target("4.6.1", "x86_64-unknown-linux-gnu-ubuntu-22.04"),
         ];
         assert!(select_sync_target(&targets, None, None, &alpine).is_err());

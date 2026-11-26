@@ -21,7 +21,9 @@ use super::detect::{describe, detect_repo_type, DetectedRepo, RepoType};
 pub const CACHE_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 /// Version 2 knows about the own extended metadata of PPM CRAN repositories.
-const CACHE_FILE: &str = "repo-types-2.json";
+/// Version 3 has the format 1.x extended metadata URLs, e.g.
+/// `https://ppm.r-pkg.org/v1`.
+const CACHE_FILE: &str = "repo-types-3.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CacheEntry {

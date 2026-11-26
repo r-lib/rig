@@ -189,9 +189,9 @@ repositories too, not just its version.
 ## Rscript
 
 `rig run --rscript` runs the selected R version's `Rscript` instead of `R`.
-Unlike `R -e`/`R -f`, `Rscript` never echoes back the code it runs, which fits
-scripts and pipelines better than `R`'s interactive-style echo.
+`--startup` and `--echo` have no effect with `--rscript`.
 
 `--rscript` works with `-e`/`-f`, scripts, project scripts, apps and `--activate`,
 but not with `--cmd` (`R CMD` only exists as part of the `R` front-end) or
-`--shell` (which never runs the R binary at all).
+`--shell` (which never runs the R binary at all). Command line arguments after
+the script are passed on to it, e.g. `rig run --rscript script.R --input data.csv`.

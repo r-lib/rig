@@ -10,6 +10,7 @@ use pubgrub::*;
 use serde::{Deserialize, Serialize};
 
 use crate::dcf::*;
+use crate::output::OUTPUT;
 use crate::repos::feed::RepoId;
 use crate::repos::r_universe::RUniverseRemote;
 
@@ -1044,7 +1045,7 @@ impl RPackageRegistry {
                                 .insert((pkg.clone(), src.clone()), repo.clone());
                         }
                         // The index's source row is authoritative when we have
-                        // one; the source metadata's own `SHA256Original` is the
+                        // one; the source metadata's own `Id` is the
                         // fallback, and the only thing available for a
                         // source-only solve, where no index is loaded at all.
                         if let Some(sha) = artifacts
@@ -1145,7 +1146,10 @@ impl RPackageRegistry {
                     }
                 }
                 Err(e) => {
-                    debug!("Failed to load versions for package '{}': {}", pkg, e);
+                    OUTPUT.warn(&format!(
+                        "Failed to load versions for package '{}': {}",
+                        pkg, e
+                    ));
                 }
             }
         }
@@ -1193,6 +1197,8 @@ impl RPackageRegistry {
             let versions = match loader.load_versions(&pkg) {
                 Ok(versions) => versions,
                 Err(e) => {
+                    // Hidden: `ensure_loaded` loads this package again and warns
+                    // if the solve reaches it.
                     debug!("Failed to load versions for package '{}': {}", pkg, e);
                     continue;
                 }
@@ -1228,7 +1234,10 @@ impl RPackageRegistry {
             Some(binaries) => match binaries.load_artifacts(pkg) {
                 Ok(artifacts) => artifacts,
                 Err(e) => {
-                    debug!("Failed to load binary artifacts for '{}': {}", pkg, e);
+                    OUTPUT.warn(&format!(
+                        "Failed to load binary artifacts for '{}': {}",
+                        pkg, e
+                    ));
                     PackageArtifacts::default()
                 }
             },

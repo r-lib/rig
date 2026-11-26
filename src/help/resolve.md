@@ -18,7 +18,8 @@ An R version can be specified in various ways:
 - `rig resolve x.y.z` is a specific version.
 - `rig resolve x.y` is the latest release within the `x.y` minor branch.
 - `rig resolve oldrel/n` is the latest release within the `n`th previous minor
-  branch (`oldrel` is the same as `oldrel/1`).
+  branch (`oldrel` is the same as `oldrel/1`, and `oldrel-n` is the same as
+  `oldrel/n`).
 
 ## Examples
 

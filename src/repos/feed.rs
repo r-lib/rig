@@ -1,10 +1,11 @@
 //! The package metadata the solver reads. There are two kinds of
 //! repositories:
 //!
-//! * Repositories with extended metadata ("feeds"): CRAN's, at
-//!   `https://ppm.r-pkg.org`, and one per Bioconductor release, at
-//!   `https://ppm-bioc.r-pkg.org/<bioc-version>`. Every feed has the same
-//!   layout: an `ALLPACKAGES.zst` history of every version ever published, an
+//! * Repositories with extended metadata ("feeds", format 1.x of Tidyup 12):
+//!   CRAN's, at `https://ppm.r-pkg.org/v1`, and one per Bioconductor release,
+//!   at `https://ppm-bioc.r-pkg.org/v1/<bioc-version>`. Every feed has the
+//!   same layout: a `METADATA` file with the format version, an
+//!   `ALLPACKAGES.zst` history of every version ever published, an
 //!   `ARCHIVEDPACKAGES.zst` list of removed packages, and per-package binary
 //!   indices at `binaries/<package>.tsv.zst`.
 //! * Plain CRAN-like repositories, with `PACKAGES` files for the current
@@ -14,11 +15,14 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 /// Default base URL of CRAN's extended metadata.
-pub const PPM_METADATA_URL: &str = "https://ppm.r-pkg.org";
+pub const PPM_METADATA_URL: &str = "https://ppm.r-pkg.org/v1";
 
 /// Default base URL of the extended metadata of the Bioconductor releases,
 /// `%v` is the Bioconductor version.
-pub const BIOC_METADATA_URL: &str = "https://ppm-bioc.r-pkg.org/%v";
+pub const BIOC_METADATA_URL: &str = "https://ppm-bioc.r-pkg.org/v1/%v";
+
+/// [`BIOC_METADATA_URL`] without the version.
+const BIOC_METADATA_BASE: &str = "https://ppm-bioc.r-pkg.org/v1";
 
 /// The repository a package version comes from.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -232,15 +236,18 @@ impl MetadataFeed {
             repo: RepoId::Cran,
             allpackages_url: env(
                 "RIG_ALLPACKAGES_URL",
-                "https://ppm.r-pkg.org/ALLPACKAGES.zst",
+                &format!("{}/ALLPACKAGES.zst", PPM_METADATA_URL),
             ),
             archived_url: env(
                 "RIG_ARCHIVEDPACKAGES_URL",
-                "https://ppm.r-pkg.org/ARCHIVEDPACKAGES.zst",
+                &format!("{}/ARCHIVEDPACKAGES.zst", PPM_METADATA_URL),
             ),
-            binaries_url: env("RIG_BINARIES_URL", "https://ppm.r-pkg.org/binaries")
-                .trim_end_matches('/')
-                .to_string(),
+            binaries_url: env(
+                "RIG_BINARIES_URL",
+                &format!("{}/binaries", PPM_METADATA_URL),
+            )
+            .trim_end_matches('/')
+            .to_string(),
             mirror: None,
         }
     }
@@ -254,10 +261,10 @@ impl MetadataFeed {
     }
 
     /// The feed of Bioconductor release `version`, under
-    /// `RIG_BIOC_METADATA_URL` (default `https://ppm-bioc.r-pkg.org`).
+    /// `RIG_BIOC_METADATA_URL` (default `https://ppm-bioc.r-pkg.org/v1`).
     pub fn bioc(version: &str) -> MetadataFeed {
         let base = std::env::var("RIG_BIOC_METADATA_URL")
-            .unwrap_or_else(|_| "https://ppm-bioc.r-pkg.org".to_string());
+            .unwrap_or_else(|_| BIOC_METADATA_BASE.to_string());
         MetadataFeed::bioc_at(&base, version)
     }
 
@@ -333,27 +340,65 @@ impl MetadataFeed {
         feeds.push(MetadataFeed::cran());
         feeds
     }
-
-    /// The full URL of a `DownloadURL` in this feed's ALLPACKAGES or binary
-    /// indices, see [`resolve_download_url`].
-    pub fn resolve_url(&self, url: &str) -> String {
-        resolve_download_url(&self.allpackages_url, url)
-    }
 }
 
-/// The full URL of `url`, a `DownloadURL` from the ALLPACKAGES file at
-/// `allpackages_url`, or from a binary index of the same feed. It is either a
-/// full URL, an absolute path on the same server (`/cran/...`), or a path
-/// relative to the ALLPACKAGES file. A `url` that cannot be resolved is kept
-/// as is.
-pub fn resolve_download_url(allpackages_url: &str, url: &str) -> String {
+/// The host that serves the package files of the P3M feeds, see
+/// [`p3m_download_url`].
+const P3M_DOWNLOAD_URL: &str = "https://p3m.dev";
+
+/// The full URL of `url`, a `DownloadURL` from the metadata file at
+/// `file_url`, e.g. ALLPACKAGES, or a `url` from a binary index. It is either
+/// a full URL, an absolute path on the same server (`/cran/...`), or a path
+/// relative to the file that contains it, as in RFC 3986. A `url` that cannot
+/// be resolved is kept as is.
+///
+/// A path in the P3M feeds is resolved to the P3M server that serves the
+/// file, see [`p3m_download_url`].
+pub fn resolve_download_url(file_url: &str, url: &str) -> String {
     if url.is_empty() || reqwest::Url::parse(url).is_ok() {
         return url.to_string();
     }
-    match reqwest::Url::parse(allpackages_url).and_then(|base| base.join(url)) {
-        Ok(full) => full.to_string(),
+    match reqwest::Url::parse(file_url).and_then(|base| base.join(url)) {
+        Ok(full) => p3m_download_url(&full).unwrap_or_else(|| full.to_string()),
         Err(_) => url.to_string(),
     }
+}
+
+/// The download URL of a package file of the P3M feeds at
+/// `https://ppm.r-pkg.org` and `https://ppm-bioc.r-pkg.org`, from its URL
+/// resolved against the metadata. These hosts only serve the metadata, the
+/// files are on `p3m.dev`:
+///
+/// * `https://ppm.r-pkg.org/v1/<path>` is
+///   `https://p3m.dev/cran/<path>`, e.g. `<path>` is
+///   `2026-04-10/src/contrib/cli_3.6.6.tar.gz`.
+/// * `https://ppm-bioc.r-pkg.org/v1/<bioc-version>/<path>` is
+///   `https://p3m.dev/bioconductor/<path>`, e.g. `<path>` is
+///   `2025-04-17/packages/3.22/bioc/src/contrib/limma_3.65.0.tar.gz`.
+///
+/// Any other path on these hosts is the same path on `p3m.dev`. `None` for
+/// other hosts.
+fn p3m_download_url(url: &reqwest::Url) -> Option<String> {
+    if url.scheme() != "https" {
+        return None;
+    }
+    let path = url.path();
+    let rest = match url.host_str()? {
+        "ppm.r-pkg.org" => match path.strip_prefix("/v1/") {
+            Some(rest) => format!("/cran/{}", rest),
+            None => path.to_string(),
+        },
+        "ppm-bioc.r-pkg.org" => match path
+            .strip_prefix("/v1/")
+            .and_then(|rest| rest.split_once('/'))
+        {
+            Some((_version, rest)) => format!("/bioconductor/{}", rest),
+            None => path.to_string(),
+        },
+        _ => return None,
+    };
+    let query = url.query().map(|q| format!("?{}", q)).unwrap_or_default();
+    Some(format!("{}{}{}", P3M_DOWNLOAD_URL, rest, query))
 }
 
 /// Whether and which Bioconductor release a solve uses, besides CRAN.
@@ -407,19 +452,19 @@ mod tests {
 
     #[test]
     fn bioc_feed_urls() {
-        let feed = MetadataFeed::bioc_at("https://ppm-bioc.r-pkg.org/", "3.22");
+        let feed = MetadataFeed::bioc_at("https://ppm-bioc.r-pkg.org/v1/", "3.22");
         assert_eq!(feed.repo, RepoId::Bioc("3.22".to_string()));
         assert_eq!(
             feed.allpackages_url,
-            "https://ppm-bioc.r-pkg.org/3.22/ALLPACKAGES.zst"
+            "https://ppm-bioc.r-pkg.org/v1/3.22/ALLPACKAGES.zst"
         );
         assert_eq!(
             feed.archived_url,
-            "https://ppm-bioc.r-pkg.org/3.22/ARCHIVEDPACKAGES.zst"
+            "https://ppm-bioc.r-pkg.org/v1/3.22/ARCHIVEDPACKAGES.zst"
         );
         assert_eq!(
             feed.binaries_url,
-            "https://ppm-bioc.r-pkg.org/3.22/binaries"
+            "https://ppm-bioc.r-pkg.org/v1/3.22/binaries"
         );
     }
 
@@ -446,7 +491,10 @@ mod tests {
     fn relative_ppm_download_urls_resolve() {
         let feed = MetadataFeed::at(RepoId::Cran, "http://localhost:4242/cran");
         assert_eq!(
-            feed.resolve_url("2025-08-30/src/contrib/otel_0.2.0.tar.gz"),
+            resolve_download_url(
+                &feed.allpackages_url,
+                "2025-08-30/src/contrib/otel_0.2.0.tar.gz"
+            ),
             "http://localhost:4242/cran/2025-08-30/src/contrib/otel_0.2.0.tar.gz"
         );
     }
@@ -455,22 +503,81 @@ mod tests {
     fn download_urls_resolve_against_allpackages() {
         let feed = MetadataFeed::at(RepoId::Cran, "https://example.com/meta/");
         assert_eq!(
-            feed.resolve_url("https://p3m.dev/cran/2020-01-01/src/contrib/a_1.0.tar.gz"),
+            resolve_download_url(
+                &feed.allpackages_url,
+                "https://p3m.dev/cran/2020-01-01/src/contrib/a_1.0.tar.gz"
+            ),
             "https://p3m.dev/cran/2020-01-01/src/contrib/a_1.0.tar.gz"
         );
         assert_eq!(
-            feed.resolve_url("src/contrib/a_1.0.tar.gz"),
+            resolve_download_url(&feed.allpackages_url, "src/contrib/a_1.0.tar.gz"),
             "https://example.com/meta/src/contrib/a_1.0.tar.gz"
         );
         assert_eq!(
-            feed.resolve_url("../cran/a_1.0.tar.gz"),
+            resolve_download_url(&feed.allpackages_url, "../cran/a_1.0.tar.gz"),
             "https://example.com/cran/a_1.0.tar.gz"
         );
         assert_eq!(
-            feed.resolve_url("/cran/2020-01-01/src/contrib/a_1.0.tar.gz"),
+            resolve_download_url(
+                &feed.allpackages_url,
+                "/cran/2020-01-01/src/contrib/a_1.0.tar.gz"
+            ),
             "https://example.com/cran/2020-01-01/src/contrib/a_1.0.tar.gz"
         );
-        assert_eq!(feed.resolve_url(""), "");
+        assert_eq!(resolve_download_url(&feed.allpackages_url, ""), "");
+    }
+
+    #[test]
+    fn binary_index_urls_resolve_against_the_index() {
+        let index = "https://example.com/meta/v1/binaries/cli.tsv.zst";
+        assert_eq!(
+            resolve_download_url(index, "../2017-11-07/src/contrib/cli_1.0.0.tar.gz"),
+            "https://example.com/meta/v1/2017-11-07/src/contrib/cli_1.0.0.tar.gz"
+        );
+    }
+
+    /// The P3M feeds only serve metadata, their files are on `p3m.dev`.
+    #[test]
+    fn p3m_feed_urls_resolve_to_p3m_dev() {
+        let cran = MetadataFeed::at(RepoId::Cran, PPM_METADATA_URL);
+        assert_eq!(
+            resolve_download_url(
+                &cran.allpackages_url,
+                "2026-04-10/src/contrib/cli_3.6.6.tar.gz"
+            ),
+            "https://p3m.dev/cran/2026-04-10/src/contrib/cli_3.6.6.tar.gz"
+        );
+        assert_eq!(
+            resolve_download_url(
+                &format!("{}/cli.tsv.zst", cran.binaries_url),
+                "../2026-04-27/bin/macosx/big-sur-arm64/contrib/4.5/pak_0.9.5.tgz"
+            ),
+            "https://p3m.dev/cran/2026-04-27/bin/macosx/big-sur-arm64/contrib/4.5/pak_0.9.5.tgz"
+        );
+        let bioc = MetadataFeed::at(
+            RepoId::Bioc("3.22".to_string()),
+            "https://ppm-bioc.r-pkg.org/v1/3.22",
+        );
+        let path = "2025-04-17/packages/3.22/bioc/src/contrib/limma_3.65.0.tar.gz";
+        let want = format!("https://p3m.dev/bioconductor/{}", path);
+        assert_eq!(resolve_download_url(&bioc.allpackages_url, path), want);
+        assert_eq!(
+            resolve_download_url(
+                &format!("{}/limma.tsv.zst", bioc.binaries_url),
+                &format!("../{}", path)
+            ),
+            want
+        );
+        // An absolute path keeps its path, on p3m.dev.
+        assert_eq!(
+            resolve_download_url(&cran.allpackages_url, "/cran/2026-04-10/x.tar.gz"),
+            "https://p3m.dev/cran/2026-04-10/x.tar.gz"
+        );
+        // Full URLs are kept as they are.
+        assert_eq!(
+            resolve_download_url(&cran.allpackages_url, "https://ppm.r-pkg.org/v1/x.tar.gz"),
+            "https://ppm.r-pkg.org/v1/x.tar.gz"
+        );
     }
 
     #[test]

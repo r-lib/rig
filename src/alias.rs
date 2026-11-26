@@ -5,7 +5,8 @@ use std::path::Path;
 use std::os::unix::fs::symlink;
 
 use clap::ArgMatches;
-use log::*;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use log::debug;
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;
@@ -80,7 +81,6 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     check_local_bin_path()?;
 
     OUTPUT.status(&format!("Adding R-{} alias to R {}", alias, ver));
-    info!("Adding R-{} alias to R {}", alias, ver);
 
     let binding = get_r_binpath()?.replace("{}", ver);
     let target = Path::new(&get_r_root()?).join(&binding);
@@ -93,11 +93,6 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     if meta.is_ok() {
         match std::fs::read_link(&linkfile) {
             Err(_) => {
-                OUTPUT.error(&format!(
-                    "{} is not a symlink, aborting",
-                    linkfile.display()
-                ));
-                error!("{} is not a symlink, aborting", linkfile.display());
                 bail!("{} is not a symlink, aborting", linkfile.display())
             }
             Ok(xtarget) => {
@@ -106,16 +101,6 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
                 } else {
                     debug!("{} is wrong, updating", linkfile.display());
                     if let Err(err) = std::fs::remove_file(&linkfile) {
-                        OUTPUT.error(&format!(
-                            "Failed to delete {}, cannot update alias: {}",
-                            linkfile.display(),
-                            err
-                        ));
-                        error!(
-                            "Failed to delete {}, cannot update alias: {}",
-                            linkfile.display(),
-                            err
-                        );
                         bail!(
                             "Failed to delete {}, cannot update alias: {}",
                             linkfile.display(),
@@ -130,12 +115,6 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     // If we are still here, then we need to create the link
     debug!("Adding {} -> {}", linkfile.display(), target.display());
     if let Err(err) = symlink(&target, &linkfile) {
-        OUTPUT.error(&format!(
-            "Cannot create alias {}: {}",
-            linkfile.display(),
-            err
-        ));
-        error!("Cannot create alias {}: {}", linkfile.display(), err);
         bail!(
             "Cannot create alias {}: {}",
             linkfile.display(),
@@ -159,7 +138,6 @@ pub fn remove_alias(alias: &str) -> Result<(), Box<dyn Error>> {
 
     if std::fs::symlink_metadata(&linkfile).is_ok() {
         OUTPUT.status(&format!("Removing R-{} alias", alias));
-        info!("Removing R-{} alias", alias);
         std::fs::remove_file(&linkfile)?;
     }
 
@@ -189,16 +167,13 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let op;
     if linkfile.exists() {
         op = "Updating";
-        if let Some((orig_target, orig_marker)) = read_shim_link(&linkfile) {
-            if orig_target == target && orig_marker.is_empty() {
-                return Ok(());
-            }
+        if shim_link_up_to_date(&linkfile, &target, "") {
+            return Ok(());
         }
     } else {
         op = "Adding";
     };
     OUTPUT.status(&format!("{} R-{} alias to R {}", op, alias, ver));
-    info!("{} R-{} -> {} alias", op, alias, ver);
     write_shim_link(&linkfile, &target, "")?;
 
     Ok(())
@@ -215,8 +190,7 @@ pub fn remove_alias(alias: &str) -> Result<(), Box<dyn Error>> {
 
     if linkfile.exists() {
         OUTPUT.status(&format!("Removing R-{} alias", alias));
-        info!("Removing R-{} alias", alias);
-        std::fs::remove_file(&linkfile)?;
+        remove_shim_link(&linkfile)?;
     }
 
     Ok(())
@@ -235,7 +209,6 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     }
 
     OUTPUT.status(&format!("Adding R-{} alias to R {}", alias, ver));
-    info!("Adding R-{} alias to R {}", alias, ver);
 
     let rroot = get_r_root()?;
     let base = Path::new(&rroot);
@@ -249,11 +222,6 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     if meta.is_ok() {
         match std::fs::read_link(&linkfile) {
             Err(_) => {
-                OUTPUT.error(&format!(
-                    "{} is not a symlink, aborting",
-                    linkfile.display()
-                ));
-                error!("{} is not a symlink, aborting", linkfile.display());
                 bail!("{} is not a symlink, aborting", linkfile.display())
             }
             Ok(xtarget) => {
@@ -262,16 +230,6 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
                 } else {
                     debug!("{} is wrong, updating", linkfile.display());
                     if let Err(err) = std::fs::remove_file(&linkfile) {
-                        OUTPUT.error(&format!(
-                            "Failed to delete {}, cannot update alias: {}",
-                            linkfile.display(),
-                            err
-                        ));
-                        error!(
-                            "Failed to delete {}, cannot update alias: {}",
-                            linkfile.display(),
-                            err
-                        );
                         bail!(
                             "Failed to delete {}, cannot update alias: {}",
                             linkfile.display(),
@@ -286,12 +244,6 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     // If we are still here, then we need to create the link
     debug!("Adding {} -> {}", linkfile.display(), target.display());
     if let Err(err) = symlink(&target, &linkfile) {
-        OUTPUT.error(&format!(
-            "Cannot create alias {}: {}",
-            linkfile.display(),
-            err
-        ));
-        error!("Cannot create alias {}: {}", linkfile.display(), err);
         bail!(
             "Cannot create alias {}: {}",
             linkfile.display(),
@@ -315,7 +267,6 @@ pub fn remove_alias(alias: &str) -> Result<(), Box<dyn Error>> {
 
     if std::fs::symlink_metadata(&linkfile).is_ok() {
         OUTPUT.status(&format!("Removing R-{} alias", alias));
-        info!("Removing R-{} alias", alias);
         std::fs::remove_file(&linkfile)?;
     }
 

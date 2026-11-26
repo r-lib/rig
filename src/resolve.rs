@@ -3,9 +3,6 @@ use regex::Regex;
 use std::error::Error;
 
 use clap::ArgMatches;
-use log::error;
-#[cfg(target_os = "windows")]
-use log::warn;
 #[cfg(target_os = "windows")]
 use serde_json::{Map, Value};
 #[cfg(target_os = "windows")]
@@ -90,11 +87,9 @@ pub fn validate_version_arg(str: &str) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
     let msg = format!(
-        "Unknown value \"{}\". Accepted values: version numbers, \"devel\", \"next\", \"release\", \"oldrel/n\", a URL, or a path to an renv.lock file.",
+        "Unknown value \"{}\". Accepted values: version numbers, \"devel\", \"next\", \"release\", \"oldrel/n\" (or \"oldrel-n\"), a URL, or a path to an renv.lock file.",
         str
     );
-    OUTPUT.error(&msg);
-    error!("{}", msg);
     bail!(msg)
 }
 
@@ -155,8 +150,6 @@ pub async fn resolve_versions(
         match o {
             Ok(x) => out2.push(x),
             Err(x) => {
-                OUTPUT.error(&format!("Failed to resolve R version: {}", x));
-                error!("Failed to resolve R version: {}", x);
                 bail!("Failed to resolve R version: {}", x.to_string())
             }
         };
@@ -225,10 +218,6 @@ pub fn get_available_rtools_versions(arch: &str) -> serde_json::Value {
                         "Failed to download Rtools version data: {}, will use hardcoded data.",
                         err
                     ));
-                    warn!(
-                        "Failed to download Rtools version data: {}, will use hardcoded data.",
-                        err
-                    );
                     if arch == "aarch64" {
                         HC_RTOOLS_AARCH64.clone()
                     } else {
@@ -254,8 +243,6 @@ pub fn get_rtools_version(version: &str, arch: &str) -> Result<RtoolsVersion, Bo
     let value = match value.as_array() {
         Some(x) => x,
         None => {
-            OUTPUT.error(msg);
-            error!("{}", msg);
             bail!(msg)
         }
     };
@@ -272,7 +259,5 @@ pub fn get_rtools_version(version: &str, arch: &str) -> Result<RtoolsVersion, Bo
         "Cannot find Rtools version {} for architecture {}",
         version, arch
     );
-    OUTPUT.error(&msg);
-    error!("{}", msg);
     bail!(msg)
 }

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use clap::ArgMatches;
 use jsonc_parser::cst::{CstInputValue, CstObject, CstRootNode};
 use jsonc_parser::ParseOptions;
-use log::{debug, error, info, warn};
+use log::debug;
 use semver::Version;
 use simple_error::SimpleError;
 use tabular::*;
@@ -192,7 +192,6 @@ pub fn report_already_installed(
         add_alias(name, &alias)?;
     }
     OUTPUT.success(&format!("R version {} is already installed", name));
-    info!("R version {} is already installed", name);
     Ok(Some(AddResult {
         name: name.to_string(),
         new_install: false,
@@ -207,8 +206,6 @@ pub fn sc_get_default_or_fail() -> Result<String, Box<dyn Error>> {
     let default = sc_get_default()?;
     match default {
         None => {
-            OUTPUT.error("No default R version is set, call `rig default <version>`");
-            error!("No default R version is set, call `rig default <version>`");
             bail!("No default R version is set, call `rig default <version>`")
         }
         Some(d) => Ok(d),
@@ -259,10 +256,8 @@ pub fn switch_to_user_mode() -> Result<(), Box<dyn Error>> {
     crate::config::set_global_config_value("mode", "user")?;
     if already_user {
         OUTPUT.success("rig already in user mode");
-        info!("rig already in user mode");
     } else {
         OUTPUT.success("Switched rig to user mode");
-        info!("Switched rig to user mode");
     }
     Ok(())
 }
@@ -280,7 +275,6 @@ pub fn restore_user_mode_default(map: &[(String, String)], default: &Option<Stri
             OUTPUT.status(&format!("Restoring default R version ({})", udef));
             if let Err(e) = sc_set_default(udef) {
                 OUTPUT.warn(&format!("Could not restore default R version: {}", e));
-                warn!("Could not restore default R version: {}", e);
             }
         }
         None => {
@@ -288,7 +282,6 @@ pub fn restore_user_mode_default(map: &[(String, String)], default: &Option<Stri
                 "Could not restore the previous default R version ({})",
                 adef
             ));
-            warn!("Could not restore default R version {}", adef);
         }
     }
 }
@@ -346,7 +339,6 @@ pub fn get_r_version_data(
         Ok(v) => Some(v),
         Err(e) => {
             OUTPUT.warn(&format!("R installation '{}' looks broken: {}", name, e));
-            warn!("R installation '{}' looks broken: {}", name, e);
             None
         }
     };
@@ -408,8 +400,6 @@ pub fn check_has_pak(ver: &str) -> Result<bool, Box<dyn Error>> {
 
     let v350 = Version::parse("3.5.0")?;
     if vv < v350 {
-        OUTPUT.error("Pak is only available for R 3.5.0 or later");
-        error!("Pak is only available for R 3.5.0 or later");
         bail!("Pak is only available for R 3.5.0 or later");
     }
     Ok(true)
@@ -433,7 +423,6 @@ pub fn system_add_pak(
             format!("Installing pak for R {} (if not installed yet)", ver)
         };
         OUTPUT.status(&msg);
-        info!("{}", msg);
         check_has_pak(&ver)?;
 
         // We do this to create the user library, because currently there
@@ -442,8 +431,6 @@ pub fn system_add_pak(
         match r(&ver, "invisible()") {
             Ok(_) => {}
             Err(x) => {
-                OUTPUT.error(&format!("Failed to to install pak for R {}: {}", ver, x));
-                error!("Failed to to install pak for R {}: {}", ver, x);
                 bail!("Failed to to install pak for R {}: {}", ver, x.to_string())
             }
         };
@@ -465,8 +452,6 @@ pub fn system_add_pak(
         match r(&ver, &cmd) {
             Ok(_) => {}
             Err(x) => {
-                OUTPUT.error(&format!("Failed to install pak for R {}: {}", ver, x));
-                error!("Failed to install pak for R {}: {}", ver, x);
                 bail!("Failed to install pak for R {}: {}", ver, x.to_string())
             }
         };
@@ -537,22 +522,12 @@ pub fn get_rstudio_config_path() -> Result<PathBuf, Box<dyn Error>> {
     let path = match xdg.to_str() {
         Some(x) => x,
         None => {
-            OUTPUT.error("RStudio config path cannot be represented as Unicode. :(");
-            error!("RStudio config path cannot be represented as Unicode. :(");
             bail!("RStudio config path cannot be represented as Unicode. :(")
         }
     };
     let path = match shellexpand::full(path) {
         Ok(x) => x.to_string(),
         Err(e) => {
-            OUTPUT.error(&format!(
-                "RStudio config path contains unknown environment variable: {}",
-                e.var_name
-            ));
-            error!(
-                "RStudio config path contains unknown environment variable: {}",
-                e.var_name
-            );
             bail!(
                 "RStudio config path contains unknown environment variable: {}",
                 e.var_name
@@ -573,15 +548,8 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let mut prj: Option<&String> = args.get_one("project-file");
 
     if args.get_flag("config-path") {
-        let cp = get_rstudio_config_path();
-        match cp {
-            Ok(x) => println!("{}", x.display()),
-            Err(x) => {
-                OUTPUT.error(&format!("Error: {}", x));
-                error!("Error: {}", x);
-                bail!("Error: {}", x.to_string())
-            }
-        };
+        let cp = get_rstudio_config_path()?;
+        println!("{}", cp.display());
         return Ok(());
     }
 
@@ -638,8 +606,6 @@ fn find_project_dir(path: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("Find project dir in {}", path);
     let ppath = Path::new(path);
     if !ppath.exists() {
-        OUTPUT.error(&format!("Could not find path {}", path));
-        error!("Could not find path {}", path);
         bail!("Could not find path {}", path);
     }
     let ret = if ppath.is_dir() {
@@ -699,7 +665,6 @@ fn get_project_version(path: &str) -> Result<Option<String>, Box<dyn Error>> {
             }
         );
         OUTPUT.info(&msg);
-        info!("{}", msg);
 
         Ok(Some(usever.name.to_owned()))
     } else {
@@ -979,6 +944,22 @@ fn rversions_platform(platform: &str) -> Option<(String, &'static str)> {
     Some((api, arch))
 }
 
+/// A manylinux platform in any common spelling, as the R versions API platform,
+/// e.g. `linux-manylinux-2.28`, and the arch, if one was given. Accepts
+/// `manylinux-2.28`, `manylinux-2_28` and `manylinux_2_28`, each with an
+/// optional `linux-` prefix and an optional arch suffix, e.g. `-x86_64` or
+/// `-arm64`. `None` for anything else.
+fn manylinux_platform(platform: &str) -> Option<(String, Option<&'static str>)> {
+    let rest = platform.strip_prefix("linux-").unwrap_or(platform);
+    let (rest, arch) = match rest.rsplit_once('-') {
+        Some((head, last)) if normalize_arch(last).is_some() => (head, normalize_arch(last)),
+        _ => (rest, None),
+    };
+    let re = Regex::new(r"^manylinux[-_]([0-9]+)[._]([0-9]+)$").ok()?;
+    let caps = re.captures(rest)?;
+    Some((format!("linux-manylinux-{}.{}", &caps[1], &caps[2]), arch))
+}
+
 /// The platform the user gave, with `--platform` or `RIG_PLATFORM`, if any.
 fn requested_platform(args: &ArgMatches) -> Option<String> {
     if args.try_contains_id("platform").is_ok() {
@@ -1007,15 +988,19 @@ pub fn get_platform(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
     if args.try_contains_id("platform").is_ok() {
         let platform = args.get_one::<String>("platform");
         if let Some(x) = platform {
-            let x = rversions_platform(x).map_or_else(|| x.to_string(), |(api, _)| api);
+            let x = match manylinux_platform(x) {
+                Some((api, _)) => api,
+                None => rversions_platform(x).map_or_else(|| x.to_string(), |(api, _)| api),
+            };
             return finalize_platform(x);
         }
     };
 
     if let Ok(rp) = env::var("RIG_PLATFORM") {
-        let rp = match rversions_platform(&rp) {
-            Some((api, _)) => api,
-            None => normalize_rig_platform(&rp),
+        let rp = match (manylinux_platform(&rp), rversions_platform(&rp)) {
+            (Some((api, _)), _) => api,
+            (None, Some((api, _))) => api,
+            (None, None) => normalize_rig_platform(&rp),
         };
         debug!("Using RIG_PLATFORM: {}.", rp);
         return finalize_platform(rp);
@@ -1067,10 +1052,13 @@ pub fn get_arch(platform: &str, args: &ArgMatches) -> String {
     // default.
     let explicit_arch = arch.is_some()
         && args.value_source("arch") != Some(clap::parser::ValueSource::DefaultValue);
-    let platform_arch = requested_platform(args).and_then(|p| rversions_platform(&p));
+    let platform_arch = requested_platform(args).and_then(|p| match manylinux_platform(&p) {
+        Some((_, a)) => a,
+        None => rversions_platform(&p).map(|(_, a)| a),
+    });
     let arch = match (arch, platform_arch) {
         (Some(x), _) if explicit_arch => x.to_string(),
-        (_, Some((_, a))) => a.to_string(),
+        (_, Some(a)) => a.to_string(),
         (Some(x), None) => x.to_string(),
         (None, None) => env::consts::ARCH.to_string(),
     };
@@ -1350,6 +1338,43 @@ fn sc_available_rtools_versions(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn manylinux_platform_spellings() {
+        for (input, api, arch) in [
+            ("linux-manylinux-2_28", "linux-manylinux-2.28", None),
+            ("linux-manylinux-2.28", "linux-manylinux-2.28", None),
+            ("manylinux-2.34", "linux-manylinux-2.34", None),
+            ("manylinux_2_28", "linux-manylinux-2.28", None),
+            ("linux-manylinux_2_34", "linux-manylinux-2.34", None),
+            (
+                "manylinux_2_28-arm64",
+                "linux-manylinux-2.28",
+                Some("aarch64"),
+            ),
+            (
+                "linux-manylinux-2.34-x86_64",
+                "linux-manylinux-2.34",
+                Some("x86_64"),
+            ),
+        ] {
+            assert_eq!(
+                manylinux_platform(input),
+                Some((api.to_string(), arch)),
+                "{}",
+                input
+            );
+        }
+        for input in [
+            "linux-ubuntu-22.04",
+            "manylinux",
+            "manylinux_2_28_x",
+            "linux-musllinux-1.2",
+            "x86_64-unknown-linux-gnu",
+        ] {
+            assert_eq!(manylinux_platform(input), None, "{}", input);
+        }
+    }
 
     // Apply `f` to the parsed `contents`, and return the new contents, or
     // `None` if `f` did not change anything.

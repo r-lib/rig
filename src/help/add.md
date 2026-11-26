@@ -11,10 +11,13 @@ On Linux rig uses the Posit R builds from
 <https://github.com/rstudio/r-builds>.
 
 On Linux, in user mode rig always installs a portable build, selected for
-your C library (glibc or musl). In admin mode rig installs a
+your C library (glibc or musl): `manylinux_2_34` for glibc 2.34 or newer,
+`manylinux_2_28` for glibc 2.28 to 2.33, and `musllinux_1_2` for musl. In
+admin mode rig installs a
 distro-specific build by default, but you can install a portable build
 instead with `--platform linux-portable` (or a specific portable platform,
-e.g. `--platform linux-manylinux-2.34`). If there is no distro-specific build
+e.g. `--platform linux-manylinux-2.28` or `--platform linux-manylinux-2.34`;
+`manylinux_2_28` and `manylinux-2_28` work, too). If there is no distro-specific build
 for your platform, rig falls back to a portable build automatically.
 Admin-mode portable builds are installed into `/opt/R/<version>`, just like
 distro-specific builds. The portable builds are newer and less tested than
@@ -40,7 +43,8 @@ The desired R version can be specified in various ways:
 - `rig add x.y.z` adds a specific version.
 - `rig add x.y` adds the latest release within the `x.y` minor branch.
 - `rig add oldrel/n` adds the latest release within the `n`th previous minor
-  branch (`oldrel` is the same as `oldrel/1`).
+  branch (`oldrel` is the same as `oldrel/1`, and `oldrel-n` is the same as
+  `oldrel/n`).
 - `rig add <url>` uses a build from `<url>`.
 - `rig add renv.lock` (or a path to one, e.g. `rig add path/to/renv.lock`) adds
   the R version recorded in an [renv](https://rstudio.github.io/renv/) lock file.

@@ -1,4 +1,4 @@
-//! `rig ppm builds`: every published build of one package.
+//! `rig ppm pkg builds`: every published build of one package.
 //!
 //! The data is the per-package binary index described in
 //! `crate::repos::binaries`. Note that it comes from rig's own index host, not
@@ -16,31 +16,35 @@ use crate::repos::binaries::{
     binary_index_url, load_binary_index, validate_package_name, BinaryIndex,
 };
 
-/// One `pkg@version=sha256` entry of a build's `linkingto`.
+/// One `pkg@version=id` entry of a build's `linkingto`.
 #[derive(Debug, serde::Serialize)]
 struct BuildLinkingTo<'a> {
     package: &'a str,
     version: &'a str,
-    /// Upstream CRAN identity hash, like [`BuildRow::sha256`].
+    /// The `Id` of that version, like [`BuildRow::source_id`].
     sha256: &'a str,
 }
 
-/// One row of `rig ppm builds`, and the shape of its `--json` output.
+/// One row of `rig ppm pkg builds`, and the shape of its `--json` output.
 #[derive(Debug, serde::Serialize)]
 struct BuildRow<'a> {
     package: &'a str,
     version: &'a str,
-    /// `source`, `macos`, `windows`, or a Linux codename such as `jammy`.
+    /// `source`, or a platform string such as `aarch64-apple-darwin`.
     platform: &'a str,
     /// `*` on source rows.
-    arch: &'a str,
-    /// `*` on source rows.
     r_version: &'a str,
-    /// Hash of the upstream CRAN source tarball, *not* a checksum of `url`, and
-    /// so no use for verifying a download. See the `crate::repos::binaries`
-    /// module docs.
-    sha256: &'a str,
+    /// The `Id` of the source version, *not* a checksum of `url`, and so no
+    /// use for verifying a download. See the `crate::repos::binaries` module
+    /// docs.
+    source_id: &'a str,
     url: &'a str,
+    /// Checksum of the file at `url`, if the index has it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sha256: Option<&'a str>,
+    /// The time the build was yanked, if it was.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    yanked: Option<&'a str>,
     /// What the build was compiled against. Empty on source rows and for
     /// packages without `LinkingTo:`.
     linkingto: Vec<BuildLinkingTo<'a>>,
@@ -124,10 +128,11 @@ fn build_rows<'a>(
                 package,
                 version: row.version().original,
                 platform: row.platform(),
-                arch: row.arch(),
                 r_version: row.r_version(),
-                sha256: row.sha256(),
+                source_id: row.source_id(),
                 url: row.url(),
+                sha256: row.sha256(),
+                yanked: row.yanked(),
                 linkingto: row
                     .linkingto()
                     .map(|l| BuildLinkingTo {
@@ -194,22 +199,14 @@ fn print_builds(rows: &[BuildRow], package: &str, version: Option<&str>, nversio
     // `linkingto` is second-to-last on purpose: it is the widest variable
     // column, and with only `url` after it its padding cannot shift anything
     // else. It has to be here at all because rows that share
-    // `(version, platform, arch, r_version)` differ in nothing else, and would
+    // `(version, platform, r_version)` differ in nothing else, and would
     // otherwise look like duplicates.
-    let mut tab: Table = Table::new("{:<}   {:<}   {:<}   {:<}   {:<}   {:<}");
-    tab.add_row(row!(
-        "version",
-        "platform",
-        "arch",
-        "r_version",
-        "linkingto",
-        "url"
-    ));
+    let mut tab: Table = Table::new("{:<}   {:<}   {:<}   {:<}   {:<}");
+    tab.add_row(row!("version", "platform", "r_version", "linkingto", "url"));
     for row in rows {
         tab.add_row(row!(
             row.version,
             row.platform,
-            row.arch,
             row.r_version,
             linkingto_cell(row),
             row.url
@@ -220,7 +217,7 @@ fn print_builds(rows: &[BuildRow], package: &str, version: Option<&str>, nversio
     if tty {
         println!();
         for hint in [
-            "Rows that agree on version, platform, arch and r_version are different",
+            "Rows that agree on version, platform and r_version are different",
             "builds of the same version, told apart by `linkingto`. Platform `source`",
             "is the CRAN source tarball rather than a build.",
         ] {
@@ -309,7 +306,9 @@ mod tests {
         let rows = build_rows(&index, "dplyr", Some("0.7.4")).unwrap();
         let same: Vec<&BuildRow> = rows
             .iter()
-            .filter(|r| r.platform == "xenial" && r.arch == "x86_64" && r.r_version == "3.4")
+            .filter(|r| {
+                r.platform == "x86_64-unknown-linux-gnu-ubuntu-16.04" && r.r_version == "3.4"
+            })
             .collect();
         assert!(
             same.len() > 1,

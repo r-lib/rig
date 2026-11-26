@@ -7,13 +7,12 @@ use std::process::Stdio;
 use std::sync::Arc;
 
 use futures::stream::{FuturesUnordered, StreamExt};
-use indicatif::{ProgressBar, ProgressStyle};
-use log::{debug, error, info};
+use log::debug;
 use tokio::fs::create_dir_all;
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
-use crate::output::OUTPUT;
+use crate::output::{find_error, ReportedError, OUTPUT};
 
 /// The `DESCRIPTION` field recording which artifact an installed package came
 /// from: the sha256 of the upstream CRAN source tarball of its version.
@@ -111,6 +110,18 @@ pub async fn install_package<F>(
 where
     F: Fn(&str) + Send + Sync + 'static,
 {
+    // Guard against malicious package names (e.g. "../victim") from the
+    // package's `DESCRIPTION` file.
+    if !crate::utils::is_r_package_name(&pkg.name) {
+        let msg = format!(
+            "Failed to install {}: {:?} is not a valid R package name",
+            pkg.file_path.display(),
+            pkg.name
+        );
+        OUTPUT.error(&msg);
+        return Err(Box::new(ReportedError(msg)));
+    }
+
     let archive = if pkg.binary {
         Some(pkg.file_path.clone())
     } else {
@@ -119,7 +130,7 @@ where
 
     if let Some(archive) = archive {
         // A binary's archives all sit together in one `packages` directory
-        // (see `lockfile_package_info`), so the shared unpack cache is keyed
+        // (see `lockfile_package_path`), so the shared unpack cache is keyed
         // on the archive's own file name; a rig-built package already lives
         // in its own hash-keyed directory, so its name alone is unique there.
         let key = if pkg.binary {
@@ -139,7 +150,7 @@ where
                     Some(ref print) => print(&msg),
                     None => OUTPUT.success(&msg),
                 }
-                info!(
+                debug!(
                     "Installed built package {} {} from {} into {}",
                     pkg.name,
                     pkg.version,
@@ -162,28 +173,19 @@ where
     // `R CMD INSTALL` failures are shown with the path of their log, but an
     // error before or after it (e.g. a library we cannot write to) would only
     // be logged, so show that here.
+    // Show it right away, because the other packages are still installing,
+    // and return it as already shown.
     r_cmd_install(pkg, library_path, r_binary, print_fn)
         .await
-        .inspect_err(|err| {
-            if !err.is::<Reported>() {
-                let msg = format!("Failed to install {}: {}", pkg.name, err);
-                OUTPUT.error(&msg);
-                error!("{}", msg);
+        .map_err(|err| {
+            if find_error::<ReportedError>(err.as_ref()).is_some() {
+                return err;
             }
+            let msg = format!("Failed to install {}: {}", pkg.name, err);
+            OUTPUT.error(&msg);
+            Box::new(ReportedError(msg)) as Box<dyn Error>
         })
 }
-
-/// An install error that was already shown to the user.
-#[derive(Debug)]
-struct Reported(String);
-
-impl std::fmt::Display for Reported {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl Error for Reported {}
 
 /// Install a built package into the library, without starting R.
 ///
@@ -210,35 +212,13 @@ fn install_from_cache(
     key: &str,
     library_path: &Path,
 ) -> Result<(), Box<dyn Error>> {
-    // A leading `.` keeps `rig pkg list` from reading the staging directory as
-    // a half-installed package while another rig is working in the library.
-    let staging = library_path.join(format!(".rig-staging-{}-{}", pkg.name, std::process::id()));
-    if staging.exists() {
-        std::fs::remove_dir_all(&staging)?;
-    }
-
-    let result = stage_cached_package(pkg, archive, key, &staging, library_path);
-    if result.is_err() {
-        let _ = std::fs::remove_dir_all(&staging);
-    }
-    result
-}
-
-/// The body of [`install_from_cache`], so that its caller can clean the
-/// staging directory up on every error path.
-///
-/// `staging` must not exist yet: [`link_package_tree`] creates it, since the
-/// fastest way to populate it (a whole-directory reflink on macOS) requires
-/// the destination to not already exist.
-fn stage_cached_package(
-    pkg: &PackageInfo,
-    archive: &Path,
-    key: &str,
-    staging: &Path,
-    library_path: &Path,
-) -> Result<(), Box<dyn Error>> {
     let unpacked = crate::built::ensure_unpacked(archive, key, &pkg.name)?;
 
+    // `staging` must not exist yet: [`link_package_tree`] creates it, since
+    // the fastest way to populate it (a whole-directory reflink on macOS)
+    // requires the destination to not already exist.
+    let temp_lib = TempLibrary::create(library_path)?;
+    let staging = &temp_lib.path().join(&pkg.name);
     link_package_tree(&unpacked, staging)?;
 
     // `DESCRIPTION` always gets a private, patched copy: `patch_description`
@@ -249,17 +229,313 @@ fn stage_cached_package(
     std::fs::copy(unpacked.join("DESCRIPTION"), staging.join("DESCRIPTION"))?;
     patch_description(staging, pkg)?;
 
-    // Replacing the old directory and moving the new one in is not atomic, so
-    // this is the one window where an interrupted install leaves the library
-    // without the package. It is as small as we can make it, and `rig pkg
-    // install` recovers on the next run: a package without a DESCRIPTION is not
-    // installed as far as `rig pkg list` is concerned.
-    let target = library_path.join(&pkg.name);
-    if target.exists() {
-        std::fs::remove_dir_all(&target)?;
+    move_into_library(&temp_lib, library_path, &pkg.name)
+}
+
+/// Replace the `name` package in `library_path` with the complete package
+/// directory `<temp_lib>/<name>`.
+///
+/// The old package is renamed to `<temp_lib>/.old` first, then the new one is
+/// renamed into place, and only then is the old one deleted. Renaming is
+/// quick, so the window where the library has no `name` package is only the
+/// time between the two renames, not the time it takes to delete every file
+/// of the old package. If rig is killed in that window, the old package is
+/// still in `.old`. `temp_lib` must be inside `library_path`, so that both
+/// are on the same filesystem. The leading `.` keeps `.old` from clashing with
+/// a package called `old`.
+///
+/// Another process (e.g. another rig installing into the same library) may
+/// move its own copy of the package in between the two renames. Then the
+/// second rename fails, because the target exists again, and this tries again:
+/// it moves that copy aside too (to `.old-1`, `.old-2`, ...), and then moves
+/// its own in. So the install that finishes last wins, without a lock.
+///
+/// If the new package cannot be moved in, the most recent old one is moved
+/// back, unless another process has already put its own copy in place. If
+/// moving it back fails, `temp_lib` is kept, so that the old package is not
+/// deleted with it, and the error says where it is.
+fn move_into_library(
+    temp_lib: &TempLibrary,
+    library_path: &Path,
+    name: &str,
+) -> Result<(), Box<dyn Error>> {
+    const ATTEMPTS: usize = 3;
+    let staged = temp_lib.path().join(name);
+    let target = library_path.join(name);
+    // Where the old package(s) went, the most recent one last.
+    let mut asides: Vec<PathBuf> = Vec::new();
+
+    let mut attempt = 0;
+    let result = loop {
+        let aside = match attempt {
+            0 => temp_lib.path().join(".old"),
+            n => temp_lib.path().join(format!(".old-{}", n)),
+        };
+        match rename_retrying(&target, &aside) {
+            Ok(()) => asides.push(aside),
+            // No old package, or another process has just moved it away.
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => {
+                break Err(format!(
+                    "cannot move {} to {}: {}",
+                    target.display(),
+                    aside.display(),
+                    err
+                ))
+            }
+        }
+        match rename_retrying(&staged, &target) {
+            Ok(()) => break Ok(()),
+            // The error kind for renaming onto an existing directory varies
+            // between platforms, so look at the target instead.
+            Err(_) if attempt + 1 < ATTEMPTS && target.exists() => {
+                debug!(
+                    "{} appeared while installing it, moving it aside again",
+                    target.display()
+                );
+                attempt += 1;
+            }
+            Err(err) => {
+                break Err(format!(
+                    "cannot move {} to {}: {}",
+                    staged.display(),
+                    target.display(),
+                    err
+                ))
+            }
+        }
+    };
+
+    if let Err(mut msg) = result {
+        // Put the old package back, so a failed install leaves it as it was.
+        // If another process has put its copy in place, that is newer anyway.
+        if let Some(aside) = asides.last() {
+            if !target.exists() {
+                if let Err(err) = rename_retrying(aside, &target) {
+                    temp_lib.keep();
+                    msg.push_str(&format!(
+                        "; cannot move the previous version back from {}: {}",
+                        aside.display(),
+                        err
+                    ));
+                }
+            }
+        }
+        return Err(msg.into());
     }
-    std::fs::rename(staging, &target)?;
+
+    // `temp_lib` is deleted later anyway, but the old package can be large,
+    // and this frees the space right away. Not fatal: the new package is in
+    // place. On Windows this fails if a running R has a DLL of the old package
+    // loaded; the file can be renamed, but not deleted.
+    for aside in &asides {
+        if let Err(err) = std::fs::remove_dir_all(aside) {
+            debug!("Cannot remove {}: {}", aside.display(), err);
+        }
+    }
     Ok(())
+}
+
+/// `std::fs::rename`, but on Windows it tries again for a while if the rename
+/// fails because a file is in use. Antivirus software and the search indexer
+/// open newly written files to scan them, and while they do, the files and
+/// the directories that hold them cannot be renamed. This is common right
+/// after a package was built.
+///
+/// It does not try again if `to` exists: that is not going to go away by
+/// waiting, and [`move_into_library`] handles it itself.
+fn rename_retrying(from: &Path, to: &Path) -> std::io::Result<()> {
+    retry_transient(
+        || std::fs::rename(from, to),
+        |err| is_file_in_use(err) && !to.exists(),
+    )
+}
+
+/// Whether `err` is Windows refusing to rename or delete a file because some
+/// process has it open. Never true on other systems, where open files do not
+/// stop either.
+fn is_file_in_use(err: &std::io::Error) -> bool {
+    // ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION
+    cfg!(windows) && matches!(err.raw_os_error(), Some(5) | Some(32))
+}
+
+/// Run `op`, and run it again, with increasing waits in between, as long as
+/// it fails with an error that `transient` says may go away. It waits about
+/// 1.3 seconds in total before it gives up and returns the last error.
+///
+/// The waits block the thread. They only happen when something has already
+/// gone wrong, and they are short, so this is fine in an async install task.
+fn retry_transient<T>(
+    mut op: impl FnMut() -> std::io::Result<T>,
+    transient: impl Fn(&std::io::Error) -> bool,
+) -> std::io::Result<T> {
+    const RETRIES: u32 = 7;
+    let mut wait = std::time::Duration::from_millis(10);
+    let mut retries = 0;
+    loop {
+        match op() {
+            Err(err) if retries < RETRIES && transient(&err) => {
+                debug!("{}, trying again in {:?}", err, wait);
+                std::thread::sleep(wait);
+                wait *= 2;
+                retries += 1;
+            }
+            result => return result,
+        }
+    }
+}
+
+/// A temporary library inside the real one, deleted when dropped. A package
+/// is built (`R CMD INSTALL`) or staged (from the cache) into it, then
+/// [`move_into_library`] moves it into the real library.
+struct TempLibrary {
+    path: PathBuf,
+    /// Set by [`TempLibrary::keep`]: leave the directory on disk when dropped.
+    keep: std::cell::Cell<bool>,
+}
+
+impl TempLibrary {
+    /// Create `<library_path>/.rig-<pid>-<n>`, where `n` counts the temporary
+    /// libraries of this process, since rig installs several packages at once.
+    /// The name is short because Windows limits path lengths, and every path
+    /// of the package is under it while it is built. A leading `.` keeps `rig
+    /// pkg list` and R from reading it as a package.
+    fn create(library_path: &Path) -> Result<TempLibrary, Box<dyn Error>> {
+        static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = library_path.join(format!(".rig-{}-{}", std::process::id(), n));
+        // Left behind by an earlier process with the same pid.
+        if path.exists() {
+            std::fs::remove_dir_all(&path)
+                .map_err(|err| format!("cannot remove {}: {}", path.display(), err))?;
+        }
+        std::fs::create_dir(&path)
+            .map_err(|err| format!("cannot create {}: {}", path.display(), err))?;
+        Ok(TempLibrary {
+            path,
+            keep: std::cell::Cell::new(false),
+        })
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Do not delete the directory when dropped, because it holds something
+    /// that must not be lost, e.g. the only copy of a previous install.
+    fn keep(&self) {
+        self.keep.set(true);
+    }
+}
+
+impl Drop for TempLibrary {
+    fn drop(&mut self) {
+        if !self.keep.get() {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+}
+
+/// The pid of the rig process that created `name` in a library, if `name` is
+/// one of rig's temporary directories: a [`TempLibrary`]
+/// (`.rig-<pid>-<n>`), or a staging directory of rig 0.10 and 0.11
+/// (`.rig-staging-<pkg>-<pid>`; package names cannot contain `-`).
+fn temp_library_pid(name: &str) -> Option<u32> {
+    if let Some(rest) = name.strip_prefix(".rig-staging-") {
+        let (_pkg, pid) = rest.rsplit_once('-')?;
+        return pid.parse().ok();
+    }
+    let (pid, n) = name.strip_prefix(".rig-")?.split_once('-')?;
+    n.parse::<usize>().ok()?;
+    pid.parse().ok()
+}
+
+/// Remove the temporary directories that rig processes that no longer run
+/// left in `library_path`, e.g. because they were killed in the middle of an
+/// install. Such a directory may hold a complete build, so it can be large.
+///
+/// A directory of a running process is left alone: it may be installing into
+/// the same library right now. A reused pid only means that a directory is
+/// removed later. Not fatal: errors are only logged.
+fn remove_stale_temp_libraries(library_path: &Path) {
+    let entries = match std::fs::read_dir(library_path) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    let me = std::process::id();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let pid = match name.to_str().and_then(temp_library_pid) {
+            Some(pid) => pid,
+            None => continue,
+        };
+        if pid == me || process_is_running(pid) {
+            continue;
+        }
+        let path = entry.path();
+        match std::fs::remove_dir_all(&path) {
+            Ok(()) => debug!("Removed stale temporary library {}", path.display()),
+            Err(err) => debug!("Cannot remove {}: {}", path.display(), err),
+        }
+    }
+}
+
+/// Whether a process with `pid` is running. When in doubt, e.g. because the
+/// process belongs to another user, it is.
+#[cfg(unix)]
+fn process_is_running(pid: u32) -> bool {
+    let pid = match i32::try_from(pid) {
+        Ok(pid) if pid > 0 => pid,
+        _ => return true,
+    };
+    // SAFETY: signal 0 only checks whether the process exists.
+    if unsafe { libc::kill(pid, 0) } == 0 {
+        return true;
+    }
+    std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+}
+
+/// Whether a process with `pid` is running. When in doubt, e.g. because the
+/// process belongs to another user, it is.
+#[cfg(windows)]
+fn process_is_running(pid: u32) -> bool {
+    use std::ffi::c_void;
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    const ERROR_INVALID_PARAMETER: i32 = 87;
+    const STILL_ACTIVE: u32 = 259;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut c_void;
+        fn GetExitCodeProcess(process: *mut c_void, code: *mut u32) -> i32;
+        fn CloseHandle(handle: *mut c_void) -> i32;
+    }
+    // SAFETY: plain calls on a process handle that is closed before returning.
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            // `ERROR_INVALID_PARAMETER` means there is no process with this
+            // pid. Anything else, e.g. access denied, means there is one.
+            return std::io::Error::last_os_error().raw_os_error() != Some(ERROR_INVALID_PARAMETER);
+        }
+        let mut code = 0u32;
+        let ok = GetExitCodeProcess(handle, &mut code);
+        CloseHandle(handle);
+        // An exited process can still have a handle open somewhere.
+        ok == 0 || code == STILL_ACTIVE
+    }
+}
+
+/// `R_LIBS` for an `R CMD INSTALL` that builds into a [`TempLibrary`]: the
+/// real library first, so that the package's dependencies are found there,
+/// then whatever `R_LIBS` already was. `R CMD INSTALL` puts its `-l` library
+/// in front of this itself.
+fn build_r_libs(library_path: &Path, current: Option<&str>) -> String {
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    let lib = crate::utils::r_path(library_path).display().to_string();
+    match current {
+        Some(current) if !current.is_empty() => format!("{}{}{}", lib, sep, current),
+        _ => lib,
+    }
 }
 
 /// Populate `dst`, which must not exist yet, with everything under `src`,
@@ -298,6 +574,57 @@ fn stage_local_source(src: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
     stage_local_source_entries(src, dst, true)
+}
+
+/// A path from the raw bytes `git ls-files -z` prints. Git allows a file name
+/// that is not UTF-8 on Unix.
+fn path_from_git(bytes: &[u8]) -> Result<PathBuf, Box<dyn Error>> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        Ok(PathBuf::from(std::ffi::OsStr::from_bytes(bytes)))
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(PathBuf::from(std::str::from_utf8(bytes)?))
+    }
+}
+
+/// Stage a package directory in a git checkout (the package may be in a
+/// subdirectory of the checkout) from the files git tracks, leaving out
+/// anything an earlier build left behind.
+fn stage_tracked_source(src: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
+    let stdout = crate::pkgsource::git::run_git_raw(src, &["ls-files", "-z", "--cached"])?;
+    let tracked = stdout
+        .split(|b| *b == 0)
+        .filter(|p| !p.is_empty())
+        .map(path_from_git)
+        .collect::<Result<Vec<_>, _>>()?;
+    if !tracked.iter().any(|rel| rel == Path::new("DESCRIPTION")) {
+        return Err(format!("git does not track a DESCRIPTION file in {}", src.display()).into());
+    }
+
+    std::fs::create_dir_all(dst)?;
+    for rel in tracked {
+        let from = src.join(&rel);
+        let to = dst.join(&rel);
+        let file_type = match std::fs::symlink_metadata(&from) {
+            Ok(meta) => meta.file_type(),
+            Err(_) => continue,
+        };
+        if file_type.is_dir() {
+            continue;
+        }
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        if file_type.is_symlink() {
+            recreate_symlink(&from, &to)?;
+        } else if reflink_copy::reflink(&from, &to).is_err() {
+            std::fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
 }
 
 fn stage_local_source_entries(src: &Path, dst: &Path, top: bool) -> Result<(), Box<dyn Error>> {
@@ -573,6 +900,9 @@ fn drop_fields(text: &str, fields: &[&str]) -> String {
 
 /// Install a source package with `R CMD INSTALL`, and record the provenance in
 /// the result.
+///
+/// The package is built into a [`TempLibrary`] and only then replaces any
+/// previous install in `library_path`, the same way a built package does.
 async fn r_cmd_install<F>(
     pkg: &PackageInfo,
     library_path: &Path,
@@ -584,7 +914,7 @@ where
 {
     let package_name: &str = &pkg.name;
     let package_path: &Path = &pkg.file_path;
-    info!(
+    debug!(
         "Installing package {} from {} to {}",
         package_name,
         package_path.display(),
@@ -620,26 +950,50 @@ where
         .canonicalize()
         .map_err(|err| format!("cannot find {}: {}", package_path.display(), err))?;
 
-    // A `local::` source directory is the user's own checkout: build a copy
-    // of it in rig's cache instead of the original, so `R CMD INSTALL` never
-    // leaves compiled artifacts (`.o`/`.so`, a generated `src/Makevars`,
-    // `config.log`, ...) behind in the user's source tree. A tarball/zip or
-    // an already-built binary is unaffected -- R (or rig's own unpacker)
-    // already extracts those into a throwaway location on its own.
-    let is_local = pkg.remote.get(REMOTE_TYPE_FIELD).map(String::as_str) == Some("local");
-    let package_path_abs = if is_local && package_path_abs.is_dir() {
-        let staged = crate::cache::local_pkg_build_dir(&package_path_abs)?;
-        if staged.exists() {
-            std::fs::remove_dir_all(&staged)
-                .map_err(|err| format!("cannot remove {}: {}", staged.display(), err))?;
-        }
+    // `R CMD INSTALL` builds a source directory in place and leaves the
+    // compiled artifacts (`.o`/`.so`, a generated `src/Makevars`, `config.log`,
+    // ...) behind, we want to build directories from a copy -- a copy of the
+    // tracked sources for a git checkout, and a regular copy for anything else
+    // (a local directory, or an extracted `url::` archive in the cache).
+    //
+    // A tarball/zip or an already-built binary is unaffected -- R (or rig's
+    // own unpacker) already extracts those into a throwaway location.
+    let remote_type = pkg.remote.get(REMOTE_TYPE_FIELD).map(String::as_str);
+    let is_local = remote_type == Some("local");
+    let is_git = matches!(remote_type, Some("git") | Some("github"));
+    let package_path_abs = if package_path_abs.is_dir() {
+        let staged = if is_local {
+            crate::cache::local_pkg_build_dir(&package_path_abs)?
+        } else {
+            run_dir.path().join(package_name)
+        };
         debug!(
-            "Staging local package {} from {} to {} for an out-of-tree build",
+            "Staging package {} from {} to {} for an out-of-tree build",
             package_name,
             package_path_abs.display(),
             staged.display()
         );
-        stage_local_source(&package_path_abs, &staged).map_err(|err| {
+        // Removing the old copy, running git and copying the files all block,
+        // so do them off the async runtime, like the build below.
+        let copied = {
+            let src = package_path_abs.clone();
+            let dst = staged.clone();
+            tokio::task::spawn_blocking(move || -> Result<(), String> {
+                if dst.exists() {
+                    std::fs::remove_dir_all(&dst)
+                        .map_err(|err| format!("cannot remove {}: {}", dst.display(), err))?;
+                }
+                let copied = if is_git {
+                    stage_tracked_source(&src, &dst)
+                } else {
+                    stage_local_source(&src, &dst)
+                };
+                copied.map_err(|err| err.to_string())
+            })
+            .await
+            .map_err(|err| format!("copying task failed: {}", err))?
+        };
+        copied.map_err(|err| {
             let msg = format!(
                 "Failed to install {}: could not copy {} to {}: {}",
                 package_name,
@@ -648,22 +1002,29 @@ where
                 err
             );
             OUTPUT.error(&msg);
-            error!("{}", msg);
-            Reported(msg)
+            ReportedError(msg)
         })?;
         staged
     } else {
         package_path_abs
     };
 
-    let library_path_r = crate::utils::r_path(&library_path_abs);
+    // Build into an empty library and move the package into the real one only
+    // once it is complete.
+    // `--no-lock`: the build library is private to this install #525
+    let build_lib = TempLibrary::create(&library_path_abs)?;
+    let build_lib_r = crate::utils::r_path(build_lib.path());
+    let r_libs = build_r_libs(&library_path_abs, std::env::var("R_LIBS").ok().as_deref());
+
     let package_path_r = crate::utils::r_path(&package_path_abs);
     let status = Command::new(r_binary)
         .arg("CMD")
         .arg("INSTALL")
+        .arg("--no-lock")
         .arg("-l")
-        .arg(&library_path_r)
+        .arg(&build_lib_r)
         .arg(&package_path_r)
+        .env("R_LIBS", &r_libs)
         .current_dir(run_dir.path())
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_file_stderr))
@@ -676,9 +1037,11 @@ where
         // package built, and not what rig recorded in it. The provenance fields
         // are added on every install anyway, including on the installs that come
         // out of this cache.
-        cache_build(pkg, library_path).await;
+        cache_build(pkg, build_lib.path()).await;
 
-        patch_description(&library_path.join(package_name), pkg)?;
+        let built = build_lib.path().join(package_name);
+        patch_description(&built, pkg)?;
+        move_into_library(&build_lib, &library_path_abs, package_name)?;
 
         // User output: Use custom print function if provided, otherwise use OUTPUT
         let msg = format!("Installed {} {}", package_name, pkg.version);
@@ -688,7 +1051,7 @@ where
             OUTPUT.success(&msg);
         }
 
-        info!(
+        debug!(
             "Successfully installed package {} to {} (log: {})",
             package_name,
             library_path.display(),
@@ -706,7 +1069,7 @@ where
         } else {
             format!("\n  Missing system packages: {}", missing.join(", "))
         };
-        if let Some(long) = crate::utils::long_path_hint(&[&library_path_r, &package_path_r]) {
+        if let Some(long) = crate::utils::long_path_hint(&[&build_lib_r, &package_path_r]) {
             hint.push_str(&long);
         }
         OUTPUT.error(&format!(
@@ -716,14 +1079,28 @@ where
             hint
         ));
 
-        error!(
+        // With `-v`, show the whole build log as well, e.g. for CI and
+        // Docker builds, where the log file is gone after the run. #535
+        if OUTPUT.is_verbose() {
+            let log = std::fs::read(&log_file_path)
+                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+                .unwrap_or_else(|err| format!("cannot read {}: {}", log_file_path.display(), err));
+            OUTPUT.println(&format!(
+                "--- {} ---\n{}\n--- end of {} ---",
+                log_file_path.display(),
+                log.trim_end(),
+                log_file_path.display()
+            ));
+        }
+
+        debug!(
             "Installation failed for {} from {}: exit code {}",
             package_name,
             package_path.display(),
             status.code().unwrap_or(-1)
         );
 
-        Err(Box::new(Reported(format!(
+        Err(Box::new(ReportedError(format!(
             "Installation failed for {}",
             package_name
         ))))
@@ -873,10 +1250,12 @@ where
 
     OUTPUT.status(&format!("Installing {} packages.", package_count));
 
-    info!(
+    debug!(
         "Installing {} packages in dependency order with max_concurrent={}",
         package_count, max_concurrent
     );
+
+    remove_stale_temp_libraries(library_path);
 
     let package_map: Arc<HashMap<String, PackageInfo>> = Arc::new(
         packages
@@ -1038,11 +1417,6 @@ where
                         },
                         pkg_name
                     ));
-                    info!(
-                        "Skipping {} because {} failed",
-                        blocked.join(", "),
-                        pkg_name
-                    );
                     for name in blocked {
                         skipped_map.insert(name, pkg_name.clone());
                     }
@@ -1096,8 +1470,6 @@ where
             remaining.join(", ")
         );
 
-        error!("{}: {:?}", err_msg, remaining);
-
         return Err(err_msg.into());
     }
 
@@ -1108,7 +1480,7 @@ where
         skipped_names.sort();
         let err_msg = failure_summary(&failed_names, &skipped_names, final_installed);
 
-        error!(
+        debug!(
             "Installation completed: {} succeeded, {} failed, {} skipped",
             final_installed, final_failed, final_skipped
         );
@@ -1120,8 +1492,6 @@ where
         "Installed all {} packages successfully",
         final_installed
     ));
-
-    info!("Successfully installed all {} packages", final_installed);
 
     Ok(())
 }
@@ -1140,15 +1510,7 @@ pub fn install_packages(
 ) -> Result<usize, Box<dyn Error>> {
     let total = packages.len();
 
-    let install_pb = ProgressBar::new(total as u64);
-    install_pb.set_style(
-        ProgressStyle::default_bar()
-            .template("{msg} [{bar:40.green/blue}] {pos}/{len} packages")
-            .unwrap()
-            .progress_chars("=>-"),
-    );
-    install_pb.set_message("Installing");
-    OUTPUT.set_progress_bar(Some(install_pb.clone()));
+    let install_pb = OUTPUT.progress(total as u64, "Installing");
 
     let installed_count = Cell::new(0);
 
@@ -1175,8 +1537,7 @@ pub fn install_packages(
         }),
     ));
 
-    install_pb.finish_and_clear();
-    OUTPUT.set_progress_bar(None);
+    install_pb.finish();
     result?;
 
     Ok(installed_count.get())
@@ -1592,6 +1953,532 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(src.join("DESCRIPTION")).unwrap(),
             "Package: foo\n"
+        );
+    }
+
+    // ----------------------------------------------------------------
+    // Building a source package
+
+    /// A stand-in for `R` that handles `R CMD INSTALL ... -l <lib> <pkg>` by
+    /// running the shell snippet `body` with `$lib` set to the `-l` library,
+    /// `$pkg` to the package (the last argument) and `$args` to all
+    /// arguments, so that tests can see what rig asks of a build without a
+    /// real R.
+    #[cfg(unix)]
+    fn fake_r(dir: &Path, body: &str) -> String {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join("R");
+        let script = format!(
+            r#"#!/bin/sh
+args="$*"
+while [ $# -gt 0 ]; do
+  if [ "$1" = "-l" ]; then lib="$2"; fi
+  pkg="$1"
+  shift
+done
+{}
+"#,
+            body
+        );
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path.display().to_string()
+    }
+
+    /// A source package `foo` and an empty library, both under `tmp`.
+    #[cfg(unix)]
+    fn source_setup(tmp: &Path) -> (PackageInfo, PathBuf) {
+        let tarball = tmp.join("foo_1.0.0.tar.gz");
+        std::fs::write(&tarball, "").unwrap();
+        let mut pkg = info("foo", &tarball, Some("abc"), &[]);
+        pkg.binary = false;
+        let lib = tmp.join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        (pkg, lib.canonicalize().unwrap())
+    }
+
+    #[cfg(unix)]
+    fn leftovers(lib: &Path) -> Vec<String> {
+        std::fs::read_dir(lib)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .filter(|name| name.starts_with(".rig-"))
+            .collect()
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_source_package_is_built_in_its_own_library_then_moved_in() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (pkg, lib) = source_setup(tmp.path());
+        let r = fake_r(
+            tmp.path(),
+            r#"mkdir -p "$lib/foo"
+printf 'Package: foo\nVersion: 1.0.0\n' > "$lib/foo/DESCRIPTION"
+echo "$lib" > "$lib/foo/built-in"
+echo "$R_LIBS" > "$lib/foo/r-libs"
+echo "$args" > "$lib/foo/args""#,
+        );
+
+        r_cmd_install::<fn(&str)>(&pkg, &lib, &r, None)
+            .await
+            .unwrap();
+
+        let built_in = std::fs::read_to_string(lib.join("foo/built-in")).unwrap();
+        let built_in = Path::new(built_in.trim());
+        assert_eq!(built_in.parent(), Some(lib.as_path()));
+        assert_ne!(built_in, lib);
+        let r_libs = std::fs::read_to_string(lib.join("foo/r-libs")).unwrap();
+        assert_eq!(r_libs.trim().split(':').next(), lib.to_str());
+        let args = std::fs::read_to_string(lib.join("foo/args")).unwrap();
+        assert!(
+            args.split_whitespace().any(|a| a == "--no-lock"),
+            "{}",
+            args
+        );
+        let desc = std::fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
+        assert!(desc.contains("RemoteHash: abc\n"), "{}", desc);
+        assert!(leftovers(&lib).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failed_source_build_leaves_the_previous_install_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (pkg, lib) = source_setup(tmp.path());
+        std::fs::create_dir_all(lib.join("foo")).unwrap();
+        std::fs::write(
+            lib.join("foo/DESCRIPTION"),
+            "Package: foo\nVersion: 0.9.0\n",
+        )
+        .unwrap();
+        let r = fake_r(
+            tmp.path(),
+            r#"mkdir -p "$lib/foo"
+echo partial > "$lib/foo/DESCRIPTION"
+exit 1"#,
+        );
+
+        assert!(r_cmd_install::<fn(&str)>(&pkg, &lib, &r, None)
+            .await
+            .is_err());
+
+        let desc = std::fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
+        assert_eq!(desc, "Package: foo\nVersion: 0.9.0\n");
+        assert!(leftovers(&lib).is_empty());
+    }
+
+    /// A library `lib` under `tmp`, and an empty temporary library in it.
+    fn move_setup(tmp: &Path) -> (PathBuf, TempLibrary) {
+        let lib = tmp.join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        let temp_lib = TempLibrary::create(&lib).unwrap();
+        (lib, temp_lib)
+    }
+
+    #[test]
+    fn move_into_library_replaces_the_old_package() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (lib, temp_lib) = move_setup(tmp.path());
+        std::fs::create_dir_all(lib.join("foo")).unwrap();
+        std::fs::write(lib.join("foo/old"), "").unwrap();
+        std::fs::create_dir_all(temp_lib.path().join("foo")).unwrap();
+        std::fs::write(temp_lib.path().join("foo/new"), "").unwrap();
+
+        move_into_library(&temp_lib, &lib, "foo").unwrap();
+
+        assert!(lib.join("foo/new").exists());
+        assert!(!lib.join("foo/old").exists());
+        assert!(!temp_lib.path().join("foo").exists());
+        assert!(!temp_lib.path().join(".old").exists());
+    }
+
+    #[test]
+    fn move_into_library_works_without_an_old_package() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (lib, temp_lib) = move_setup(tmp.path());
+        std::fs::create_dir_all(temp_lib.path().join("foo")).unwrap();
+        std::fs::write(temp_lib.path().join("foo/new"), "").unwrap();
+
+        move_into_library(&temp_lib, &lib, "foo").unwrap();
+
+        assert!(lib.join("foo/new").exists());
+        assert!(!temp_lib.path().join(".old").exists());
+    }
+
+    #[test]
+    fn move_into_library_puts_the_old_package_back_on_failure() {
+        let tmp = tempfile::tempdir().unwrap();
+        // No `<temp_lib>/foo`, so the second rename fails.
+        let (lib, temp_lib) = move_setup(tmp.path());
+        std::fs::create_dir_all(lib.join("foo")).unwrap();
+        std::fs::write(lib.join("foo/old"), "").unwrap();
+
+        assert!(move_into_library(&temp_lib, &lib, "foo").is_err());
+
+        assert!(lib.join("foo/old").exists());
+        assert!(!temp_lib.path().join(".old").exists());
+    }
+
+    /// Two installs of the same package that finish at the same time both
+    /// succeed, and one of them ends up in the library. Racy by nature, so it
+    /// tries many times; without the retry in `move_into_library` some of the
+    /// moves fail.
+    #[test]
+    fn concurrent_moves_into_the_library_both_succeed() {
+        use std::sync::{Arc, Barrier};
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = tmp.path().join("lib");
+        std::fs::create_dir_all(lib.join("foo")).unwrap();
+        for round in 0..200 {
+            let barrier = Arc::new(Barrier::new(2));
+            let threads: Vec<_> = ["a", "b"]
+                .into_iter()
+                .map(|who| {
+                    let lib = lib.clone();
+                    let barrier = barrier.clone();
+                    std::thread::spawn(move || {
+                        let temp_lib = TempLibrary::create(&lib).unwrap();
+                        let staged = temp_lib.path().join("foo");
+                        std::fs::create_dir(&staged).unwrap();
+                        std::fs::write(staged.join(who), "").unwrap();
+                        barrier.wait();
+                        move_into_library(&temp_lib, &lib, "foo").map_err(|e| e.to_string())
+                    })
+                })
+                .collect();
+            for t in threads {
+                t.join()
+                    .unwrap()
+                    .unwrap_or_else(|e| panic!("round {}: {}", round, e));
+            }
+            let files: Vec<_> = std::fs::read_dir(lib.join("foo")).unwrap().collect();
+            assert_eq!(files.len(), 1, "round {}", round);
+            let entries: Vec<_> = std::fs::read_dir(&lib).unwrap().collect();
+            assert_eq!(entries.len(), 1, "round {}: leftovers", round);
+        }
+    }
+
+    fn in_use() -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::PermissionDenied, "in use")
+    }
+
+    #[test]
+    fn retry_transient_tries_again_until_it_works() {
+        let mut calls = 0;
+        let result = retry_transient(
+            || {
+                calls += 1;
+                if calls < 3 {
+                    Err(in_use())
+                } else {
+                    Ok(calls)
+                }
+            },
+            |_| true,
+        );
+        assert_eq!(result.unwrap(), 3);
+    }
+
+    #[test]
+    fn retry_transient_gives_up_eventually() {
+        let mut calls = 0;
+        let result: std::io::Result<()> = retry_transient(
+            || {
+                calls += 1;
+                Err(in_use())
+            },
+            |_| true,
+        );
+        assert!(result.is_err());
+        assert_eq!(calls, 8);
+    }
+
+    #[test]
+    fn retry_transient_does_not_retry_other_errors() {
+        let mut calls = 0;
+        let result: std::io::Result<()> = retry_transient(
+            || {
+                calls += 1;
+                Err(in_use())
+            },
+            |_| false,
+        );
+        assert!(result.is_err());
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn is_file_in_use_is_windows_only() {
+        let denied = std::io::Error::from_raw_os_error(5);
+        let sharing = std::io::Error::from_raw_os_error(32);
+        let missing = std::io::Error::new(std::io::ErrorKind::NotFound, "missing");
+        assert_eq!(is_file_in_use(&denied), cfg!(windows));
+        assert_eq!(is_file_in_use(&sharing), cfg!(windows));
+        assert!(!is_file_in_use(&missing));
+    }
+
+    #[test]
+    fn temp_library_pid_parses_rigs_temporary_directories() {
+        assert_eq!(temp_library_pid(".rig-123-0"), Some(123));
+        assert_eq!(temp_library_pid(".rig-123-45"), Some(123));
+        assert_eq!(temp_library_pid(".rig-staging-foo-123"), Some(123));
+        assert_eq!(temp_library_pid(".rig-staging-foo.bar-123"), Some(123));
+        assert_eq!(temp_library_pid("foo"), None);
+        assert_eq!(temp_library_pid(".rig-123"), None);
+        assert_eq!(temp_library_pid(".rig-abc-0"), None);
+        assert_eq!(temp_library_pid(".rig-123-x"), None);
+        assert_eq!(temp_library_pid(".rig-staging-foo"), None);
+        assert_eq!(temp_library_pid("_logs"), None);
+    }
+
+    /// The pid of a process that has exited.
+    fn dead_pid() -> u32 {
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("--list")
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        pid
+    }
+
+    #[test]
+    fn process_is_running_knows_running_and_exited_processes() {
+        assert!(process_is_running(std::process::id()));
+        assert!(!process_is_running(dead_pid()));
+    }
+
+    #[test]
+    fn stale_temp_libraries_are_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = tmp.path();
+        let dead = dead_pid();
+        let me = std::process::id();
+        let stale = [
+            format!(".rig-{}-0", dead),
+            format!(".rig-staging-foo-{}", dead),
+        ];
+        let kept = [
+            format!(".rig-{}-0", me),
+            "foo".to_string(),
+            "_logs".to_string(),
+            ".rig-other".to_string(),
+        ];
+        for name in stale.iter().chain(kept.iter()) {
+            std::fs::create_dir_all(lib.join(name).join("sub")).unwrap();
+        }
+
+        remove_stale_temp_libraries(lib);
+
+        for name in &stale {
+            assert!(!lib.join(name).exists(), "{}", name);
+        }
+        for name in &kept {
+            assert!(lib.join(name).exists(), "{}", name);
+        }
+    }
+
+    #[test]
+    fn temp_libraries_get_short_distinct_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = TempLibrary::create(tmp.path()).unwrap();
+        let b = TempLibrary::create(tmp.path()).unwrap();
+        assert_ne!(a.path(), b.path());
+        let prefix = format!(".rig-{}-", std::process::id());
+        for lib in [&a, &b] {
+            assert_eq!(lib.path().parent(), Some(tmp.path()));
+            let name = lib.path().file_name().unwrap().to_str().unwrap();
+            let n = name.strip_prefix(&prefix).expect(name);
+            assert!(n.parse::<usize>().is_ok(), "{}", name);
+            assert!(lib.path().is_dir());
+        }
+    }
+
+    #[test]
+    fn a_temp_library_is_deleted_unless_kept() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (_lib, temp_lib) = move_setup(tmp.path());
+        let path = temp_lib.path().to_path_buf();
+        drop(temp_lib);
+        assert!(!path.exists());
+
+        let (_lib, temp_lib) = move_setup(tmp.path());
+        let path = temp_lib.path().to_path_buf();
+        temp_lib.keep();
+        drop(temp_lib);
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn build_r_libs_puts_the_library_first() {
+        let lib = Path::new("/lib");
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        assert_eq!(
+            build_r_libs(lib, None),
+            crate::utils::r_path(lib).display().to_string()
+        );
+        assert_eq!(build_r_libs(lib, Some("")), build_r_libs(lib, None));
+        assert_eq!(
+            build_r_libs(lib, Some("/other")),
+            format!("{}{}/other", build_r_libs(lib, None), sep)
+        );
+    }
+
+    /// A source package of `remote_type` at `checkout`, and an empty library.
+    #[cfg(unix)]
+    fn dir_source_setup(tmp: &Path, checkout: &Path, remote_type: &str) -> (PackageInfo, PathBuf) {
+        let (mut pkg, lib) = source_setup(tmp);
+        pkg.file_path = checkout.to_path_buf();
+        pkg.remote
+            .insert(REMOTE_TYPE_FIELD.to_string(), remote_type.to_string());
+        (pkg, lib)
+    }
+
+    /// An `R` that builds the directory it is given, recording where it built
+    /// from and whether it found an object file there.
+    #[cfg(unix)]
+    fn fake_r_building_a_directory(dir: &Path) -> String {
+        fake_r(
+            dir,
+            r#"test -f "$pkg/src/foo.c" || exit 1
+if test -f "$pkg/src/foo.o"; then o=yes; else o=no; fi
+touch "$pkg/src/foo.o"
+mkdir -p "$lib/foo"
+cp "$pkg/DESCRIPTION" "$lib/foo/DESCRIPTION"
+echo "$pkg" > "$lib/foo/built-from"
+echo "$o" > "$lib/foo/had-object""#,
+        )
+    }
+
+    /// An extracted `url::` archive in the cache is shared by every build of
+    /// it, so a build must not leave its object files in it. It is not a git
+    /// checkout, so it is copied without git.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_url_source_directory_is_built_from_a_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let checkout = tmp.path().join("checkout");
+        std::fs::create_dir_all(checkout.join("src")).unwrap();
+        std::fs::write(checkout.join("DESCRIPTION"), DESC).unwrap();
+        std::fs::write(checkout.join("src/foo.c"), "").unwrap();
+        let (pkg, lib) = dir_source_setup(tmp.path(), &checkout, "url");
+        let r = fake_r_building_a_directory(tmp.path());
+
+        r_cmd_install::<fn(&str)>(&pkg, &lib, &r, None)
+            .await
+            .unwrap();
+
+        assert!(!checkout.join("src/foo.o").exists());
+        let built_from = std::fs::read_to_string(lib.join("foo/built-from")).unwrap();
+        assert_ne!(
+            Path::new(built_from.trim()),
+            checkout.canonicalize().unwrap()
+        );
+        assert!(!Path::new(built_from.trim()).exists());
+    }
+
+    /// The name is checked before anything touches the file system or runs
+    /// R, so this needs no fake R and runs on every platform.
+    #[tokio::test]
+    async fn a_package_name_that_is_not_a_name_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = tmp.path().join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        let archive = tmp.path().join("foo_1.0.0.tgz");
+        std::fs::write(&archive, "").unwrap();
+        for name in [
+            "../victim",
+            "..\\victim",
+            "/abs",
+            "C:\\abs",
+            "C:abs",
+            "a/b",
+            "a\\b",
+            ".hidden",
+            "",
+            "1abc",
+        ] {
+            for binary in [true, false] {
+                let mut pkg = info(name, &archive, None, &[]);
+                pkg.binary = binary;
+                let err = install_package::<fn(&str)>(&pkg, &lib, "no-such-R", None)
+                    .await
+                    .unwrap_err();
+                assert!(
+                    err.to_string().contains("not a valid R package name"),
+                    "{}",
+                    err
+                );
+            }
+        }
+        assert!(!tmp.path().join("victim").exists());
+        assert_eq!(std::fs::read_dir(&lib).unwrap().count(), 0);
+    }
+
+    /// A git source whose `DESCRIPTION` git does not track is an error, not
+    /// a silent fallback to copying everything.
+    #[test]
+    fn an_untracked_git_source_is_an_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let status = std::process::Command::new(crate::pkgsource::git::tests::git_binary())
+            .args(["init", "--quiet"])
+            .current_dir(tmp.path())
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let src = tmp.path().join("pkg");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("DESCRIPTION"), DESC).unwrap();
+
+        let dst = tmp.path().join("staged");
+        assert!(stage_tracked_source(&src, &dst).is_err());
+        assert!(!dst.exists());
+    }
+
+    /// A checkout an earlier rig built in place holds object files, which a
+    /// new build must not start from.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn artifacts_in_a_git_checkout_are_not_built_from() {
+        let tmp = tempfile::tempdir().unwrap();
+        let checkout = tmp.path().join("checkout");
+        std::fs::create_dir_all(checkout.join("src")).unwrap();
+        std::fs::write(checkout.join("DESCRIPTION"), DESC).unwrap();
+        std::fs::write(checkout.join("src/foo.c"), "").unwrap();
+        for args in [
+            vec!["init", "--quiet"],
+            vec!["add", "."],
+            vec![
+                "-c",
+                "user.name=rig",
+                "-c",
+                "user.email=rig@example.com",
+                "commit",
+                "--quiet",
+                "-m",
+                "init",
+            ],
+        ] {
+            let status = std::process::Command::new(crate::pkgsource::git::tests::git_binary())
+                .args(&args)
+                .current_dir(&checkout)
+                .status()
+                .unwrap();
+            assert!(status.success());
+        }
+        std::fs::write(checkout.join("src/foo.o"), "stale").unwrap();
+        let (pkg, lib) = dir_source_setup(tmp.path(), &checkout, "git");
+        let r = fake_r_building_a_directory(tmp.path());
+
+        r_cmd_install::<fn(&str)>(&pkg, &lib, &r, None)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(lib.join("foo/had-object")).unwrap(),
+            "no\n"
         );
     }
 

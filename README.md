@@ -7,6 +7,10 @@
 
 Install, remove, configure R versions. Manage R packages and projects.
 
+## Installation
+
+To install rig, see <https://rig.r-lib.org/install.html>.
+
 ## Features
 
 **Multiple R versions, side by side**

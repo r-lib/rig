@@ -6,7 +6,7 @@ Fetch Posit Package Manager's build log for one CRAN package.
 
 `--platform` and `--arch` name the build target to look up: `--platform` is a PPM
 target name such as `macos`, `windows`, or a Linux codename like `jammy` (run
-[`rig ppm platforms`](ppm.qmd#rig-ppm-platforms) or [`rig ppm builds`](ppm.qmd#rig-ppm-builds) to see the names PPM uses).
+[`rig ppm platforms`](ppm.qmd#rig-ppm-platforms) or [`rig ppm pkg builds`](ppm.qmd#rig-ppm-pkg-builds) to see the names PPM uses).
 `--platform` also takes a rig platform string, e.g.
 `x86_64-unknown-linux-gnu-ubuntu-22.04`, which names the arch, too (see [`rig
 system detect-platform`](system.qmd#rig-system-detect-platform)).
@@ -25,8 +25,8 @@ shown.
 
 ```sh
 # The current platform, architecture and default R version
-rig ppm build-log pak
+rig ppm pkg build-log pak
 
 # A specific target and package version
-rig ppm build-log dplyr --platform noble --r-version 4.6 --version 1.2.1
+rig ppm pkg build-log dplyr --platform noble --r-version 4.6 --version 1.2.1
 ```

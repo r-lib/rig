@@ -32,18 +32,13 @@ HTTP query.
 ## Which server
 
 `https://packagemanager.posit.co` by default, or the instance
-`PACKAGEMANAGER_ADDRESS` names. `RIG_PPM_STATUS_URL` overrides the URL of the
-status document alone and wins over `PACKAGEMANAGER_ADDRESS`; the report's
-first line shows the URL actually used.
+`PACKAGEMANAGER_ADDRESS` names. The report's first line shows the URL actually
+used.
 
 ## Examples
 
 ```sh
-# The public instance
 rig ppm status
-
-# Your own instance
-PACKAGEMANAGER_ADDRESS=https://ppm.example.com rig ppm status
 
 # The complete status document, including fields rig does not display
 rig ppm status --json

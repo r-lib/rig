@@ -24,7 +24,8 @@
 //!     rvenv.cfg             # what this environment was built against
 //!     onload.R              # rest of the shim package's `.onLoad()`
 //!     etc/repositories      # what R_REPOSITORIES points at
-//!     bin/R, bin/Rscript    # wrapper scripts (.exe shims on Windows)
+//!     bin/R, bin/Rscript    # wrapper scripts (.exe shims + .shim configs
+//!                           # on Windows)
 //!     bin/activate*         # shell activation scripts
 //! ```
 //!
@@ -63,7 +64,7 @@ use std::path::{Path, PathBuf};
 
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 
-use log::info;
+use log::debug;
 
 use crate::output::OUTPUT;
 
@@ -244,32 +245,80 @@ fn renviron_block() -> String {
 # R_DEFAULT_PACKAGES replaces R's default package list rather than adding to
 # it, so the whole list has to be spelled out.
 #
+# The two VSCODE_R_SESS_ variables turn off the session watcher of the VS Code
+# R extension in its R profile, which runs before the project library is set
+# up, so the watcher could not load its packages. `.rvenv/onload.R` puts them
+# back from the RVENV_ copies, and starts the watcher.
+#
+# For child processes set R_DEFAULT_PACKAGES to the default, so .Renviron
+# does not override it to load rvenv.
+#
+# This file is committed to version control, so do not put secrets in it.
+# Put them in .Renviron.rig instead, which `rig proj init` adds to
+# .gitignore, and R reads at startup in a synced project, after ~/.Renviron.
+#
 # Note that `R --vanilla` ignores this file entirely.
 RVENV_R_LIBS_USER=\"${{R_LIBS_USER}}\"
-R_LIBS_USER=.rvenvlib
-R_DEFAULT_PACKAGES=rvenv,datasets,utils,grDevices,graphics,stats,methods
+R_LIBS_USER=\"${{RVENV_CHILD_R_LIBS_USER:-.rvenvlib}}\"
+R_DEFAULT_PACKAGES=${{R_DEFAULT_PACKAGES:-rvenv,datasets,utils,grDevices,graphics,stats,methods}}
+RVENV_VSCODE_R_SESS_STARTUP_FILE=\"${{VSCODE_R_SESS_STARTUP_FILE}}\"
+VSCODE_R_SESS_STARTUP_FILE=\"${{RVENV_CHILD_VSCODE_R_SESS_STARTUP_FILE}}\"
+RVENV_VSCODE_R_SESS_PKG_PATH=\"${{VSCODE_R_SESS_PKG_PATH}}\"
+VSCODE_R_SESS_PKG_PATH=\"${{RVENV_CHILD_VSCODE_R_SESS_PKG_PATH}}\"
 {}
 ",
         BLOCK_START, BLOCK_END
     )
 }
 
+/// The comment line in rig's `.gitignore` block that says that
+/// `rproj.lock` is committed. Every block
+/// has this line or [`GITIGNORE_LOCK_IGNORED`]. rig reads it back when
+/// it rewrites the block, so the choice survives, see
+/// [`update_root_gitignore`].
+const GITIGNORE_LOCK_COMMITTED: &str = "# rig: commit rproj.lock: yes";
+
+/// The comment line in rig's `.gitignore` block that says that
+/// `rproj.lock` is ignored, as `rig proj import` sets it up for R packages. See [`GITIGNORE_LOCK_COMMITTED`].
+const GITIGNORE_LOCK_IGNORED: &str = "# rig: commit rproj.lock: no (R package)";
+
 /// The block rig manages in the project's root `.gitignore`. Everything in
 /// `.rvenv` is machine-specific; the pre-built rvenv package a fresh clone
 /// needs before the first `rig proj sync` lives in `.rvenvlib` instead, which
 /// is tracked. `.rvenvlib` has its own `.gitignore`, see
 /// [`shim_gitignore_body`].
-fn root_gitignore_block() -> String {
+///
+/// `.Renviron.rig` is the project's untracked environment file, for secrets
+/// and other per-machine settings, which `.rvenv/onload.R` reads at startup.
+///
+/// With `ignore_lock` the block also ignores `rproj.lock`, the default for
+/// R packages. A package is checked against many versions of its
+/// dependencies, so it should not commit a lock file. A fresh clone runs
+/// `rig proj sync`, which locks first if there is no `rproj.lock`.
+fn root_gitignore_block(ignore_lock: bool) -> String {
+    let (mode, extra) = if ignore_lock {
+        (
+            GITIGNORE_LOCK_IGNORED,
+            "\
+# Not committed for this R package, run `rig proj sync` after cloning.
+/rproj.lock
+",
+        )
+    } else {
+        (GITIGNORE_LOCK_COMMITTED, "")
+    };
     format!(
         "\
 {}
-# Everything in .rvenv is machine-specific output of `rig proj sync`; it can
-# be deleted and rebuilt at any time. The committed rvenv shim package lives
-# in .rvenvlib instead.
-/.rvenv/
 {}
+# Everything in .rvenv is machine-specific output of `rig proj sync`; it can
+# be deleted and rebuilt at any time.
+/.rvenv/
+# Project environment variables that must not be committed, e.g. secrets.
+/.Renviron.rig
+{}{}
 ",
-        BLOCK_START, BLOCK_END
+        BLOCK_START, mode, extra, BLOCK_END
     )
 }
 
@@ -411,13 +460,13 @@ pub fn link_library_compat_symlink(link_path: &Path, target: &Path) -> Result<()
         // sync -- the library is still fully usable at `target`, just not
         // discoverable at the old `.rvenv/lib` path.
         if let Err(err) = std::os::windows::fs::symlink_dir(target, link_path) {
-            log::warn!(
+            OUTPUT.warn(&format!(
                 "Could not create a compatibility link at {}: {}. \
                  The library is still usable at {}.",
                 link_path.display(),
                 err,
                 target.display()
-            );
+            ));
         }
     }
     Ok(())
@@ -816,8 +865,51 @@ fn marked_block(path: &Path, text: &str) -> Result<Option<(usize, usize)>, Box<d
 /// their ignore rules. Same fenced-block approach as
 /// `library_update_rprofile` uses for `Rprofile.site`. Running this twice is
 /// a no-op.
-pub fn update_root_gitignore(root: &Path) -> Result<(), Box<dyn Error>> {
-    update_marked_block(&root.join(RVENV_GITIGNORE_FILE), &root_gitignore_block())
+///
+/// `ignore_lock` says whether the block ignores `rproj.lock`,
+/// `.Renviron` and `.rvenvlib`, see [`root_gitignore_block`]. `None` keeps
+/// what the existing block says, see [`gitignore_ignores_lock`], and a
+/// new block commits them.
+pub fn update_root_gitignore(root: &Path, ignore_lock: Option<bool>) -> Result<(), Box<dyn Error>> {
+    let ignore = match ignore_lock {
+        Some(x) => x,
+        None => gitignore_ignores_lock(root)?,
+    };
+    update_marked_block(
+        &root.join(RVENV_GITIGNORE_FILE),
+        &root_gitignore_block(ignore),
+    )
+}
+
+/// Whether rig's block in the root `.gitignore` ignores `rproj.lock`,
+/// `.Renviron` and `.rvenvlib`, i.e. it has the
+/// [`GITIGNORE_LOCK_IGNORED`] comment. False if there is no
+/// `.gitignore`, no block, or a block from an older rig, without a mode
+/// comment.
+pub fn gitignore_ignores_lock(root: &Path) -> Result<bool, Box<dyn Error>> {
+    let path = root.join(RVENV_GITIGNORE_FILE);
+    if !path.exists() {
+        return Ok(false);
+    }
+    let text = fs::read_to_string(&path)?;
+    let Some((start, end)) = marked_block(&path, &text)? else {
+        return Ok(false);
+    };
+    Ok(text
+        .lines()
+        .skip(start)
+        .take(end - start)
+        .any(|l| l.trim() == GITIGNORE_LOCK_IGNORED))
+}
+
+/// Set up rig's block in the root `.gitignore` for an R package: ignore
+/// `rproj.lock`. Used by `rig proj import`.
+/// Returns whether the file changed.
+pub fn set_package_gitignore(root: &Path) -> Result<bool, Box<dyn Error>> {
+    let path = root.join(RVENV_GITIGNORE_FILE);
+    let before = fs::read_to_string(&path).ok();
+    update_root_gitignore(root, Some(true))?;
+    Ok(fs::read_to_string(&path).ok() != before)
 }
 
 /// Create the project's `.Renviron`, or add rig's block to it.
@@ -879,6 +971,57 @@ fn update_marked_block(path: &Path, block: &str) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
     write_atomically(path, new.as_bytes())
+}
+
+// ------------------------------------------------------------ .Rbuildignore --
+
+pub const RBUILDIGNORE_FILE: &str = ".Rbuildignore";
+
+/// The `.Rbuildignore` patterns of rig's project files. None of them belong
+/// in a package tarball: `rproj.toml` and `rproj.lock` are rig's manifest
+/// and lock file, `.rvenv` and `.rvenvlib` the project environment, and
+/// `.Renviron` / `.Renviron.rig` set up that environment (the latter may
+/// also hold secrets).
+const RBUILDIGNORE_PATTERNS: [&str; 6] = [
+    r"^rproj\.toml$",
+    r"^rproj\.lock$",
+    r"^\.rvenv$",
+    r"^\.rvenvlib$",
+    r"^\.Renviron$",
+    r"^\.Renviron\.rig$",
+];
+
+/// Add rig's project files to `<root>/.Rbuildignore`, creating it if
+/// needed. Like `usethis::use_build_ignore()`, this appends each pattern
+/// that is not in the file yet, as its own line, and leaves the rest of the
+/// file alone. No block markers: R reads every line of `.Rbuildignore` as a
+/// regex, it has no comments. Returns whether the file changed.
+pub fn update_rbuildignore(root: &Path) -> Result<bool, Box<dyn Error>> {
+    let path = root.join(RBUILDIGNORE_FILE);
+    let text = if path.exists() {
+        fs::read_to_string(&path)?
+    } else {
+        String::new()
+    };
+    let existing: Vec<&str> = text.lines().map(str::trim).collect();
+    let missing: Vec<&str> = RBUILDIGNORE_PATTERNS
+        .iter()
+        .copied()
+        .filter(|p| !existing.contains(p))
+        .collect();
+    if missing.is_empty() {
+        return Ok(false);
+    }
+    let mut new = text.clone();
+    if !new.is_empty() && !new.ends_with('\n') {
+        new.push('\n');
+    }
+    for p in missing {
+        new.push_str(p);
+        new.push('\n');
+    }
+    write_atomically(&path, new.as_bytes())?;
+    Ok(true)
 }
 
 // -------------------------------------------------------------- shim package --
@@ -961,7 +1104,7 @@ pub fn rvenv_init(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let renviron = root.join(RVENV_RENVIRON_FILE);
     update_project_renviron(root)?;
 
-    update_root_gitignore(root)?;
+    update_root_gitignore(root, None)?;
 
     // The project library itself is not created here: `rig proj sync` makes
     // it, and until then there is nothing to put in it.
@@ -1018,12 +1161,12 @@ pub fn ensure_rvenv_files(root: &Path) -> Result<(), Box<dyn Error>> {
                 "Filled in missing {}. Commit all of {}.{}",
                 what, RVENV_SHIM_DIR, hint
             ));
-            info!("Filled in missing {} in {}", what, root.display());
+            debug!("Filled in missing {} in {}", what, root.display());
         }
     } else {
         rvenv_init(root)?;
         OUTPUT.info("Filled in missing .Renviron/.rvenvlib for this project");
-        info!(
+        debug!(
             "Filled in missing .Renviron/.rvenvlib in {}",
             root.display()
         );
@@ -1065,11 +1208,11 @@ fn refresh_project_renviron(root: &Path) -> Result<(), Box<dyn Error>> {
     match old {
         None => {
             OUTPUT.info("Created missing .Renviron for this project");
-            info!("Created missing {}", path.display());
+            debug!("Created missing {}", path.display());
         }
         Some(old) if fs::read_to_string(&path)? != old => {
             OUTPUT.info("Updated rig's settings in the project .Renviron");
-            info!("Updated rig's block in {}", path.display());
+            debug!("Updated rig's block in {}", path.display());
         }
         Some(_) => {}
     }
@@ -1188,9 +1331,10 @@ pub fn read_rvenv_cfg(root: &Path) -> Result<Option<RvenvCfg>, Box<dyn Error>> {
 
 /// The environment variables that make an R session use the project.
 ///
-/// The one source of truth for the activation environment: the Windows
-/// `.exe` shims bake this list in verbatim, and the Unix wrapper and the
-/// activation scripts spell out the same variables, relative to `$RVENV`.
+/// The one source of truth for the activation environment: the `.shim`
+/// config files of the Windows `.exe` shims list it verbatim, and the Unix
+/// wrapper and the activation scripts spell out the same variables, relative
+/// to `$RVENV`.
 ///
 /// `R_LIBS` is deliberately empty, so that the project library stays
 /// `.libPaths()[1]`, which is where `install.packages()` writes.
@@ -1338,8 +1482,8 @@ fn shell_exports() -> String {
 
 #[cfg(windows)]
 fn shell_exports() -> String {
-    // The Windows wrappers are `.exe` shims with the same variables baked
-    // into them, so there is no shell wrapper to fill in here.
+    // The Windows wrappers are `.exe` shims with the same variables in their
+    // `.shim` config files, so there is no shell wrapper to fill in here.
     String::new()
 }
 
@@ -1505,16 +1649,24 @@ fn write_wrappers(
         ("Rscript.exe", rscript_of(r_binary)),
     ] {
         let path = bin.join(file);
+        let config = crate::shim_format::config_path(&path);
         let target_str = target
             .to_str()
             .ok_or("The R installation path is not valid Unicode")?
             .to_string();
+        // The shim `.exe` is an unmodified copy of `rig-shim.exe`, and the
+        // project's settings go into its `.shim` config file, so check both
+        // for changes.
+        let exe_before = fs::read(&path).ok();
+        let config_before = fs::read(&config).ok();
         // No marker: these shims are not rig's default-version quick links,
         // they belong to one project and one R installation.
-        if let Some(p) = write_if_changed(path.clone(), || {
-            crate::windows::write_shim_link_env(&path, &target_str, "", &envs)
-        })? {
-            written.push(p);
+        crate::windows::write_shim_link_env(&path, &target_str, "", &envs)?;
+        if exe_before != Some(fs::read(&path)?) {
+            written.push(path);
+        }
+        if config_before != Some(fs::read(&config)?) {
+            written.push(config);
         }
     }
     Ok(written)
@@ -1530,22 +1682,35 @@ mod tests {
         assert!(body.starts_with(&format!("{}\n", BLOCK_START)));
         assert!(body.ends_with(&format!("\n{}\n", BLOCK_END)));
         // Not the project library: this is the library the shim itself is
-        // loaded from, the shim switches to the project library.
-        assert!(body.contains("\nR_LIBS_USER=.rvenvlib\n"));
+        // loaded from, the shim switches to the project library. Child R
+        // processes of an R that loaded the shim get the parent's library
+        // path from RVENV_CHILD_R_LIBS_USER instead.
+        assert!(body.contains("\nR_LIBS_USER=\"${RVENV_CHILD_R_LIBS_USER:-.rvenvlib}\"\n"));
         // Recorded before R_LIBS_USER is overwritten, so that the shim can
         // restore it for a project that has no library yet. Quoted, because
         // R drops unquoted backslashes, which breaks Windows paths.
         assert!(body.contains("\nRVENV_R_LIBS_USER=\"${R_LIBS_USER}\"\nR_LIBS_USER="));
+        // The VS Code session watcher is turned off until `onload.R`, which
+        // restores these from the RVENV_ copies, recorded first. In child R
+        // processes they keep the parent's values, from the RVENV_CHILD_
+        // copies.
+        for var in ["VSCODE_R_SESS_STARTUP_FILE", "VSCODE_R_SESS_PKG_PATH"] {
+            assert!(body.contains(&format!(
+                "\nRVENV_{var}=\"${{{var}}}\"\n{var}=\"${{RVENV_CHILD_{var}}}\"\n",
+                var = var
+            )));
+        }
         // The shim package has to come first, and the rest of R's default
-        // package list has to be spelled out.
+        // package list has to be spelled out. Only if it is not set yet:
+        // the shim sets it without `rvenv` for child R processes.
         assert!(body.contains(
-            "\nR_DEFAULT_PACKAGES=rvenv,datasets,utils,grDevices,graphics,stats,methods\n"
+            "\nR_DEFAULT_PACKAGES=${R_DEFAULT_PACKAGES:-rvenv,datasets,utils,grDevices,graphics,stats,methods}\n"
         ));
     }
 
     #[test]
     fn the_gitignore_block_ignores_all_of_rvenv() {
-        let root = root_gitignore_block();
+        let root = root_gitignore_block(false);
         assert!(root.contains("\n/.rvenv/\n"));
         // The shim package lives outside .rvenv entirely, so there is no
         // exception to carve out.
@@ -1553,11 +1718,142 @@ mod tests {
     }
 
     #[test]
+    fn the_gitignore_block_ignores_renviron_rig() {
+        assert!(root_gitignore_block(false).contains("\n/.Renviron.rig\n"));
+    }
+
+    #[test]
+    fn the_gitignore_block_says_whether_the_lock_file_is_committed() {
+        let commit = root_gitignore_block(false);
+        assert!(commit.contains(&format!("\n{}\n", GITIGNORE_LOCK_COMMITTED)));
+        assert!(!commit.contains(GITIGNORE_LOCK_IGNORED));
+        assert!(!commit.lines().any(|l| l == "/rproj.lock"));
+
+        let ignore = root_gitignore_block(true);
+        assert!(ignore.contains(&format!("\n{}\n", GITIGNORE_LOCK_IGNORED)));
+        assert!(!ignore.contains(GITIGNORE_LOCK_COMMITTED));
+        assert!(ignore.lines().any(|l| l == "/rproj.lock"));
+
+        // `.Renviron` and `.rvenvlib` are committed either way.
+        for block in [&commit, &ignore] {
+            for p in [".Renviron", ".rvenvlib"] {
+                assert!(
+                    !block.lines().any(|l| !l.starts_with('#')
+                        && l.contains(p)
+                        && !l.contains(".Renviron.rig")),
+                    "{} ignored",
+                    p
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn package_gitignore_survives_a_rewrite() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".gitignore");
+        fs::write(&path, "*.log\n").unwrap();
+        assert!(!gitignore_ignores_lock(tmp.path()).unwrap());
+        assert!(set_package_gitignore(tmp.path()).unwrap());
+        assert!(gitignore_ignores_lock(tmp.path()).unwrap());
+        let once = fs::read_to_string(&path).unwrap();
+        assert!(once.starts_with("*.log\n"));
+        assert!(once.contains("\n/rproj.lock\n"));
+        assert_eq!(once.matches(BLOCK_START).count(), 1);
+
+        // Idempotent.
+        assert!(!set_package_gitignore(tmp.path()).unwrap());
+        assert_eq!(fs::read_to_string(&path).unwrap(), once);
+
+        // `rvenv_init()` rewrites the block keeping the mode, e.g. in a
+        // fresh clone, where `.rvenvlib` is missing.
+        rvenv_init(tmp.path()).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), once);
+
+        // Switching back drops the pattern.
+        update_root_gitignore(tmp.path(), Some(false)).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("\n/rproj.lock\n"));
+        assert!(!gitignore_ignores_lock(tmp.path()).unwrap());
+    }
+
+    #[test]
+    fn old_gitignore_block_without_mode_commits_the_lock_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".gitignore");
+        fs::write(
+            &path,
+            format!("{}\n/.rvenv/\n/.Renviron.rig\n{}\n", BLOCK_START, BLOCK_END),
+        )
+        .unwrap();
+        assert!(!gitignore_ignores_lock(tmp.path()).unwrap());
+        update_root_gitignore(tmp.path(), None).unwrap();
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            root_gitignore_block(false)
+        );
+    }
+
+    #[test]
+    fn rbuildignore_is_created_when_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(update_rbuildignore(tmp.path()).unwrap());
+        let text = fs::read_to_string(tmp.path().join(".Rbuildignore")).unwrap();
+        assert_eq!(text, RBUILDIGNORE_PATTERNS.join("\n") + "\n");
+    }
+
+    #[test]
+    fn rbuildignore_keeps_user_patterns_and_adds_only_missing_ones() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".Rbuildignore");
+        fs::write(&path, "^.*\\.Rproj$\n^\\.rvenv$").unwrap();
+        assert!(update_rbuildignore(tmp.path()).unwrap());
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.starts_with("^.*\\.Rproj$\n^\\.rvenv$\n"));
+        assert_eq!(text.matches("^\\.rvenv$").count(), 1);
+        for p in RBUILDIGNORE_PATTERNS {
+            assert!(text.lines().any(|l| l == p), "{} missing", p);
+        }
+    }
+
+    #[test]
+    fn rbuildignore_update_is_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".Rbuildignore");
+        update_rbuildignore(tmp.path()).unwrap();
+        let first = fs::read_to_string(&path).unwrap();
+        assert!(!update_rbuildignore(tmp.path()).unwrap());
+        assert_eq!(fs::read_to_string(&path).unwrap(), first);
+    }
+
+    #[test]
+    fn rbuildignore_patterns_match_only_rig_files() {
+        let res: Vec<regex::Regex> = RBUILDIGNORE_PATTERNS
+            .iter()
+            .map(|p| regex::Regex::new(p).unwrap())
+            .collect();
+        let ignored = |f: &str| res.iter().any(|r| r.is_match(f));
+        for f in [
+            "rproj.toml",
+            "rproj.lock",
+            ".rvenv",
+            ".rvenvlib",
+            ".Renviron",
+            ".Renviron.rig",
+        ] {
+            assert!(ignored(f), "{} not ignored", f);
+        }
+        for f in ["R/rproj.R", "DESCRIPTION", "inst/.Renviron", "xrproj.toml"] {
+            assert!(!ignored(f), "{} ignored", f);
+        }
+    }
+
+    #[test]
     fn gitignore_is_created_when_missing() {
         let tmp = tempfile::tempdir().unwrap();
-        update_root_gitignore(tmp.path()).unwrap();
+        update_root_gitignore(tmp.path(), None).unwrap();
         let text = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
-        assert_eq!(text, root_gitignore_block());
+        assert_eq!(text, root_gitignore_block(false));
     }
 
     #[test]
@@ -1565,7 +1861,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join(".gitignore");
         fs::write(&path, "*.Rproj\n.Rhistory\n").unwrap();
-        update_root_gitignore(tmp.path()).unwrap();
+        update_root_gitignore(tmp.path(), None).unwrap();
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.starts_with("*.Rproj\n.Rhistory\n"));
         assert!(text.contains("/.rvenv/"));
@@ -1576,9 +1872,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join(".gitignore");
         fs::write(&path, "*.log\n").unwrap();
-        update_root_gitignore(tmp.path()).unwrap();
+        update_root_gitignore(tmp.path(), None).unwrap();
         let once = fs::read_to_string(&path).unwrap();
-        update_root_gitignore(tmp.path()).unwrap();
+        update_root_gitignore(tmp.path(), None).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), once);
     }
 
@@ -1594,7 +1890,7 @@ mod tests {
             ),
         )
         .unwrap();
-        update_root_gitignore(tmp.path()).unwrap();
+        update_root_gitignore(tmp.path(), None).unwrap();
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.starts_with("before\n"));
         assert!(text.ends_with("after\n"));
@@ -1607,7 +1903,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join(".gitignore");
         fs::write(&path, format!("{}\nno end marker\n", BLOCK_START)).unwrap();
-        assert!(update_root_gitignore(tmp.path()).is_err());
+        assert!(update_root_gitignore(tmp.path(), None).is_err());
     }
 
     #[test]
@@ -1664,7 +1960,7 @@ mod tests {
         assert!(text.starts_with("BEFORE=1\n"));
         assert!(text.ends_with("AFTER=1\n"));
         assert!(!text.contains("stale"));
-        assert!(text.contains("\nR_LIBS_USER=.rvenvlib\n"));
+        assert!(text.contains("\nR_LIBS_USER=\"${RVENV_CHILD_R_LIBS_USER:-.rvenvlib}\"\n"));
         assert_eq!(text.matches(BLOCK_START).count(), 1);
     }
 
@@ -1749,7 +2045,7 @@ mod tests {
     #[test]
     fn a_gitignore_is_never_a_conflict() {
         let tmp = tempfile::tempdir().unwrap();
-        update_root_gitignore(tmp.path()).unwrap();
+        update_root_gitignore(tmp.path(), None).unwrap();
         assert!(existing_targets(tmp.path()).unwrap().is_empty());
 
         let path = tmp.path().join(".gitignore");
@@ -2133,7 +2429,7 @@ mod tests {
         }
 
         let wrappers: Vec<&str> = if cfg!(windows) {
-            vec!["R.exe", "Rscript.exe"]
+            vec!["R.exe", "R.shim", "Rscript.exe", "Rscript.shim"]
         } else {
             vec!["R", "Rscript"]
         };
@@ -2348,10 +2644,15 @@ mod tests {
         let latest = format!("{}/cran/latest", ppm_url());
         assert_eq!(ppm_repo_url("aarch64-apple-darwin"), Some(latest.clone()));
         assert_eq!(ppm_repo_url("x86_64-w64-mingw32"), Some(latest));
-        assert_eq!(
-            ppm_repo_url("x86_64-unknown-linux-gnu"),
-            Some(format!("{}/cran/__linux__/{}/latest", ppm_url(), MANYLINUX))
-        );
+        for generic in [
+            "x86_64-unknown-linux-gnu-manylinux_2_28",
+            "x86_64-unknown-linux-gnu",
+        ] {
+            assert_eq!(
+                ppm_repo_url(generic),
+                Some(format!("{}/cran/__linux__/{}/latest", ppm_url(), MANYLINUX))
+            );
+        }
         assert_eq!(
             ppm_repo_url("jammy-x86_64"),
             Some(format!("{}/cran/__linux__/jammy/latest", ppm_url()))

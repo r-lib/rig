@@ -154,12 +154,17 @@ ENVS = -e REDHAT_ORG_RHEL7=$(REDHAT_ORG) \
        -e REDHAT_ACTIVATION_KEY_RHEL9=$(REDHAT_ACTIVATION_KEY_RHEL9) \
        -e REDHAT_ACTIVATION_KEY_RHEL10=$(REDHAT_ACTIVATION_KEY_RHEL10)
 
+# Public DNS servers for the test containers. The GitHub runners' own DNS
+# sometimes cannot resolve archive.ubuntu.com and security.ubuntu.com, and
+# then no Ubuntu container can install R. Set DOCKER_DNS= to use the host's.
+DOCKER_DNS ?= --dns 8.8.8.8 --dns 1.1.1.1
+
 define GEN_TESTS
 linux-test-$(variant):
 	mkdir -p tests/results
 	rm -f tests/results/`echo $(variant) | tr / -`.fail \
 	      tests/results/`echo $(variant) | tr / -`.success
-	docker run -t --rm $(DOCKER_ARCH) --privileged \
+	docker run -t --rm $(DOCKER_ARCH) $(DOCKER_DNS) --privileged \
 		-v $(PWD):/work $(ENVS) `echo $(variant) | tr - :` \
 		bash -c /work/tests/test-linux-docker.sh && \
 	touch tests/results/`echo $(variant) | tr / -`.success || \
@@ -173,6 +178,30 @@ $(foreach variant, $(VARIANTS), $(eval $(GEN_TESTS)))
 
 linux-test-all: $(TEST_IMAGES)
 	if ls tests/results | grep -q fail; then \
+		echo Some tests failed; \
+		ls tests/results; \
+		exit 1; \
+	fi
+
+# User-mode tests: same containers, but rig runs as a regular user, in user
+# mode, from ~/.local. No Red Hat subscription is needed for these.
+define GEN_USER_TESTS
+linux-user-test-$(variant):
+	mkdir -p tests/results
+	rm -f tests/results/user-`echo $(variant) | tr / -`.fail \
+	      tests/results/user-`echo $(variant) | tr / -`.success
+	docker run -t --rm $(DOCKER_ARCH) $(DOCKER_DNS) \
+		-v $(PWD):/work `echo $(variant) | tr - :` \
+		bash -c /work/tests/test-linux-user-docker.sh && \
+	touch tests/results/user-`echo $(variant) | tr / -`.success || \
+	touch tests/results/user-`echo $(variant) | tr / -`.fail
+.PHONY: linux-user-test-$(variant)
+USER_TEST_IMAGES += linux-user-test-$(variant)
+endef
+$(foreach variant, $(VARIANTS), $(eval $(GEN_USER_TESTS)))
+
+linux-user-test-all: $(USER_TEST_IMAGES)
+	if ls tests/results | grep -q '^user-.*fail'; then \
 		echo Some tests failed; \
 		ls tests/results; \
 		exit 1; \
@@ -400,7 +429,7 @@ coverage-ci:
 
 .PHONY: release clean all macos macos-tarball win win-zip linux Rig.app \
 	shell-linux linux-in-docker linux-amd64-in-docker linux-arm64-in-docker \
-	linux-test-all coverage coverage-ci
+	linux-test-all linux-user-test-all coverage coverage-ci
 
 clean:
 	cargo clean

@@ -33,5 +33,5 @@ Projects treat the package library named `tools` specially. This library is
 automatically added to the library path for every project.
 
 Use this for `devtools`, `usethis`, `roxygen2`, and other R packages that you use
-for R development. You can use `rig pkg install -l tool <pkgs>` to install
+for R development. You can use `rig pkg install -l tools <pkgs>` to install
 packages into this library.

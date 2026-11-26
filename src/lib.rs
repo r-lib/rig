@@ -29,6 +29,7 @@ mod exclude_newer;
 mod hardcoded;
 mod install;
 mod library;
+mod logging;
 mod macos;
 mod output;
 mod pager;
@@ -76,9 +77,9 @@ static ERROR_INVALID_INPUT: libc::c_int = -5;
 
 #[no_mangle]
 pub extern "C" fn rig_last_error(ptr: *mut libc::c_char, size: libc::size_t) -> libc::c_int {
-    let str: String = match LAST_ERROR.try_lock() {
+    let str: String = match LAST_ERROR.lock() {
         Ok(x) => x.to_owned(),
-        Err(_) => "Unknown error".to_string(),
+        Err(poisoned) => poisoned.into_inner().to_owned(),
     };
 
     let str2 = if size <= str.len() {
@@ -93,15 +94,58 @@ pub extern "C" fn rig_last_error(ptr: *mut libc::c_char, size: libc::size_t) -> 
 }
 
 fn set_error(str: &str) {
-    match LAST_ERROR.try_lock() {
-        Ok(mut x) => {
-            x.clear();
-            x.insert_str(0, str);
-        }
-        Err(_) => {
-            // cannot save error message, not much we can do
-        }
+    let mut x = match LAST_ERROR.lock() {
+        Ok(x) => x,
+        Err(poisoned) => poisoned.into_inner(),
     };
+    x.clear();
+    x.push_str(str);
+}
+
+/// Set up the log file, once per process. The app has no terminal, so this
+/// is the only place where rig's diagnostics end up.
+fn init_logging() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        let log_file = cache::get_logs_dir().ok().map(|dir| dir.join("rig.log"));
+        logging::init(0, log_file.as_deref());
+    });
+}
+
+/// Run a rig command for the app. The app has no terminal, so messages are
+/// collected instead of printed, and if the command fails, its warnings and
+/// errors are kept for `rig_last_error()`, together with the error itself.
+fn run<T>(f: impl FnOnce() -> Result<T, Box<dyn Error>>) -> Result<T, Box<dyn Error>> {
+    init_logging();
+    output::OUTPUT.start_capture();
+    let result = f();
+    if let Err(e) = &result {
+        // The same as what `main` shows, with the causes of the error.
+        output::OUTPUT.fatal(e.as_ref());
+    }
+    let lines = output::OUTPUT.take_captured();
+    if let Err(e) = &result {
+        set_error(&error_with_messages(&e.to_string(), lines));
+    }
+    result
+}
+
+// The warnings and errors that were shown, or just `error` if there were none.
+fn error_with_messages(error: &str, lines: Vec<String>) -> String {
+    let msgs: Vec<String> = lines
+        .into_iter()
+        .filter(|l| l.starts_with("Error: ") || l.starts_with("Warning: "))
+        .collect();
+    if msgs.is_empty() {
+        error.to_string()
+    } else {
+        msgs.join("\n")
+    }
+}
+
+fn invalid_input() -> libc::c_int {
+    set_error("Invalid input, it must be UTF-8 text");
+    ERROR_INVALID_INPUT
 }
 
 fn set_c_string(
@@ -162,7 +206,7 @@ fn set_c_strings(
 
 #[no_mangle]
 pub extern "C" fn rig_mode(ptr: *mut libc::c_char, size: libc::size_t) -> libc::c_int {
-    match utils::get_mode() {
+    match run(utils::get_mode) {
         Ok(mode) => match set_c_string(&mode.to_string(), ptr, size) {
             Ok(x) => x,
             Err(_) => {
@@ -170,11 +214,7 @@ pub extern "C" fn rig_mode(ptr: *mut libc::c_char, size: libc::size_t) -> libc::
                 ERROR_BUFFER_SHORT
             }
         },
-        Err(e) => {
-            let msg = e.to_string();
-            set_error(&msg);
-            ERROR_DEFAULT_FAILED
-        }
+        Err(_) => ERROR_DEFAULT_FAILED,
     }
 }
 
@@ -184,7 +224,7 @@ pub extern "C" fn rig_mode(ptr: *mut libc::c_char, size: libc::size_t) -> libc::
 
 #[no_mangle]
 pub extern "C" fn rig_r_root(ptr: *mut libc::c_char, size: libc::size_t) -> libc::c_int {
-    match get_r_root() {
+    match run(get_r_root) {
         Ok(root) => match set_c_string(&root, ptr, size) {
             Ok(x) => x,
             Err(_) => {
@@ -192,17 +232,13 @@ pub extern "C" fn rig_r_root(ptr: *mut libc::c_char, size: libc::size_t) -> libc
                 ERROR_BUFFER_SHORT
             }
         },
-        Err(e) => {
-            let msg = e.to_string();
-            set_error(&msg);
-            ERROR_DEFAULT_FAILED
-        }
+        Err(_) => ERROR_DEFAULT_FAILED,
     }
 }
 
 #[no_mangle]
 pub extern "C" fn rig_get_default(ptr: *mut libc::c_char, size: libc::size_t) -> libc::c_int {
-    let def = sc_get_default();
+    let def = run(sc_get_default);
 
     match def {
         Ok(x) => match x {
@@ -218,17 +254,13 @@ pub extern "C" fn rig_get_default(ptr: *mut libc::c_char, size: libc::size_t) ->
                 ERROR_NO_DEFAULT
             }
         },
-        Err(e) => {
-            let msg = e.to_string();
-            set_error(&msg);
-            ERROR_DEFAULT_FAILED
-        }
+        Err(_) => ERROR_DEFAULT_FAILED,
     }
 }
 
 #[no_mangle]
 pub extern "C" fn rig_list(ptr: *mut libc::c_char, size: libc::size_t) -> libc::c_int {
-    let vers = sc_get_list();
+    let vers = run(sc_get_list);
 
     match vers {
         Ok(x) => match set_c_strings(x, ptr, size) {
@@ -238,11 +270,7 @@ pub extern "C" fn rig_list(ptr: *mut libc::c_char, size: libc::size_t) -> libc::
                 ERROR_BUFFER_SHORT
             }
         },
-        Err(e) => {
-            let msg = e.to_string();
-            set_error(&msg);
-            ERROR_DEFAULT_FAILED
-        }
+        Err(_) => ERROR_DEFAULT_FAILED,
     }
 }
 
@@ -251,7 +279,7 @@ pub extern "C" fn rig_list_with_versions(
     ptr: *mut libc::c_char,
     size: libc::size_t,
 ) -> libc::c_int {
-    let vers = sc_get_list_details();
+    let vers = run(sc_get_list_details);
 
     match vers {
         Ok(x) => {
@@ -268,11 +296,7 @@ pub extern "C" fn rig_list_with_versions(
                 }
             }
         }
-        Err(e) => {
-            let msg = e.to_string();
-            set_error(&msg);
-            ERROR_DEFAULT_FAILED
-        }
+        Err(_) => ERROR_DEFAULT_FAILED,
     }
 }
 
@@ -287,16 +311,12 @@ pub extern "C" fn rig_set_default(ptr: *const libc::c_char) -> libc::c_int {
 
     let ver = match cver.to_str() {
         Ok(x) => x,
-        Err(_) => return ERROR_INVALID_INPUT,
+        Err(_) => return invalid_input(),
     };
 
-    match sc_set_default(ver) {
+    match run(|| sc_set_default(ver)) {
         Ok(_) => SUCCESS,
-        Err(e) => {
-            let msg = e.to_string();
-            set_error(&msg);
-            ERROR_SET_DEFAULT_FAILED
-        }
+        Err(_) => ERROR_SET_DEFAULT_FAILED,
     }
 }
 
@@ -317,14 +337,14 @@ pub extern "C" fn rig_start_rstudio(
     let ver = match cver.to_str() {
         Ok(x) => x,
         Err(_) => {
-            return ERROR_INVALID_INPUT;
+            return invalid_input();
         }
     };
 
     let prj = match cprj.to_str() {
         Ok(x) => x,
         Err(_) => {
-            return ERROR_INVALID_INPUT;
+            return invalid_input();
         }
     };
 
@@ -339,19 +359,15 @@ pub extern "C" fn rig_start_rstudio(
         Some(prj.to_string())
     };
 
-    match sc_rstudio2(ver.as_ref(), prj.as_ref()) {
+    match run(|| sc_rstudio2(ver.as_ref(), prj.as_ref())) {
         Ok(_) => SUCCESS,
-        Err(e) => {
-            let msg = e.to_string();
-            set_error(&msg);
-            ERROR_SET_DEFAULT_FAILED
-        }
+        Err(_) => ERROR_SET_DEFAULT_FAILED,
     }
 }
 
 #[no_mangle]
 pub extern "C" fn rig_library_list(ptr: *mut libc::c_char, size: libc::size_t) -> libc::c_int {
-    let vers = sc_library_get_list(None, true);
+    let vers = run(|| sc_library_get_list(None, true));
 
     match vers {
         Ok(x) => {
@@ -368,11 +384,7 @@ pub extern "C" fn rig_library_list(ptr: *mut libc::c_char, size: libc::size_t) -
                 }
             }
         }
-        Err(e) => {
-            let msg = e.to_string();
-            set_error(&msg);
-            ERROR_DEFAULT_FAILED
-        }
+        Err(_) => ERROR_DEFAULT_FAILED,
     }
 }
 
@@ -387,15 +399,11 @@ pub extern "C" fn rig_lib_set_default(ptr: *const libc::c_char) -> libc::c_int {
 
     let ver = match cver.to_str() {
         Ok(x) => x,
-        Err(_) => return ERROR_INVALID_INPUT,
+        Err(_) => return invalid_input(),
     };
 
-    match sc_library_set_default(ver, None) {
+    match run(|| sc_library_set_default(ver, None)) {
         Ok(_) => SUCCESS,
-        Err(e) => {
-            let msg = e.to_string();
-            set_error(&msg);
-            ERROR_SET_DEFAULT_FAILED
-        }
+        Err(_) => ERROR_SET_DEFAULT_FAILED,
     }
 }

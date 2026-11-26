@@ -25,8 +25,8 @@ committed, so that a fresh clone of the project works right away:
 - `.Renviron`, `.rvenvlib/rvenv` - boilerplate to set up R's libraries for the
   project when started from the project directory, in a terminal, or from
   an editor (RStudio, Positron, VS Code).
-- `.gitignore` - to ignore `.rvenv` which contains the project library and
-  configuration files, created by `rig proj sync`.
+- `.gitignore` - to ignore `.Renviron.rig`, and `.rvenv` which contains the
+  project library and configuration files, created by `rig proj sync`.
 - `.rvenvlib/.gitignore` - to make sure that git keeps all of `.rvenvlib`,
   even if other ignore rules match some of its files, e.g. `*.rds`.
 
@@ -36,6 +36,9 @@ be deleted and rebuilt at any time.
 
 Note that `R --vanilla` ignores `.Renviron`, and so does not use the project
 library.
+
+Put secrets in `.Renviron.rig`, not in the committed `.Renviron`. R reads
+it after `~/.Renviron` in a synced project.
 
 ## Scripts
 

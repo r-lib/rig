@@ -92,8 +92,12 @@ fn linux_platform(arch: &str, distro: Option<&str>, version: Option<&str>) -> Os
 ///
 /// - `aarch64-apple-darwin`, `x86_64-apple-darwin`
 /// - `x86_64-w64-mingw32`
-/// - `x86_64-unknown-linux-gnu`: any glibc Linux, P3M's generic build
+/// - `x86_64-unknown-linux-gnu-manylinux_2_28`: any Linux with glibc 2.28 or
+///   later, P3M's generic build
 /// - `x86_64-unknown-linux-gnu-ubuntu-24.04`
+///
+/// These are the platforms of Tidyup 12, the same in the binary indices of
+/// the extended metadata and in `rproj.lock`.
 ///
 /// [`platform_string`] writes this spelling. These are accepted too:
 ///
@@ -105,6 +109,8 @@ fn linux_platform(arch: &str, distro: Option<&str>, version: Option<&str>) -> Os
 ///   have a distro (the P3M name) but no version; see [`normalize_platform`].
 /// - Triples with a darwin version (`aarch64-apple-darwin23`), without the
 ///   libc (`aarch64-unknown-linux-ubuntu-22.04`), with `arm64` or `amd64`.
+/// - `x86_64-unknown-linux-gnu`, the generic build without its glibc
+///   version, which older rig versions wrote.
 ///
 /// `source` is not a platform, callers check for it first.
 pub fn parse_platform_string(platform: &str) -> Result<OsVersion, Box<dyn Error>> {
@@ -160,12 +166,51 @@ fn parse_platform_parts(platform: &str) -> Result<OsVersion, Box<dyn Error>> {
         }
         // A P3M target name, e.g. `jammy`.
         [name] if arch.is_some() => Ok(linux_platform(linux_arch(), Some(name), None)),
+        // A portable R build, e.g. `manylinux_2_28`, without an arch.
+        [name] if manylinux_version(name).is_some() => Ok(linux_platform(
+            linux_arch(),
+            Some("manylinux"),
+            manylinux_version(name).as_deref(),
+        )),
+        // `manylinux-2_28` is the same as `manylinux-2.28`.
+        ["manylinux", version] => Ok(linux_platform(
+            linux_arch(),
+            Some("manylinux"),
+            Some(&version.replace('_', ".")),
+        )),
         [distro, version] => Ok(linux_platform(linux_arch(), Some(distro), Some(version))),
         _ => bail!("Invalid platform string: '{}'", platform),
     }
 }
 
+/// The generic glibc Linux platform of package binaries, the suffix of
+/// `<arch>-unknown-linux-gnu-manylinux_2_28`. Same as
+/// [`crate::repos::binaries::MANYLINUX`].
+const MANYLINUX_PACKAGES: &str = "manylinux_2_28";
+
+/// The glibc version of a `manylinux_X_Y` name, as `X.Y`.
+fn manylinux_version(name: &str) -> Option<String> {
+    let (major, minor) = name.strip_prefix("manylinux_")?.split_once('_')?;
+    let numeric = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit());
+    (numeric(major) && numeric(minor)).then(|| format!("{}.{}", major, minor))
+}
+
 fn parse_triple(platform: &str, pieces: &[&str]) -> Result<OsVersion, Box<dyn Error>> {
+    // The generic glibc build, `<arch>-unknown-linux-gnu-manylinux_X_Y`.
+    if let [arch, _vendor, "linux", "gnu", last] = pieces {
+        if last == &MANYLINUX_PACKAGES {
+            return Ok(linux_platform(arch, None, None));
+        }
+        if manylinux_version(last).is_some() {
+            bail!(
+                "Unsupported platform '{}', the generic Linux platform is \
+                 '{}-unknown-linux-gnu-{}'",
+                platform,
+                arch,
+                MANYLINUX_PACKAGES
+            );
+        }
+    }
     let mut distro = None;
     let mut version = None;
     let (arch, vendor, os);
@@ -229,6 +274,7 @@ pub fn platform_string(platform: &OsVersion) -> String {
                 format!("{}-unknown-linux-{}-{}-{}", arch, libc, distro, version)
             }
             (Some(name), None) => format!("{}-{}", name, arch),
+            _ if !musl => format!("{}-unknown-linux-gnu-{}", arch, MANYLINUX_PACKAGES),
             _ => format!("{}-unknown-linux-{}", arch, libc),
         }
     } else {
@@ -588,6 +634,34 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_platform_string_manylinux_triple() {
+        let result = parse_platform_string("x86_64-unknown-linux-gnu-manylinux_2_28").unwrap();
+        assert_eq!(result.arch, "x86_64");
+        assert_eq!(result.os, "linux-gnu");
+        assert_eq!(result.distro, None);
+        assert_eq!(result.version, None);
+        // Only the glibc version P3M builds for.
+        assert!(parse_platform_string("x86_64-unknown-linux-gnu-manylinux_2_17").is_err());
+    }
+
+    #[test]
+    fn test_parse_platform_string_portable_manylinux() {
+        // A portable R build, in any spelling, without an arch.
+        for input in [
+            "linux-manylinux-2_28",
+            "linux-manylinux-2.28",
+            "manylinux-2_28",
+            "manylinux_2_28",
+            "linux-manylinux_2_28",
+        ] {
+            let result = parse_platform_string(input).unwrap();
+            assert_eq!(result.os, "linux-gnu", "{}", input);
+            assert_eq!(result.distro.as_deref(), Some("manylinux"), "{}", input);
+            assert_eq!(result.version.as_deref(), Some("2.28"), "{}", input);
+        }
+    }
+
+    #[test]
     fn test_parse_platform_string_windows() {
         let result = parse_platform_string("windows").unwrap();
         let arch = if cfg!(target_os = "windows") {
@@ -630,10 +704,24 @@ mod tests {
             ("windows-x86_64", "x86_64-w64-mingw32"),
             ("windows-amd64", "x86_64-w64-mingw32"),
             ("aarch64-w64-mingw32", "aarch64-w64-mingw32"),
-            ("x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"),
-            ("linux-x86_64", "x86_64-unknown-linux-gnu"),
-            ("linux-arm64", "aarch64-unknown-linux-gnu"),
-            ("manylinux_2_28-x86_64", "x86_64-unknown-linux-gnu"),
+            (
+                "x86_64-unknown-linux-gnu-manylinux_2_28",
+                "x86_64-unknown-linux-gnu-manylinux_2_28",
+            ),
+            (
+                "aarch64-unknown-linux-gnu-manylinux_2_28",
+                "aarch64-unknown-linux-gnu-manylinux_2_28",
+            ),
+            (
+                "x86_64-unknown-linux-gnu",
+                "x86_64-unknown-linux-gnu-manylinux_2_28",
+            ),
+            ("linux-x86_64", "x86_64-unknown-linux-gnu-manylinux_2_28"),
+            ("linux-arm64", "aarch64-unknown-linux-gnu-manylinux_2_28"),
+            (
+                "manylinux_2_28-x86_64",
+                "x86_64-unknown-linux-gnu-manylinux_2_28",
+            ),
             (
                 "x86_64-unknown-linux-gnu-ubuntu-24.04",
                 "x86_64-unknown-linux-gnu-ubuntu-24.04",
@@ -686,7 +774,10 @@ mod tests {
             canonical("linux-ubuntu-24.04"),
             format!("{}-unknown-linux-gnu-ubuntu-24.04", linux)
         );
-        assert_eq!(canonical("linux"), format!("{}-unknown-linux-gnu", linux));
+        assert_eq!(
+            canonical("linux"),
+            format!("{}-unknown-linux-gnu-manylinux_2_28", linux)
+        );
     }
 
     #[test]

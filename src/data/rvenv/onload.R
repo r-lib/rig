@@ -16,6 +16,59 @@ activated <- identical(
   venv
 )
 
+# Reads `<root>/.Renviron.rig`, the project's untracked environment file,
+# if it exists. The project `.Renviron` is committed, so it is no place for
+# secrets; this file is, and rig adds it to `.gitignore`. The shim package
+# has already re-read `~/.Renviron` by now, so this file overrides it.
+#
+# This is here and not in the shim package, so that it only happens in a
+# project that has an environment, i.e. after `rig proj sync`. A project
+# without one gets the session it would have outside the project. (It also
+# reaches projects with a shim from an older rig.)
+#
+# Only once per project: `RVENV_RENVIRON_RIG` records the project whose file
+# was read, and child processes inherit it, together with the variables the
+# file set. Reading it again in a child would undo whatever the parent
+# deliberately changed since, and double up self-referencing values like
+# `PATH=${PATH}:...`.
+#
+# The variables that set up the project library are rig's: if the file sets
+# them, they are put back and the user is told so.
+read_renviron_rig <- function(root) {
+  path <- file.path(root, ".Renviron.rig")
+  done <- normalizePath(
+    Sys.getenv("RVENV_RENVIRON_RIG"),
+    winslash = "/",
+    mustWork = FALSE
+  )
+  if (identical(done, root) || !file.exists(path)) return(invisible())
+
+  rig_vars <- c(
+    "R_LIBS_USER", "R_LIBS", "R_LIBS_SITE", "R_DEFAULT_PACKAGES",
+    "RVENV", "RVENV_R_LIBS_USER", "RVENV_UNSYNCED", "RVENV_RENVIRON_RIG",
+    "RVENV_CHILD_R_LIBS_USER", "RVENV_CHILD_VSCODE_R_SESS_STARTUP_FILE",
+    "RVENV_CHILD_VSCODE_R_SESS_PKG_PATH"
+  )
+  old <- Sys.getenv(rig_vars, unset = NA)
+  readRenviron(path)
+  new <- Sys.getenv(rig_vars, unset = NA)
+  changed <- rig_vars[!mapply(identical, old, new)]
+  if (length(changed)) {
+    set <- changed[!is.na(old[changed])]
+    if (length(set)) do.call(Sys.setenv, as.list(old[set]))
+    unset <- changed[is.na(old[changed])]
+    if (length(unset)) Sys.unsetenv(unset)
+    packageStartupMessage(
+      "! Ignored ", paste(changed, collapse = ", "),
+      " in .Renviron.rig, rig sets these for the project."
+    )
+}
+
+  Sys.setenv(RVENV_RENVIRON_RIG = root)
+  invisible()
+}
+read_renviron_rig(root)
+
 # Reads `.rvenv/rvenv.cfg`, written by `rig proj sync`, as a named list of
 # its `key = value` lines. `NULL` if the project has never been synced by a
 # rig new enough to write the file.
@@ -59,11 +112,31 @@ warn_wrong_r_version <- function(want, running) {
 # This must be an `if`/`else`, not an early `return()`: this file is run with
 # `source()`, where a top-level `return()` only ends the current expression,
 # and the activation code below it would still run.
+# For child processes set R_DEFAULT_PACKAGES to the default, so .Renviron
+# does not override it to load rvenv.
+set_child_env <- function(libs) {
+  libs <- libs[nzchar(libs)]
+  pkgs <- setdiff(getOption("defaultPackages"), "rvenv")
+  Sys.setenv(
+    R_DEFAULT_PACKAGES = if (length(pkgs)) {
+      paste(pkgs, collapse = ",")
+    } else {
+      "NULL"
+    },
+    RVENV_CHILD_R_LIBS_USER = if (length(libs)) {
+      paste(libs, collapse = .Platform$path.sep)
+    } else {
+      "NULL"
+    }
+  )
+  invisible()
+}
+
 cfg <- read_rvenv_cfg(venv)
 running <- r_minor_version()
 if (!is.null(cfg[["r-minor"]]) && !identical(cfg[["r-minor"]], running)) {
   restore_r_libs_user(libname, lib)
-  Sys.unsetenv("R_DEFAULT_PACKAGES")
+  set_child_env(Sys.getenv("R_LIBS_USER"))
   warned <- identical(
     normalizePath(Sys.getenv("RVENV_UNSYNCED"), winslash = "/", mustWork = FALSE),
     venv
@@ -105,8 +178,82 @@ if (!is.null(cfg[["r-minor"]]) && !identical(cfg[["r-minor"]], running)) {
     .libPaths(paths)
   }
 
-  Sys.unsetenv("R_DEFAULT_PACKAGES")
+  set_child_env(paths)
 
   # One warning per project is enough; child processes are quiet.
   if (!activated) warn_unsynced(venv, lib)
 }
+
+# The VS Code R extension (vscode-R) starts its session watcher, the `sess`
+# package, from its own R profile. That runs before R loads the `rvenv`
+# package, so the library path is still only `.rvenvlib`, and `sess` would
+# fail to load its dependencies, e.g. `ps`. The project `.Renviron` turns the
+# watcher off for that first run, by emptying the two variables below, and
+# keeps their values in `RVENV_` copies. Now that the library paths are set
+# up, this puts them back and runs the extension's profile again.
+#
+# The first run must not even try: the extension's terminal waits for the
+# outcome before it sends code to R, and a failed attempt makes it give up,
+# even if this second run succeeds right after.
+#
+# The variables are put back in every process, so that R processes started
+# from this one see the same environment, but the profile is only run again
+# in the first interactive R that has them. `RVENV_VSCODE_SESS` marks that it
+# is done, and child processes inherit that.
+#
+# The profile first sources the user's own profile, named in
+# `R_PROFILE_USER_OLD`, or `.Rprofile` / `~/.Rprofile` if that is empty. That
+# already happened, so here it names a file that does not exist, which the
+# profile skips, without falling back to the others.
+restore_vscode_sess_env <- function() {
+  vars <- c("VSCODE_R_SESS_STARTUP_FILE", "VSCODE_R_SESS_PKG_PATH")
+  for (var in vars) {
+    saved <- Sys.getenv(paste0("RVENV_", var), unset = NA)
+    if (is.na(saved)) next
+    if (nzchar(saved)) {
+      do.call(Sys.setenv, structure(list(saved), names = var))
+    } else {
+      Sys.unsetenv(var)
+    }
+    Sys.unsetenv(paste0("RVENV_", var))
+  }
+  # Child R processes do not load `rvenv`, see `set_child_env()`, so they
+  # take these from the RVENV_CHILD_ copies, via the project `.Renviron`.
+  for (var in vars) {
+    child <- structure(list(Sys.getenv(var)), names = paste0("RVENV_CHILD_", var))
+    do.call(Sys.setenv, child)
+  }
+}
+
+start_vscode_sess <- function() {
+  if (!interactive() || "sess" %in% loadedNamespaces()) return(invisible())
+  if (!nzchar(Sys.getenv("VSCODE_R_SESS_STARTUP_FILE"))) return(invisible())
+  if (nzchar(Sys.getenv("RVENV_VSCODE_SESS"))) return(invisible())
+  helper <- Sys.getenv("VSCODE_R_SESS_ATTACH_HELPER", unset = "")
+  profile <- file.path(dirname(helper), "profile.R")
+  if (!nzchar(helper) || !file.exists(profile)) return(invisible())
+  Sys.setenv(RVENV_VSCODE_SESS = Sys.getpid())
+
+  vars <- c("R_PROFILE_USER", "R_PROFILE_USER_OLD")
+  old <- Sys.getenv(vars, unset = NA, names = TRUE)
+  on.exit({
+    set <- old[!is.na(old)]
+    if (length(set)) do.call(Sys.setenv, as.list(set))
+    if (any(is.na(old))) Sys.unsetenv(vars[is.na(old)])
+  }, add = TRUE)
+  Sys.setenv(R_PROFILE_USER_OLD = file.path(tempdir(), "rvenv-no-profile"))
+
+  tryCatch(
+    sys.source(profile, envir = new.env(parent = globalenv())),
+    error = function(e) {
+      packageStartupMessage(
+        "rvenv could not start the vscode-R session watcher: ",
+        conditionMessage(e)
+      )
+    }
+  )
+  invisible()
+}
+
+restore_vscode_sess_env()
+start_vscode_sess()

@@ -11,8 +11,6 @@ use regex::Regex;
 use sha2::{Digest, Sha256};
 
 use log::debug;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use log::error;
 use std::error::Error;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -289,6 +287,18 @@ pub fn calculate_file_hash(path: &Path) -> std::io::Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+/// Whether `name` is a valid R package name: an ASCII letter, then ASCII
+/// letters, digits and dots, at least two characters, and not ending in a dot.
+/// This is the same pattern pkgdepends uses (`pkg_rx()$pkg_name`).
+///
+/// Package names end up in file system paths and URLs, so this is also what
+/// stops names like `../evil` from escaping a directory.
+pub fn is_r_package_name(name: &str) -> bool {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"^[a-zA-Z][a-zA-Z0-9.]*[a-zA-Z0-9]$").unwrap())
+        .is_match(name)
+}
+
 pub fn unquote(s: &str) -> String {
     let l = s.len();
     if l <= 2 {
@@ -315,7 +325,7 @@ pub fn read_version_link(path: &str) -> Result<Option<String>, Box<dyn Error>> {
     // file_name() might be None if tgt ends with ".."
     let fname = match tgt.file_name() {
         None => {
-            error!("Symlink for default version is invalid: {}", path);
+            debug!("Symlink for default version is invalid: {}", path);
             bail!("Symlink for default version is invalid")
         }
         Some(f) => f,
@@ -325,10 +335,6 @@ pub fn read_version_link(path: &str) -> Result<Option<String>, Box<dyn Error>> {
         Ok(x) => x,
         Err(x) => {
             let fpath = Path::new(&x);
-            error!(
-                "Default version is not a Unicode string: {}",
-                fpath.display()
-            );
             bail!(
                 "Default version is not a Unicode string: {}",
                 fpath.display()
@@ -962,9 +968,32 @@ mod tests {
     // Serialize tests that mutate env vars to avoid races.
     static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
+    /// Puts back the env vars `with_temp_home` tests change, even if the test
+    /// panics. Other tests in the process run R scripts that need `PATH`.
+    struct RestoreEnv(Vec<(&'static str, Option<std::ffi::OsString>)>);
+
+    impl Drop for RestoreEnv {
+        fn drop(&mut self) {
+            for (name, value) in &self.0 {
+                unsafe {
+                    match value {
+                        Some(value) => std::env::set_var(name, value),
+                        None => std::env::remove_var(name),
+                    }
+                }
+            }
+        }
+    }
+
     fn with_temp_home<F: FnOnce(&Path)>(f: F) {
         let dir = tempfile::tempdir().unwrap();
-        let _guard = ENV_MUTEX.lock().unwrap();
+        let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let _restore = RestoreEnv(
+            ["HOME", "PATH", "RIG_BINARY_DIR", "RIG_MODE"]
+                .into_iter()
+                .map(|name| (name, std::env::var_os(name)))
+                .collect(),
+        );
         unsafe {
             std::env::set_var("HOME", dir.path());
             std::env::remove_var("RIG_BINARY_DIR");
@@ -1123,9 +1152,12 @@ mod tests {
             let bin_dir = home.join("mybin");
             fs::create_dir_all(&bin_dir).unwrap();
             let bin_str = bin_dir.to_str().unwrap().to_string();
+            // Keep the system directories on `PATH`: tests running at the
+            // same time still need `sh`, `mkdir`, etc.
+            let path = format!("{}:/usr/local/bin:/usr/bin:/bin", bin_str);
             unsafe {
                 std::env::set_var("RIG_BINARY_DIR", &bin_str);
-                std::env::set_var("PATH", &bin_str);
+                std::env::set_var("PATH", &path);
             }
             // Should succeed without error regardless of WARN_DONE state.
             check_local_bin_path().unwrap();
@@ -1363,5 +1395,38 @@ mod r_path_tests {
             normalize_windows_r_install_dir("D:/tools\\rig/r"),
             "D:\\tools\\rig\\r"
         );
+    }
+}
+
+#[cfg(test)]
+mod package_name_tests {
+    use super::*;
+
+    #[test]
+    fn r_package_names() {
+        for good in ["dplyr", "R6", "data.table", "A3", "ab", "a.b", "x1.2"] {
+            assert!(is_r_package_name(good), "rejected '{}'", good);
+        }
+        for bad in [
+            "",
+            "a",
+            "1abc",
+            ".hidden",
+            "foo.",
+            "a_b",
+            "a-b",
+            "a b",
+            "../evil",
+            "..\\evil",
+            "a/b",
+            "a\\b",
+            "/abs",
+            "C:\\abs",
+            "C:abs",
+            "dplyr\n",
+            "pkg\u{e9}",
+        ] {
+            assert!(!is_r_package_name(bad), "accepted '{}'", bad.escape_debug());
+        }
     }
 }

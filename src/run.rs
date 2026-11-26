@@ -1,4 +1,4 @@
-use log::{debug, info};
+use log::debug;
 use owo_colors::OwoColorize;
 use regex::Regex;
 use std::error::Error;
@@ -32,7 +32,6 @@ pub fn run(cmd: OsString, args: Vec<OsString>, _what: &str) -> Result<(), Box<dy
     for line in lines {
         let line = line?;
         OUTPUT.println(&format!("{} {}", ">".cyan(), line));
-        info!("> {}", line);
     }
 
     Ok(())

@@ -2,10 +2,9 @@ use regex::Regex;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::{file, line};
 
 use clap::ArgMatches;
-use log::{debug, error, info, warn};
+use log::debug;
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;
@@ -31,9 +30,7 @@ pub(crate) fn library_rver(args: &ArgMatches) -> Result<String, Box<dyn Error>> 
         None => match sc_get_default()? {
             Some(x) => Ok(x),
             None => {
-                OUTPUT.error("Please set a default R version or use `--r-version`.");
-                error!("Need to set default R version.");
-                bail!("Need to set default R version.")
+                bail!("Please set a default R version or use `--r-version`.")
             }
         },
     }
@@ -77,9 +74,7 @@ pub fn sc_library_get_list(
         None => match sc_get_default()? {
             Some(x) => x,
             None => {
-                OUTPUT.error("Please set default R version for `rig library`.");
-                error!("Need to set default R version for `rig library`.");
-                bail!("Need to set default R version for `rig library`.");
+                bail!("Please set a default R version for `rig library`.");
             }
         },
     };
@@ -140,8 +135,6 @@ pub fn sc_library_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let libs = sc_library_get_list(Some(rver.to_string()), true)?;
     let names: Vec<String> = libs.iter().map(|x| x.name.to_owned()).collect();
     if names.contains(&new) {
-        OUTPUT.error(&format!("Library '{}' already exists for R {}.", new, rver));
-        error!("Library '{}' already exists for R {}.", new, rver);
         bail!("Library '{}' already exists for R {}", new, rver);
     }
 
@@ -153,8 +146,6 @@ pub fn sc_library_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
     match main {
         None => {
-            OUTPUT.error(&format!("Internal error, no main library for R {}.", rver));
-            error!("Internal error, no main library for R {}.", rver);
             bail!("Internal error, no main library for R {}", rver)
         }
         Some(main) => {
@@ -169,8 +160,6 @@ pub fn sc_library_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 pub fn sc_library_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let torm: String = args.get_one::<String>("lib-name").unwrap().to_string();
     if torm == "main" {
-        OUTPUT.error("Cannot remove the main library.");
-        error!("Cannot remove the main library.");
         bail!("Cannot remove the main library");
     }
 
@@ -181,8 +170,6 @@ pub fn sc_library_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     for lib in libs {
         if lib.name == torm {
             if lib.default {
-                OUTPUT.error("Cannot remove the default library.");
-                error!("Cannot remove the default library.");
                 bail!("Cannot remove the default library");
             }
             dir = Some(lib.path);
@@ -191,13 +178,10 @@ pub fn sc_library_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     match dir {
         None => {
-            OUTPUT.error(&format!("Library {} does not exist for R {}.", torm, rver));
-            error!("Library {} does not exist for R {}.", torm, rver);
             bail!("Library {} does not exist for R {}", torm, rver);
         }
         Some(dir) => {
             OUTPUT.status(&format!("Deleting library {} for R {}...", torm, rver));
-            info!("Deleting library {} for R {}", torm, rver);
             let _ = std::fs::remove_dir_all(dir.as_path());
         }
     };
@@ -252,9 +236,7 @@ pub fn sc_library_set_default(name: &str, rver: Option<&str>) -> Result<(), Box<
         None => match sc_get_default()? {
             Some(x) => x,
             None => {
-                OUTPUT.error("Please set default R version for `rig library`.");
-                error!("Need to set default R version for `rig library`.");
-                bail!("Need to set default R version for `rig library`.");
+                bail!("Please set a default R version for `rig library`.");
             }
         },
     };
@@ -269,8 +251,6 @@ pub fn sc_library_set_default(name: &str, rver: Option<&str>) -> Result<(), Box<
 
     let mut path = match path {
         None => {
-            OUTPUT.error(&format!("No such library: {}, for R {}.", name, rver));
-            error!("No such library: {}, for R {}.", name, rver);
             bail!("No such library: {}, for R {}", name, rver)
         }
         Some(x) => x,
@@ -294,33 +274,16 @@ pub fn sc_library_set_default(name: &str, rver: Option<&str>) -> Result<(), Box<
     let lines = match read_lines(&rprofile) {
         Ok(x) => x,
         Err(e) => {
-            OUTPUT.error(&format!(
-                "Cannot read lines from file {}: {}",
-                rprofile.display(),
-                e
-            ));
-            error!("Cannot read lines from file {}: {}", rprofile.display(), e);
-            bail!(
-                "Cannot read lines from file {} @{}:{}, {}",
-                rprofile.display(),
-                file!(),
-                line!(),
-                e.to_string()
-            )
+            bail!("Cannot read lines from file {}: {}", rprofile.display(), e)
         }
     };
     let re_start = Regex::new("^## rig R_LIBS_USER start")?;
     let idx_start = grep_lines(&re_start, &lines);
     if idx_start.is_empty() {
-        OUTPUT.error(&format!(
-            "Library config not set up yet for R {}. Please run `rig system setup-user-lib`.",
-            rver
-        ));
-        error!(
+        bail!(
             "Library config not set up yet for R {}. Please run `rig system setup-user-lib`.",
             rver
         );
-        bail!("Library config not set up yet, call `rig system setup-user-lib`");
     }
 
     // This if for the Rig.app, to update the title in the status bar.
@@ -342,19 +305,7 @@ pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
     let lines = match read_lines(&rprofile) {
         Ok(x) => x,
         Err(e) => {
-            OUTPUT.error(&format!(
-                "Cannot read lines from file {}: {}",
-                rprofile.display(),
-                e
-            ));
-            error!("Cannot read lines from file {}: {}", rprofile.display(), e);
-            bail!(
-                "Cannot read lines from file {} @{}:{}, {}",
-                rprofile.display(),
-                file!(),
-                line!(),
-                e.to_string()
-            )
+            bail!("Cannot read lines from file {}: {}", rprofile.display(), e)
         }
     };
     let re_start = Regex::new("^## rig R_LIBS_USER start")?;
@@ -363,18 +314,6 @@ pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
     let idx_end = grep_lines(&re_end, &lines);
     let nmarkers = idx_start.len() + idx_end.len();
     if nmarkers != 0 && nmarkers != 2 {
-        OUTPUT.error(&format!(
-            "Invalid system Rprofile file at {}. Must include a \
-               single pair of '## rig R_LIBS_USER start' and \
-               '## rig R_LIBS_USER end'",
-            rprofile.display()
-        ));
-        error!(
-            "Invalid system Rprofile file at {}. Must include a \
-               single pair of '## rig R_LIBS_USER start' and \
-               '## rig R_LIBS_USER end'",
-            rprofile.display()
-        );
         bail!(
             "Invalid system Rprofile file at {}. Must include a \
                single pair of '## rig R_LIBS_USER start' and \
@@ -394,12 +333,18 @@ pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
         {
             escalate("updating user library configuration")?;
         }
+        // We only touch the user library if it is an absolute path. Other
+        // tools set R_LIBS_USER to values that are not real libraries, and
+        // we must not create directories for them. E.g. R CMD check uses
+        // R_LIBS_USER='NULL', and on Windows the child R process sees the
+        // quotes as well, so without this check we would create a directory
+        // called 'NULL' in the working directory.
         let newlines = r#"
 ## rig R_LIBS_USER start
 invisible(local({
   userlibs <- strsplit(Sys.getenv("R_LIBS_USER"), .Platform$path.sep)[[1]]
   if (length(userlibs) == 0) return()
-  if (userlibs[[1]] == "NULL") return()
+  if (!grepl("^(/|\\\\|~|[A-Za-z]:[/\\\\])", userlibs[[1]])) return()
   userlib1 <- userlibs[1]
   dir.create(userlib1, recursive = TRUE, showWarnings = FALSE)
   deffile <- file.path(userlib1, "___default", fsep = "/")
@@ -419,15 +364,7 @@ invisible(local({
 "#;
 
         if let Err(e) = append_to_file(&rprofile, vec![newlines.to_string()]) {
-            OUTPUT.error(&format!("Cannot update file {}: {}", rprofile.display(), e));
-            error!("Cannot update file {}: {}", rprofile.display(), e);
-            bail!(
-                "Cannot update file {} @{}:{}, {}",
-                rprofile.display(),
-                file!(),
-                line!(),
-                e.to_string()
-            );
+            bail!("Cannot update file {}: {}", rprofile.display(), e);
         };
     }
 
@@ -450,7 +387,6 @@ pub fn get_library_path_cache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn 
                 "Failed to read location of library from cache: {}",
                 e
             ));
-            info!("Failed to read location of library from cache: {}", e);
             return get_library_path_nocache(rver);
         }
         Ok(main) => match main {
@@ -476,22 +412,10 @@ pub fn get_library_path_cache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn 
     let conf_lines = match read_lines(&config_path) {
         Ok(x) => x,
         Err(e) => {
-            OUTPUT.error(&format!(
-                "Cannot read lines from file {}: {}",
-                config_path.display(),
-                e
-            ));
-            error!(
-                "Cannot read lines from file {}: {}",
-                config_path.display(),
-                e
-            );
             bail!(
-                "Cannot read lines from file {} @{}:{}, {}",
+                "Cannot read lines from file {}: {}",
                 config_path.display(),
-                file!(),
-                line!(),
-                e.to_string()
+                e
             )
         }
     };
@@ -506,7 +430,6 @@ pub fn get_library_path_cache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn 
             "Library config file {} is empty, selecting main library",
             config_path.display()
         ));
-        warn!("Default library setup is broken, selecting main library");
         main_path.to_path_buf()
     };
     if !def_path.exists() {
@@ -531,18 +454,10 @@ pub fn get_library_path_nocache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dy
     let lib = match String::from_utf8(out.stdout) {
         Ok(v) => v,
         Err(err) => {
-            OUTPUT.error(&format!(
-                "Cannot parse library path from R output for R {}: {}",
-                rver, err
-            ));
-            error!(
-                "Cannot parse library path from R output for R {}: {}",
-                rver, err
-            );
             bail!(
-                "Cannot query R_LIBS_USER for R {}: {}",
+                "Cannot parse library path from R output for R {}: {}",
                 rver,
-                err.to_string()
+                err
             )
         }
     };
@@ -569,17 +484,7 @@ pub fn get_library_path_nocache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dy
             match save_config(rver, "userlibrary", Some(&mainstr)) {
                 Ok(x) => x,
                 Err(e) => {
-                    OUTPUT.error(&format!(
-                        "Failed to save location of library in cache: {}",
-                        e
-                    ));
-                    error!("Failed to save location of library in cache: {}", e);
-                    bail!(
-                        "Failed to save config @{}:{}, {}",
-                        file!(),
-                        line!(),
-                        e.to_string()
-                    );
+                    bail!("Failed to save location of library in cache: {}", e);
                 }
             };
         }
@@ -588,10 +493,6 @@ pub fn get_library_path_nocache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dy
                 "Failed to save non-UTF-8 location of library: {}",
                 main.display()
             ));
-            warn!(
-                "Failed to save non-UTF-8 location of library: {}",
-                main.display()
-            )
         }
     };
 

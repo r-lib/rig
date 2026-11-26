@@ -3,7 +3,7 @@ use std::error::Error;
 use std::path::{Path, PathBuf};
 
 use globset::Glob;
-use log::{debug, error, warn};
+use log::debug;
 
 use crate::common::*;
 use crate::dcf::*;
@@ -82,8 +82,6 @@ fn validate_repos_in_setup(
             "Invalid repository name(s): {}. Valid repositories are: {}",
             inv, val
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -250,7 +248,6 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
                 "Corrupt R profile at {}, try reinstalling R. If the issue perists, report it to rig developers.",
                 profile
             ));
-            warn!("Corrupt R profile at {}, try reinstalling R. If the issue perists, report it to rig developers.", profile);
             continue;
         }
 
@@ -547,10 +544,6 @@ fn platform_matches_any(platforms: &[String], rdata_platform: &str, ctx: &str) -
                     "Invalid platform glob '{}' in repo '{}', skipping: {}",
                     platform, ctx, e
                 ));
-                warn!(
-                    "Invalid platform glob '{}' in repo '{}', skipping: {}",
-                    platform, ctx, e
-                );
                 continue;
             }
         };
@@ -670,16 +663,8 @@ fn get_r_data_common(ver: &str) -> Result<RData, Box<dyn Error>> {
     let re = Regex::new("^Built:[ ]?")?;
     let bltidx = grep_lines(&re, &lines);
     if bltidx.is_empty() {
-        OUTPUT.error(&format!(
-            "Could not find 'Built' field in {}, cannot determine architecture of R installation.",
-            statsdesc
-        ));
-        error!(
-            "Could not find 'Built' field in {}, cannot determine architecture of R installation.",
-            statsdesc
-        );
         bail!(
-            "Could not find 'Built' in {}, cannot determine architecture of R installation.",
+            "Could not find 'Built' field in {}, cannot determine architecture of R installation.",
             statsdesc
         );
     }
@@ -690,43 +675,31 @@ fn get_r_data_common(ver: &str) -> Result<RData, Box<dyn Error>> {
     let parts: Vec<&str> = built.split(';').collect();
 
     if parts.len() < 2 {
-        OUTPUT.error(&format!(
+        bail!(
             "Could not parse 'Built' field in {}, unexpected format: {}",
-            statsdesc, blt
-        ));
-        error!(
-            "Could not parse 'Built' field in {}, unexpected format: {}",
-            statsdesc, blt
+            statsdesc,
+            blt
         );
-        bail!("Could not parse 'Built' field in {}: {}", statsdesc, blt);
     }
 
     let platform = parts[1].trim();
     let parts2: Vec<&str> = platform.splitn(3, '-').collect();
     if parts2.len() < 3 {
-        OUTPUT.error(&format!(
+        bail!(
             "Could not parse 'Built' field in {}, unexpected platform format: {}",
-            statsdesc, platform
-        ));
-        error!(
-            "Could not parse 'Built' field in {}, unexpected platform format: {}",
-            statsdesc, platform
+            statsdesc,
+            platform
         );
-        bail!("Could not parse 'Built' field in {}: {}", statsdesc, blt);
     }
 
     let arch = parts2[0];
 
     if arch.is_empty() {
-        OUTPUT.error(&format!(
+        bail!(
             "Could not parse 'Built' field in {}, missing architecture: {}",
-            statsdesc, blt,
-        ));
-        error!(
-            "Could not parse 'Built' field in {}, missing architecture: {}",
-            statsdesc, blt
+            statsdesc,
+            blt
         );
-        bail!("Could not parse 'Built' field in {}: {}", statsdesc, blt);
     }
 
     let rver = parts[0].trim();
@@ -1127,7 +1100,7 @@ mod tests {
             let mut e = make_entry();
             e.name = name.to_string();
             e.url = url.to_string();
-            e.metadata = Some("https://ppm.r-pkg.org".to_string());
+            e.metadata = Some("https://ppm.r-pkg.org/v1".to_string());
             e.platforms = platforms.map(|p| vec![p.to_string()]);
             e.fallback = fallback;
             e

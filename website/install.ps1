@@ -20,8 +20,8 @@
     (or $env:RIG_PREFIX if set).
 
 .PARAMETER Version
-    Version to install, e.g. 0.10.0. Default: latest
-    (or $env:RIG_VERSION if set).
+    Version to install, e.g. 0.10.0, or 'nightly' for the latest
+    development build. Default: latest (or $env:RIG_VERSION if set).
 
 .PARAMETER NoModifyPath
     Do not add the bin directory to the user PATH.
@@ -48,14 +48,22 @@ switch ($env:PROCESSOR_ARCHITECTURE) {
 # --- Work out the release asset URL -------------------------------------
 # The moving `latest` release serves `...-latest.*` assets under the
 # `latest` tag; versioned releases serve `...-X.Y.Z.*` under the `vX.Y.Z` tag.
+#
+# The moving `nightly` release serves `...-nightly.*` assets under the
+# `nightly` tag. While a new nightly build is being swapped in, `nightly`
+# can briefly return 404 and the new build is under `nightly-staging`
+# instead (see .github/workflows/nightly.yml). So we try `nightly`, then
+# `nightly-staging`, then `nightly` once more, in case the swap finished
+# between the first two tries.
 if ($Version -eq "latest") {
-    $tag = "latest"; $vtoken = "latest"
+    $tags = @("latest"); $vtoken = "latest"
+} elseif ($Version -eq "nightly") {
+    $tags = @("nightly", "nightly-staging", "nightly"); $vtoken = "nightly"
 } else {
-    $tag = "v$Version"; $vtoken = $Version
+    $tags = @("v$Version"); $vtoken = $Version
 }
 
 $asset = "rig-windows-$arch-$vtoken.zip"
-$url   = "https://github.com/$Repo/releases/download/$tag/$asset"
 
 # --- Download and extract -----------------------------------------------
 
@@ -64,7 +72,16 @@ New-Item -ItemType Directory -Path $tmp | Out-Null
 try {
     $zip = Join-Path $tmp "rig.zip"
     Write-Host "Downloading $asset ..."
-    Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+    for ($i = 0; $i -lt $tags.Count; $i++) {
+        $url = "https://github.com/$Repo/releases/download/$($tags[$i])/$asset"
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+            break
+        } catch {
+            # Only the last try's error is reported.
+            if ($i -eq $tags.Count - 1) { throw }
+        }
+    }
 
     Write-Host "Installing into $Prefix ..."
     New-Item -ItemType Directory -Force -Path $Prefix | Out-Null

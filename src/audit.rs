@@ -24,7 +24,7 @@ use std::error::Error;
 use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
-use log::info;
+use log::debug;
 use serde::Serialize;
 use tabular::{Row, Table};
 
@@ -197,7 +197,6 @@ fn audit_main(
     let scope = audit_scope(args, library_only)?;
     if let Some(cutoff) = &scope.cutoff {
         let msg = format!("Only upgrading to package versions published by {}", cutoff);
-        info!("{}", msg);
         OUTPUT.info(&msg);
     }
     let report = run_audit(&scope)?;
@@ -650,7 +649,6 @@ fn print_report(report: &Report, fix_cmd: Option<&str>) {
             "Not in any repository, not checked: {}.",
             report.not_checked.join(", ")
         );
-        info!("{}", msg);
         OUTPUT.info(&msg);
     }
 
@@ -845,7 +843,7 @@ fn run_fix(
 
 /// Run the rig command `argv` in this process.
 fn run_rig(argv: &[String], mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    info!("Running {}", argv.join(" "));
+    debug!("Running {}", argv.join(" "));
     let mut argv = argv.to_vec();
     if mainargs.get_flag("json") {
         argv.insert(1, "--json".to_string());

@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
-use log::*;
+use log::debug;
 use owo_colors::OwoColorize;
 use serde::Deserialize;
 
@@ -70,7 +70,11 @@ fn read_connections_at(path: &Path) -> Vec<Connection> {
     match toml::from_str::<TokenFile>(&text) {
         Ok(f) => f.connections,
         Err(e) => {
-            warn!("Cannot parse PPM token file {}: {}", path.display(), e);
+            OUTPUT.warn(&format!(
+                "Cannot parse PPM token file {}: {}",
+                path.display(),
+                e
+            ));
             vec![]
         }
     }

@@ -19,7 +19,7 @@ use std::process::Command;
 
 use clap::ArgMatches;
 use directories::BaseDirs;
-use log::{debug, error, info, trace, warn};
+use log::{debug, trace};
 use owo_colors::OwoColorize;
 use remove_dir_all::remove_dir_all;
 use simple_error::SimpleError;
@@ -30,7 +30,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
-use crate::output::OUTPUT;
+use crate::output::{Context, OUTPUT};
 use crate::repos::*;
 use crate::resolve::*;
 use crate::run::*;
@@ -48,11 +48,12 @@ pub fn get_links_dir() -> Result<String, Box<dyn Error>> {
     get_binary_dir()
 }
 
-// Quick links are real `.exe` shims: a copy of the `rig-shim.exe` template,
-// bundled next to `rig.exe` (same lookup as `gsudo.exe` in
-// src/escalate.rs), with a small footer appended that tells the shim which
-// real R.exe/Rscript.exe to forward to. See src/shim_format.rs for the
-// footer layout and src/shim/main.rs for the shim itself.
+// Quick links are real `.exe` shims: an unmodified copy of the
+// `rig-shim.exe` template, bundled next to `rig.exe` (same lookup as
+// `gsudo.exe` in src/escalate.rs), plus a `.shim` config file next to it
+// that tells the shim which real R.exe/Rscript.exe to forward to. See
+// src/shim_format.rs for the config format and src/shim/main.rs for the
+// shim itself.
 
 fn find_shim_template() -> Result<PathBuf, Box<dyn Error>> {
     let exe = std::env::current_exe()?;
@@ -111,34 +112,235 @@ pub(crate) fn write_shim_link(
     target: &str,
     marker: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let template = std::fs::read(find_shim_template()?)?;
-    let bytes = crate::shim_format::build_shim_bytes(&template, target, marker);
-    std::fs::write(path, bytes)?;
-    Ok(())
+    write_shim_link_env(path, target, marker, &[])
 }
 
-// Same as `write_shim_link`, but also bakes in a list of environment
-// variables for the shim to set before forwarding to `target`. Used for
-// `.rvenv\bin\R.exe` / `Rscript.exe`, which need to force
-// `R_LIBS_USER`/`R_LIBS_SITE`/`R_REPOSITORIES`/`RVENV`, the Windows
-// equivalent of the `export`s in the Unix `.rvenv/bin/R` wrapper script.
-#[allow(dead_code)] // wired up once `rig proj sync` lands on Windows
+// Same as `write_shim_link`, but also lists environment variables for the
+// shim to set before forwarding to `target`. Used for `.rvenv\bin\R.exe` /
+// `Rscript.exe`, which need to force `R_LIBS_USER`/`R_LIBS_SITE`/
+// `R_REPOSITORIES`/`RVENV`, the Windows equivalent of the `export`s in the
+// Unix `.rvenv/bin/R` wrapper script.
+//
+// The config is written first, and each file only if its contents change.
+// So the `.exe` is only rewritten when it is not yet a plain copy of the
+// template (a new link, an older rig's link with a footer, or a new rig
+// version). Changing what an existing link points at only touches the
+// config file. Both work while the shim is running, see `replace_exe()`.
 pub(crate) fn write_shim_link_env(
     path: &Path,
     target: &str,
     marker: &str,
     envs: &[(String, String)],
 ) -> Result<(), Box<dyn Error>> {
+    let config = crate::shim_format::ShimConfig {
+        target: target.to_string(),
+        marker: marker.to_string(),
+        env: envs.to_vec(),
+    };
+    let text = crate::shim_format::format_config(&config)?;
+    let config_path = crate::shim_format::config_path(path);
+    if std::fs::read(&config_path).ok().as_deref() != Some(text.as_bytes()) {
+        std::fs::write(&config_path, text)?;
+    }
+
     let template = std::fs::read(find_shim_template()?)?;
-    let bytes = crate::shim_format::build_shim_bytes_env(&template, target, marker, envs);
-    std::fs::write(path, bytes)?;
+    if std::fs::read(path).ok() != Some(template.clone()) {
+        replace_exe(path, &template)?;
+    } else {
+        // E.g. `.rvenv\bin\R.exe`, replaced while it was running.
+        sweep_old_shims(path);
+    }
     Ok(())
+}
+
+// Leftovers of replaced or removed shims are renamed to
+// `<name>.rig-old-<pid>-<nanos>`, see `move_exe_aside()`.
+const OLD_SHIM_INFIX: &str = ".rig-old-";
+
+// Windows cannot overwrite or delete an `.exe` while it is running, but it
+// can rename it. So move the old file aside within the same directory, and
+// delete it if it is not running. If it is, it stays until a later
+// `sweep_old_shims()`. Returns the new path of the old file, if there was
+// one and it could not be deleted.
+fn move_exe_aside(path: &Path) -> Result<Option<PathBuf>, Box<dyn Error>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    sweep_old_shims(path);
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| format!("Invalid shim path: {}", path.display()))?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let old = path.with_file_name(format!(
+        "{}{}{}-{}",
+        name,
+        OLD_SHIM_INFIX,
+        std::process::id(),
+        nanos
+    ));
+    std::fs::rename(path, &old)?;
+    match std::fs::remove_file(&old) {
+        Ok(()) => Ok(None),
+        Err(e) => {
+            OUTPUT.info(&format!(
+                "Old {} is still running, it will be removed later",
+                name
+            ));
+            debug!("Cannot remove {} yet: {}", old.display(), e);
+            Ok(Some(old))
+        }
+    }
+}
+
+// Leftovers that still cannot be deleted after this long are probably not
+// just a running R session, so `remove_old_shim()` warns about them.
+const OLD_SHIM_WARN_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+// When `move_exe_aside()` moved this leftover aside, from the timestamp in
+// its name. (Not the modification time, a rename keeps that of the shim.)
+fn old_shim_moved_at(filename: &str) -> Option<std::time::SystemTime> {
+    let nanos: u64 = filename.rsplit_once('-')?.1.parse().ok()?;
+    std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_nanos(nanos))
+}
+
+// Delete a leftover of `move_exe_aside()`. Quietly, unless it has been
+// around for a long time, see `OLD_SHIM_WARN_AGE`.
+fn remove_old_shim(path: &Path) {
+    let err = match std::fs::remove_file(path) {
+        Ok(()) => return,
+        Err(e) => e,
+    };
+    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let old_enough = old_shim_moved_at(filename)
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|age| age > OLD_SHIM_WARN_AGE);
+    if old_enough {
+        OUTPUT.warn(&format!(
+            "Cannot remove old shim {}: {}",
+            path.display(),
+            err
+        ));
+    } else {
+        debug!("Cannot remove {} yet: {}", path.display(), err);
+    }
+}
+
+// Replace the `.exe` at `path` with `bytes`, even if it is running.
+fn replace_exe(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
+    let old = move_exe_aside(path)?;
+    if let Err(e) = std::fs::write(path, bytes) {
+        // Put the old one back, so the link keeps working.
+        if let Some(old) = old {
+            let _ = std::fs::rename(&old, path);
+        }
+        return Err(e.into());
+    }
+    Ok(())
+}
+
+// Delete the leftovers of `move_exe_aside()` for the shim at `path`, the
+// ones that are not running any more.
+fn sweep_old_shims(path: &Path) {
+    let (dir, name) = match (path.parent(), path.file_name().and_then(|n| n.to_str())) {
+        (Some(d), Some(n)) => (d, n),
+        _ => return,
+    };
+    let prefix = format!("{}{}", name, OLD_SHIM_INFIX);
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for de in entries.flatten() {
+            if de.file_name().to_string_lossy().starts_with(&prefix) {
+                remove_old_shim(&de.path());
+            }
+        }
+    }
+}
+
+fn is_old_shim(filename: &str) -> bool {
+    filename.contains(OLD_SHIM_INFIX)
+}
+
+// Whether the shim at `path` already forwards to `target` with `marker`, in
+// the current format: a plain copy of the template with a config file. A
+// link from rig 0.11.1 or earlier, with a footer, is not up to date, even if
+// it points to the right place, so that it gets replaced.
+pub(crate) fn shim_link_up_to_date(path: &Path, target: &str, marker: &str) -> bool {
+    let config = match crate::shim_format::read_config(path) {
+        Ok(Some(c)) => c,
+        _ => return false,
+    };
+    if config.target != target || config.marker != marker || !config.env.is_empty() {
+        return false;
+    }
+    match (find_shim_template(), std::fs::read(path)) {
+        (Ok(template), Ok(bytes)) => std::fs::read(template).ok() == Some(bytes),
+        _ => false,
+    }
+}
+
+// Rewrite the shim at `path` in the current format, keeping its target and
+// marker, if it is not in the current format yet: a link from rig 0.11.1 or
+// earlier, with a footer, or a shim from an older `rig-shim.exe`. Returns
+// whether it rewrote the link. Does nothing if `path` is not a rig shim.
+pub(crate) fn upgrade_shim_link(path: &Path) -> Result<bool, Box<dyn Error>> {
+    let (target, marker) = match read_shim_link(path) {
+        Some(tm) => tm,
+        None => return Ok(false),
+    };
+    if shim_link_up_to_date(path, &target, &marker) {
+        return Ok(false);
+    }
+    write_shim_link(path, &target, &marker)?;
+    Ok(true)
+}
+
+// `upgrade_shim_link()` for `rig system make-links`. A failure is only a
+// warning: the old link keeps working, and the next `make-links` tries
+// again.
+fn report_shim_upgrade(path: &Path, what: &str) {
+    match upgrade_shim_link(path) {
+        Ok(true) => {
+            OUTPUT.status(&format!("Updated {}", what));
+        }
+        Ok(false) => {}
+        Err(e) => {
+            OUTPUT.warn(&format!("Failed to update {}: {}", what, e));
+        }
+    }
+}
+
+// Remove the shim at `path` and its config file. A missing config file is
+// not an error, links from rig 0.11.1 and earlier do not have one.
+// The `.exe` is moved aside first, so this works while the shim is running.
+pub(crate) fn remove_shim_link(path: &Path) -> std::io::Result<()> {
+    if !path.exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("{} does not exist", path.display()),
+        ));
+    }
+    move_exe_aside(path).map_err(|e| std::io::Error::other(e.to_string()))?;
+    match std::fs::remove_file(crate::shim_format::config_path(path)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
 }
 
 // Read the (target, marker) a quick-link `.exe` at `path` forwards to, or
 // `None` if `path` doesn't exist, isn't one of our shims, or can't be read.
+// Links from rig 0.11.1 and earlier have no config file, but a footer at
+// the end of the `.exe`.
 pub(crate) fn read_shim_link(path: &Path) -> Option<(String, String)> {
-    match crate::shim_format::read_shim_footer(path) {
+    if !path.exists() {
+        return None;
+    }
+    if let Ok(Some(config)) = crate::shim_format::read_config(path) {
+        return Some((config.target, config.marker));
+    }
+    match crate::shim_format::read_legacy_footer(path) {
         Ok(Some(footer)) => Some((footer.target, footer.marker)),
         _ => None,
     }
@@ -438,7 +640,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
         if let (Some(url), Some(v)) = (&version_info.url, &version_info.version) {
             if let Some(name) = find_installed_dev_build(str, v, &installed_arch)? {
                 if installed_etag_matches(&name, etag.as_deref()) {
-                    info!("The R-{} installer at {} has not changed", str, url);
+                    debug!("The R-{} installer at {} has not changed", str, url);
                     return report_already_installed(
                         &name,
                         alias_with_arch_suffix(alias, &installed_arch),
@@ -453,7 +655,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     let target_path = Path::new(&target);
 
     OUTPUT.status(&format!("Installing {}", target_path.display()));
-    info!("Installing {}", target_path.display());
 
     let user_mode = get_mode()? == Mode::User;
 
@@ -503,8 +704,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
                 temp_dir,
                 rversion_h.display()
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
             bail!("{}", msg);
         }
 
@@ -512,9 +711,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
             Ok(name) => name,
             Err(err) => {
                 let _ = remove_dir_all(&temp_dir);
-                OUTPUT.error(&format!("Cannot determine installed R version: {}", err));
-                error!("Cannot determine installed R version: {}", err);
-                return Err(err);
+                return Err(err).context("Cannot determine installed R version");
             }
         };
         let final_dir = format!("{}\\{}", r_root, rig_name);
@@ -525,29 +722,21 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
                     "Cannot replace existing R installation at {}: {}",
                     final_dir, err
                 );
-                OUTPUT.error(&msg);
-                error!("{}", msg);
                 bail!("{}", msg);
             }
         }
         if let Err(err) = std::fs::rename(&temp_dir, &final_dir) {
             let _ = remove_dir_all(&temp_dir);
-            OUTPUT.error(&format!(
-                "Cannot move R installation into {}: {}",
-                final_dir, err
-            ));
-            error!("Cannot move R installation into {}: {}", final_dir, err);
-            return Err(err.into());
+            bail!("Cannot move R installation into {}: {}", final_dir, err);
         }
         if let Err(e) = register_r_version(&rig_name, &final_dir) {
             OUTPUT.warn(&format!(
                 "Could not record R {} in the registry: {}",
                 rig_name, e
             ));
-            warn!("Could not record R {} in the registry: {}", rig_name, e);
         }
         OUTPUT.status(&format!("Installed R as '{}'", rig_name));
-        info!("Installed R as '{}' in {}", rig_name, final_dir);
+        debug!("Installed R as '{}' in {}", rig_name, final_dir);
         Some(rig_name)
     } else {
         run(target, cmd_args, "installer")?;
@@ -558,8 +747,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
                     in the registry. This usually means the installer failed, e.g. \
                     because there was not enough space on the disk."
                     .to_string();
-                OUTPUT.error(&msg);
-                error!("{}", msg);
                 bail!("{}", msg);
             }
         }
@@ -600,14 +787,12 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     if get_mode()? == Mode::User {
         if let Err(e) = ensure_positron_setup(None) {
             OUTPUT.warn(&format!("Could not update Positron settings: {}", e));
-            warn!("Could not update Positron settings: {}", e);
         }
     }
 
     match dirname {
         None => {
             OUTPUT.warn("Cannot set up repositories, cannot determine installation directory");
-            warn!("Cannot set up repositories, cannot determine installation directory");
         }
         Some(ref dirname) => {
             let setup = interpret_repos_args(args, true);
@@ -619,7 +804,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
         match dirname {
             None => {
                 OUTPUT.warn("Cannot install pak, cannot determine installation directory");
-                warn!("Cannot install pak, cannot determine installation directory");
             }
             Some(ref dirname) => {
                 let explicit = args.value_source("pak-version")
@@ -849,7 +1033,6 @@ fn patch_env_file(path: &Path, body: &str, pos: BlockPos) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => {
             OUTPUT.warn(&format!("Couldn't read {}: {}", path.display(), e));
-            warn!("Couldn't read {}: {}", path.display(), e);
             return;
         }
     };
@@ -866,7 +1049,6 @@ fn patch_env_file(path: &Path, body: &str, pos: BlockPos) {
     if let Err(e) = write {
         let _ = std::fs::remove_file(&tmp);
         OUTPUT.warn(&format!("Couldn't update {}: {}", path.display(), e));
-        warn!("Couldn't update {}: {}", path.display(), e);
     }
 }
 
@@ -898,10 +1080,6 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<Vec<AddedRtools>,
                 "Rtools{} ({}) is already installed",
                 item.version, item.arch
             ));
-            info!(
-                "Rtools{} ({}) is already installed",
-                item.version, item.arch
-            );
             added.push(AddedRtools {
                 version: item.version,
                 arch: item.arch,
@@ -916,10 +1094,8 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<Vec<AddedRtools>,
         let tmp_dir = crate::cache::ensure_download_dir()?;
         let target = tmp_dir.join(&filename);
         OUTPUT.status(&format!("Downloading {} -> {}", url, target.display()));
-        info!("Downloading {} -> {}", url, target.display());
         download_file(client, &url, target.as_os_str())?;
         OUTPUT.status(&format!("Installing {}", target.display()));
-        info!("Installing {}", target.display());
 
         // In User mode install per-user (/CURRENTUSER) into the rig-managed rtools root,
         // which writes the Rtools registry key to HKCU. Admin mode keeps the system install.
@@ -952,13 +1128,10 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<Vec<AddedRtools>,
                 item.arch,
                 instdirpath.display()
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
             bail!("{}", msg);
         }
         crate::cache::remove_download_if_no_cache(&target);
         OUTPUT.success(&format!("Installed Rtools{} ({})", item.version, item.arch));
-        info!("Installed Rtools{} ({})", item.version, item.arch);
         added.push(AddedRtools {
             version: item.version,
             arch: item.arch,
@@ -1010,7 +1183,6 @@ fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
             .join("etc");
         if !etc.exists() {
             OUTPUT.warn(&format!("{} does not exist, skipping", etc.display()));
-            warn!("{} does not exist, skipping", etc.display());
             continue;
         }
 
@@ -1059,8 +1231,6 @@ fn get_rtools_needed(
         let rtvers = match rtversval.as_array() {
             Some(x) => x,
             None => {
-                OUTPUT.error(errmsg);
-                error!("{}", errmsg);
                 bail!("{}", errmsg)
             }
         };
@@ -1115,12 +1285,8 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
                     "Removing default version, set new default with {}",
                     "rig default <version>".bold(),
                 ));
-                warn!(
-                    "Removing default version, set new default with {}",
-                    "rig default <version>".bold()
-                );
                 if let Err(e) = unset_default() {
-                    warn!("Failed to unset default version: {}", e)
+                    OUTPUT.warn(&format!("Failed to unset default version: {}", e))
                 };
             }
         }
@@ -1129,7 +1295,6 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         let base = version_dir_key(&ver);
         let dir = Path::new(&rroot).join(r_dirname(&base)?);
         OUTPUT.status(&format!("Removing {}", dir.display()));
-        info!("Removing {}", dir.display());
         remove_dir_all(&dir)?;
     }
 
@@ -1151,12 +1316,6 @@ fn rm_rtools(ver: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
             arch,
             dir.display()
         ));
-        warn!(
-            "Rtools {} ({}) is not installed at {}",
-            version,
-            arch,
-            dir.display()
-        );
         // On aarch64 there is no native Rtools, so an x86_64 build is installed
         // under a "-x86_64" suffixed directory. If the user did not pass --arch we
         // defaulted to the (aarch64) native arch and looked in the wrong place.
@@ -1170,7 +1329,6 @@ fn rm_rtools(ver: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
     OUTPUT.status(&format!("Removing {}", dir.display()));
-    info!("Removing {}", dir.display());
     if let Err(_err) = remove_dir_all(&dir) {
         let cmd = format!(
             "Remove-Item -Recurse -Force -LiteralPath '{}'",
@@ -1181,8 +1339,6 @@ fn rm_rtools(ver: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
             .output()?;
         let stderr = std::str::from_utf8(&out.stderr).unwrap_or("cannot parse stderr");
         if !out.status.success() {
-            OUTPUT.error(&format!("Failed to remove {}: {}", dir.display(), stderr));
-            error!("Failed to remove {}: {}", dir.display(), stderr);
             bail!("Cannot remove {}: {}", dir.display(), stderr);
         }
     }
@@ -1220,15 +1376,17 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                         "Migrating default R version ({}) from the legacy .bat shims",
                         marker_ver
                     ));
-                    info!(
-                        "Migrating default R version ({}) from the legacy .bat shims",
-                        marker_ver
-                    );
                     write_default_shims(linkdir, &marker_ver)?;
                     update_registry_default()?;
                 }
             }
         }
+    }
+
+    // Bring the default-version links up to date with the current shim
+    // format, keeping the version they point to.
+    for name in ["R.exe", "RS.exe", "Rscript.exe"] {
+        report_shim_upgrade(&linkdir.join(name), name);
     }
 
     for ver in vers {
@@ -1244,16 +1402,13 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         let op;
         if linkfile.exists() {
             op = "Updating";
-            if let Some((orig_target, orig_marker)) = read_shim_link(&linkfile) {
-                if orig_target == target && orig_marker.is_empty() {
-                    continue;
-                }
+            if shim_link_up_to_date(&linkfile, &target, "") {
+                continue;
             }
         } else {
             op = "Adding";
         };
         OUTPUT.status(&format!("{} R-{} -> {}", op, ver, target_dir.display()));
-        info!("{} R-{} -> {}", op, ver, target_dir.display());
         write_shim_link(&linkfile, &target, "")?;
     }
 
@@ -1273,10 +1428,25 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     || (filename.starts_with("R-") && filename.ends_with(".bat"))
                 {
                     OUTPUT.status(&format!("Deleting legacy {}", filename));
-                    info!("Deleting legacy {}", filename);
                     if let Err(e) = std::fs::remove_file(path.path()) {
                         OUTPUT.warn(&format!("Failed to remove {}: {}", filename, e));
-                        warn!("Failed to remove {}: {}", filename, e);
+                    }
+                    continue;
+                }
+                // Old shims that were replaced while running.
+                if is_old_shim(&filename) {
+                    remove_old_shim(&path.path());
+                    continue;
+                }
+                // A config file whose shim is gone, e.g. if the `.exe` was
+                // deleted by hand.
+                if filename.starts_with("R-") && filename.ends_with(".shim") {
+                    let exe = path.path().with_extension("exe");
+                    if !exe.exists() {
+                        OUTPUT.status(&format!("Deleting unused {}", filename));
+                        if let Err(e) = std::fs::remove_file(path.path()) {
+                            OUTPUT.warn(&format!("Failed to remove {}: {}", filename, e));
+                        }
                     }
                     continue;
                 }
@@ -1295,17 +1465,18 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     };
                     let realname = "R-".to_string() + &rver + ".exe";
                     if new_links.contains(&realname) {
+                        // Keep the alias, but in the current shim format.
+                        let alias = &filename[2..filename.len() - 4];
+                        report_shim_upgrade(&path.path(), &format!("R-{} alias", alias));
                         continue;
                     }
                 }
                 if !new_links.contains(&filename) {
                     OUTPUT.status(&format!("Deleting unused {}", filename));
-                    info!("Deleting unused {}", filename);
-                    match std::fs::remove_file(path.path()) {
+                    match remove_shim_link(&path.path()) {
                         Ok(_) => {}
                         Err(e) => {
                             OUTPUT.warn(&format!("Failed to remove {}: {}", filename, e));
-                            warn!("Failed to remove {}: {}", filename, e);
                         }
                     }
                 }
@@ -1417,7 +1588,7 @@ fn warn_skipped_alias_link(path: &Path, why: &str) {
 
     let name = path.file_name().unwrap_or_default().to_string_lossy();
     OUTPUT.warn(&format!("Ignoring {}: {}", name, why));
-    warn!("Ignoring {}: {}", path.display(), why);
+    debug!("Ignoring {}: {}", path.display(), why);
 }
 
 // User mode: <root>\<version>\bin\R.exe, so the version is the path
@@ -1543,7 +1714,6 @@ pub fn sc_system_fix_r_alias(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     if profiles.is_empty() {
         OUTPUT.warn("Could not find a PowerShell profile to update.");
-        warn!("`rig system fix-r-alias`: no PowerShell profile found");
         return Ok(());
     }
 
@@ -1554,12 +1724,10 @@ pub fn sc_system_fix_r_alias(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             match remove_fix_r_alias_block(&existing) {
                 None => {
                     OUTPUT.status(&format!("{} not modified by rig", profile.display()));
-                    info!("{} has no rig 'R' alias block to remove", profile.display());
                 }
                 Some(content) => {
                     std::fs::write(&profile, content)?;
                     OUTPUT.status(&format!("Reverted {}", profile.display()));
-                    info!("Removed the rig 'R' alias block from {}", profile.display());
                 }
             }
             continue;
@@ -1567,10 +1735,6 @@ pub fn sc_system_fix_r_alias(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
         if existing.contains(FIX_R_ALIAS_BEGIN) {
             OUTPUT.status(&format!("{} already updated", profile.display()));
-            info!(
-                "{} already contains the rig 'R' alias fix",
-                profile.display()
-            );
             continue;
         }
 
@@ -1586,7 +1750,6 @@ pub fn sc_system_fix_r_alias(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         std::fs::write(&profile, content)?;
 
         OUTPUT.status(&format!("Updated {}", profile.display()));
-        info!("Updated {} to enable the 'R' command", profile.display());
     }
 
     OUTPUT.status("Start a new PowerShell session for the change to take effect.");
@@ -1874,7 +2037,7 @@ fn list_admin_versions() -> Result<Vec<String>, Box<dyn Error>> {
 }
 
 // Read the admin-mode default R version from `C:\Program Files\R\bin\R.exe`'s
-// shim footer marker, written by sc_set_default(). Falls back to the legacy
+// shim marker, written by sc_set_default(). Falls back to the legacy
 // `::<rig-name>` first line of `R.bat` for installs not yet migrated to the
 // `.exe` shims.
 fn find_admin_default() -> Result<Option<String>, Box<dyn Error>> {
@@ -1991,10 +2154,6 @@ fn reinstall_in_user_mode(
                 "R '{}' is already installed in user mode",
                 admin_name
             ));
-            info!(
-                "R '{}' already installed in user mode, not reinstalling",
-                admin_name
-            );
             recreate_aliases_for(admin_name, aliases);
             map.push((admin_name.clone(), admin_name.clone()));
             continue;
@@ -2004,14 +2163,12 @@ fn reinstall_in_user_mode(
             "Reinstalling R '{}' ({}) in user mode",
             spec, arch
         ));
-        info!("Reinstalling R '{}' ({}) in user mode", spec, arch);
         let before = sc_get_list()?;
         let status = Command::new(&exe)
             .args(["add", &spec, "--arch", &arch, "--without-pak"])
             .status()?;
         if !status.success() {
             OUTPUT.warn(&format!("Failed to reinstall R '{}' in user mode", spec));
-            warn!("Failed to reinstall R '{}' in user mode", spec);
             continue;
         }
         let after = sc_get_list()?;
@@ -2036,7 +2193,6 @@ fn recreate_aliases_for(admin_name: &str, aliases: &[Alias]) {
         }
         if let Err(e) = add_alias(admin_name, &al.alias) {
             OUTPUT.warn(&format!("Could not create R-{} alias: {}", al.alias, e));
-            warn!("Could not create R-{} alias: {}", al.alias, e);
         }
     }
 }
@@ -2059,17 +2215,12 @@ fn reinstall_rtools_in_user_mode(rtools: &[(String, String)]) -> Result<(), Box<
                 "Rtools{} ({}) is already installed in user mode",
                 version, arch
             ));
-            info!(
-                "Rtools{} ({}) already installed in user mode, not reinstalling",
-                version, arch
-            );
             continue;
         }
         OUTPUT.status(&format!(
             "Reinstalling Rtools{} ({}) in user mode",
             version, arch
         ));
-        info!("Reinstalling Rtools{} ({}) in user mode", version, arch);
         let status = Command::new(&exe)
             .args(["system", "rtools", "add", version, "--arch", arch])
             .status()?;
@@ -2078,10 +2229,6 @@ fn reinstall_rtools_in_user_mode(rtools: &[(String, String)]) -> Result<(), Box<
                 "Failed to reinstall Rtools{} ({}) in user mode",
                 version, arch
             ));
-            warn!(
-                "Failed to reinstall Rtools{} ({}) in user mode",
-                version, arch
-            );
         }
     }
     Ok(())
@@ -2096,10 +2243,8 @@ fn clean_admin_installations(keep_install: bool, keep_links: bool) -> Result<(),
     }
     if keep_install {
         OUTPUT.status("Removing admin-mode links, keeping installations (this needs admin rights)");
-        info!("Removing admin-mode links, keeping installations");
     } else {
         OUTPUT.status("Removing admin-mode R and Rtools installations (this needs admin rights)");
-        info!("Removing admin-mode R and Rtools installations");
     }
     // Run the cleanup in admin mode (`--admin`), overriding the `RIG_MODE=user`
     // we just set, so that `escalate()` in the child actually elevates — in user
@@ -2187,10 +2332,8 @@ pub fn sc_system_clean_admin_r(args: &ArgMatches) -> Result<(), Box<dyn Error>> 
 fn remove_admin_rtools() -> Result<(), Box<dyn Error>> {
     for path in admin_rtools_paths()? {
         OUTPUT.status(&format!("Removing {}", path));
-        info!("Removing {}", path);
         if let Err(e) = remove_dir_all(Path::new(&path)) {
             OUTPUT.warn(&format!("Cannot remove {}: {}", path, e));
-            warn!("Cannot remove {}: {}", path, e);
         }
     }
     clean_admin_rtools_registry()?;
@@ -2216,10 +2359,8 @@ fn remove_admin_installations() -> Result<(), Box<dyn Error>> {
                 continue;
             }
             OUTPUT.status(&format!("Removing {}", path.display()));
-            info!("Removing {}", path.display());
             if let Err(e) = remove_dir_all(&path) {
                 OUTPUT.warn(&format!("Cannot remove {}: {}", path.display(), e));
-                warn!("Cannot remove {}: {}", path.display(), e);
             }
         }
     }
@@ -2239,22 +2380,37 @@ fn remove_admin_links() -> Result<(), Box<dyn Error>> {
             Some(n) => n.to_string(),
             None => continue,
         };
+        // `.shim` files are the config files of the `.exe` shims.
         let is_link = name == "R.bat"
             || name == "Rscript.bat"
             || name == "RS.bat"
             || name == "R.exe"
             || name == "Rscript.exe"
             || name == "RS.exe"
+            || name == "R.shim"
+            || name == "Rscript.shim"
+            || name == "RS.shim"
             || re.is_match(&name)
-            || (name.starts_with("R-") && (name.ends_with(".bat") || name.ends_with(".exe")));
+            || (name.starts_with("R-")
+                && (name.ends_with(".bat") || name.ends_with(".exe") || name.ends_with(".shim")));
+        if is_old_shim(&name) {
+            // Not a link, but a shim that was replaced while running.
+            remove_old_shim(&path);
+            continue;
+        }
         if !is_link {
             continue;
         }
         OUTPUT.status(&format!("Removing {}", path.display()));
-        info!("Removing {}", path.display());
-        if let Err(e) = std::fs::remove_file(&path) {
+        let result = if name.ends_with(".exe") {
+            move_exe_aside(&path)
+                .map(|_| ())
+                .map_err(|e| std::io::Error::other(e.to_string()))
+        } else {
+            std::fs::remove_file(&path)
+        };
+        if let Err(e) = result {
             OUTPUT.warn(&format!("Cannot remove {}: {}", path.display(), e));
-            warn!("Cannot remove {}: {}", path.display(), e);
         }
     }
 
@@ -2383,7 +2539,6 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
                 "Could not register rig R versions in Positron: {}",
                 e
             ));
-            warn!("Could not update Positron settings: {}", e);
         }
     }
 
@@ -2399,9 +2554,15 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
     let try_rm = |x: &str| {
         let f = linkdir.join(x);
         if f.exists() {
-            if let Err(e) = std::fs::remove_file(&f) {
+            // `remove_shim_link()` works while the shim is running, and
+            // removes its `.shim` config, too.
+            let result = if x.ends_with(".exe") {
+                remove_shim_link(&f)
+            } else {
+                std::fs::remove_file(&f)
+            };
+            if let Err(e) = result {
                 OUTPUT.warn(&format!("Failed to remove {}: {}", f.display(), e));
-                warn!("Failed to remove {}: {}", f.display(), e)
             };
         }
     };
@@ -2409,6 +2570,10 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
     try_rm("R.exe");
     try_rm("RS.exe");
     try_rm("Rscript.exe");
+    // In case the `.exe` was deleted by hand.
+    try_rm("R.shim");
+    try_rm("RS.shim");
+    try_rm("Rscript.shim");
     // Legacy `.bat` shims, in case this runs before sc_system_make_links has
     // had a chance to sweep them up.
     try_rm("R.bat");
@@ -2616,8 +2781,6 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
     let mut path = match xdg.to_str() {
         Some(x) => String::from(x),
         None => {
-            OUTPUT.error("RStudio config path cannot be represented as Unicode. :(");
-            error!("RStudio config path cannot be represented as Unicode. :(");
             bail!("RStudio config path cannot be represented as Unicode. :(")
         }
     };
@@ -2646,7 +2809,6 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
                     }
                     None => {
                         OUTPUT.warn("Cannot determine HOME directory");
-                        warn!("Cannot determine HOME directory");
                     }
                 };
             }
@@ -2671,14 +2833,6 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
         path = match shellexpand::env(&path) {
             Ok(x) => x.to_string(),
             Err(e) => {
-                OUTPUT.error(&format!(
-                    "RStudio config path contains unknown environment variable: {}",
-                    e.var_name
-                ));
-                error!(
-                    "RStudio config path contains unknown environment variable: {}",
-                    e.var_name
-                );
                 bail!(
                     "RStudio config path contains unknown environment variable: {}",
                     e.var_name
@@ -2732,13 +2886,11 @@ pub fn sc_rstudio_(
         // TODO: this does not work aarch64 windows
         let bin = get_r_binary_x64(&ver)?;
         OUTPUT.status(&format!("Setting RSTUDIO_WHICH_R=\"{}\"", bin.display()));
-        info!("Setting RSTUDIO_WHICH_R=\"{}\"", bin.display());
         std::env::set_var("RSTUDIO_WHICH_R", bin);
     }
 
     let cmdline = osjoin(args.to_owned(), " ");
     OUTPUT.status(&format!("Running cmd.exe {}", cmdline));
-    info!("Running cmd.exe {}", cmdline);
     let status = run("cmd.exe".into(), args, "start");
 
     // restore version env var
@@ -2750,8 +2902,6 @@ pub fn sc_rstudio_(
     }
 
     if let Err(e) = status {
-        OUTPUT.error(&format!("`start` failed: {}", e));
-        error!("`start` failed: {}", e);
         bail!("`start` failed: {}", e.to_string());
     };
 
@@ -2794,6 +2944,117 @@ pub fn get_r_binary_x64(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A link as rig 0.11.1 and earlier wrote it: the template with a V1
+    // footer appended. See src/shim_format.rs.
+    fn legacy_link(target: &str, marker: &str) -> Vec<u8> {
+        let mut out = std::fs::read(find_shim_template().unwrap()).unwrap();
+        out.extend_from_slice(target.as_bytes());
+        out.extend_from_slice(marker.as_bytes());
+        out.extend_from_slice(&(target.len() as u32).to_le_bytes());
+        out.extend_from_slice(&(marker.len() as u32).to_le_bytes());
+        out.extend_from_slice(b"RIGSHIM1");
+        out
+    }
+
+    #[test]
+    fn upgrade_shim_link_rewrites_legacy_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let template = std::fs::read(find_shim_template().unwrap()).unwrap();
+        let target = "C:\\R\\R-4.5.2\\bin\\R.exe";
+        for (name, marker) in [("R.exe", "4.5.2"), ("R-release.exe", "")] {
+            let link = dir.path().join(name);
+            std::fs::write(&link, legacy_link(target, marker)).unwrap();
+            assert!(!shim_link_up_to_date(&link, target, marker));
+
+            assert!(upgrade_shim_link(&link).unwrap());
+            assert_eq!(std::fs::read(&link).unwrap(), template);
+            assert!(shim_link_up_to_date(&link, target, marker));
+            assert_eq!(
+                read_shim_link(&link),
+                Some((target.to_string(), marker.to_string()))
+            );
+
+            // Already up to date: nothing to do.
+            assert!(!upgrade_shim_link(&link).unwrap());
+        }
+    }
+
+    #[test]
+    fn replace_exe_works_while_running() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("R.exe");
+        let cmd = std::env::var("ComSpec").unwrap_or("C:\\Windows\\System32\\cmd.exe".into());
+        std::fs::copy(&cmd, &exe).unwrap();
+        let mut child = std::process::Command::new(&exe)
+            .args(["/c", "ping -n 30 127.0.0.1 >nul"])
+            .spawn()
+            .unwrap();
+        // A running `.exe` cannot be overwritten.
+        assert!(std::fs::write(&exe, b"new").is_err());
+
+        replace_exe(&exe, b"new").unwrap();
+        assert_eq!(std::fs::read(&exe).unwrap(), b"new");
+        let leftovers = || {
+            std::fs::read_dir(dir.path())
+                .unwrap()
+                .flatten()
+                .filter(|de| is_old_shim(&de.file_name().to_string_lossy()))
+                .count()
+        };
+        assert_eq!(leftovers(), 1);
+
+        child.kill().unwrap();
+        child.wait().unwrap();
+        sweep_old_shims(&exe);
+        assert_eq!(leftovers(), 0);
+
+        // Not running: no leftover at all.
+        replace_exe(&exe, b"newer").unwrap();
+        assert_eq!(std::fs::read(&exe).unwrap(), b"newer");
+        assert_eq!(leftovers(), 0);
+    }
+
+    #[test]
+    fn old_shim_moved_at_parses_the_name() {
+        let t = old_shim_moved_at("R.exe.rig-old-1234-1795515923452614400").unwrap();
+        assert_eq!(
+            t.duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
+            1795515923452614400
+        );
+        assert_eq!(old_shim_moved_at("R.exe.rig-old-junk"), None);
+        assert_eq!(old_shim_moved_at("R.exe"), None);
+    }
+
+    #[test]
+    fn remove_shim_link_works_while_running() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("R-release.exe");
+        let cmd = std::env::var("ComSpec").unwrap_or("C:\\Windows\\System32\\cmd.exe".into());
+        std::fs::copy(&cmd, &exe).unwrap();
+        std::fs::write(crate::shim_format::config_path(&exe), "target=x\n").unwrap();
+        let mut child = std::process::Command::new(&exe)
+            .args(["/c", "ping -n 30 127.0.0.1 >nul"])
+            .spawn()
+            .unwrap();
+        remove_shim_link(&exe).unwrap();
+        assert!(!exe.exists());
+        assert!(!crate::shim_format::config_path(&exe).exists());
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert!(remove_shim_link(&exe).is_err());
+    }
+
+    #[test]
+    fn upgrade_shim_link_ignores_other_files() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!upgrade_shim_link(&dir.path().join("R.exe")).unwrap());
+        let other = dir.path().join("R-foo.exe");
+        std::fs::write(&other, b"not a shim").unwrap();
+        assert!(!upgrade_shim_link(&other).unwrap());
+        assert_eq!(std::fs::read(&other).unwrap(), b"not a shim");
+        assert!(!crate::shim_format::config_path(&other).exists());
+    }
 
     #[test]
     fn ensure_dir_root_restores_the_drive_separator() {

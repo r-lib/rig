@@ -305,7 +305,7 @@ mod tests {
 
     #[test]
     fn test_extended() {
-        let mut d = detected("https://ppm.r-pkg.org", RepoType::Extended);
+        let mut d = detected("https://ppm.r-pkg.org/v1", RepoType::Extended);
         d.extended_flavor = Some("cran".to_string());
         assert_eq!(
             repos_for("x", &d, true, None),
@@ -314,7 +314,7 @@ mod tests {
         // `extend` does not matter, this is the extended metadata itself.
         assert_eq!(repos_for("x", &d, false, None).len(), 1);
 
-        let mut d = detected("https://ppm-bioc.r-pkg.org", RepoType::Extended);
+        let mut d = detected("https://ppm-bioc.r-pkg.org/v1", RepoType::Extended);
         d.extended_flavor = Some("bioc".to_string());
         assert_eq!(
             repos_for("x", &d, true, Some("3.22")),
@@ -322,7 +322,7 @@ mod tests {
         );
         assert_eq!(repos_for("x", &d, true, None), vec![]);
 
-        let mut d = detected("https://ppm-bioc.r-pkg.org/3.21", RepoType::Extended);
+        let mut d = detected("https://ppm-bioc.r-pkg.org/v1/3.21", RepoType::Extended);
         d.extended_flavor = Some("bioc".to_string());
         d.bioc_version = Some("3.21".to_string());
         assert_eq!(

@@ -11,7 +11,8 @@
 //! * `ppm`: the root of a PPM instance.
 //! * `bioc`: a Bioconductor mirror, either its root, or one of its
 //!   repositories (`packages/<version>/bioc`, etc.).
-//! * `extended`: a repository of extended metadata (`ALLPACKAGES.zst`), for
+//! * `extended`: a repository of extended metadata (`METADATA`,
+//!   `ALLPACKAGES.zst`, etc., see Tidyup 12), for
 //!   CRAN or for the Bioconductor releases.
 //! * `r-universe`: an r-universe repository.
 //! * `cran-like`: anything else.
@@ -245,8 +246,8 @@ impl Probe {
 #[derive(Debug, Clone, Default)]
 pub struct Probes {
     pub packages: Probe,
-    pub allpackages: Probe,
-    pub bioc_allpackages: Probe,
+    pub metadata: Probe,
+    pub bioc_metadata: Probe,
     pub archive: Probe,
     pub bioc_root: Probe,
 }
@@ -255,8 +256,8 @@ impl Probes {
     fn all(&self) -> [&Probe; 5] {
         [
             &self.packages,
-            &self.allpackages,
-            &self.bioc_allpackages,
+            &self.metadata,
+            &self.bioc_metadata,
             &self.archive,
             &self.bioc_root,
         ]
@@ -276,8 +277,8 @@ impl Probes {
 fn probe_paths(bioc_version: &str) -> Vec<String> {
     vec![
         "src/contrib/PACKAGES".to_string(),
-        "ALLPACKAGES.zst".to_string(),
-        format!("{}/ALLPACKAGES.zst", bioc_version),
+        "METADATA".to_string(),
+        format!("{}/METADATA", bioc_version),
         "src/contrib/Meta/archive.rds".to_string(),
         format!("packages/{}/bioc/src/contrib/PACKAGES", bioc_version),
     ]
@@ -288,8 +289,8 @@ fn probes_from_vec(mut v: Vec<Probe>) -> Probes {
     let mut it = v.into_iter();
     Probes {
         packages: it.next().unwrap(),
-        allpackages: it.next().unwrap(),
-        bioc_allpackages: it.next().unwrap(),
+        metadata: it.next().unwrap(),
+        bioc_metadata: it.next().unwrap(),
         archive: it.next().unwrap(),
         bioc_root: it.next().unwrap(),
     }
@@ -443,9 +444,9 @@ fn classify(url: &str, probes: &Probes) -> DetectedRepo {
         return DetectedRepo::new(url, RepoType::RUniverse);
     }
 
-    if probes.allpackages.ok() {
+    if probes.metadata.ok() {
         let mut d = DetectedRepo::new(url, RepoType::Extended);
-        // `https://ppm-bioc.r-pkg.org/3.22` is one Bioconductor release.
+        // `https://ppm-bioc.r-pkg.org/v1/3.22` is one Bioconductor release.
         match path_segments(url).last() {
             Some(v) if is_bioc_version(v) => {
                 d.extended_flavor = Some("bioc".to_string());
@@ -455,7 +456,7 @@ fn classify(url: &str, probes: &Probes) -> DetectedRepo {
         }
         return d;
     }
-    if probes.bioc_allpackages.ok() {
+    if probes.bioc_metadata.ok() {
         let mut d = DetectedRepo::new(url, RepoType::Extended);
         d.extended_flavor = Some("bioc".to_string());
         return d;
@@ -536,7 +537,7 @@ pub struct PpmApi {
     /// repository of the URL, or for all R repositories of a PPM root URL.
     pub sources: HashMap<i64, Vec<i64>>,
     /// The names of the repositories, of the same ones as `sources`, that
-    /// serve their own extended metadata, `<base>/<name>/ALLPACKAGES.zst`.
+    /// serve their own extended metadata, `<base>/<name>/METADATA`.
     /// This metadata has the repository's policy: blocked versions and known
     /// vulnerabilities.
     pub own_metadata: HashSet<String>,
@@ -789,7 +790,7 @@ async fn ppm_api(client: &reqwest::Client, url: &str) -> PpmApi {
         .collect();
 
     let found = future::join_all(wanted.iter().map(|r| {
-        let murl = format!("{}/{}/ALLPACKAGES.zst", base, r.name);
+        let murl = format!("{}/{}/METADATA", base, r.name);
         async move { probe_url(client, &murl).await }
     }))
     .await;
@@ -898,8 +899,8 @@ mod tests {
     fn probes(packages: Probe, allp: Probe, ballp: Probe, archive: Probe, broot: Probe) -> Probes {
         Probes {
             packages,
-            allpackages: allp,
-            bioc_allpackages: ballp,
+            metadata: allp,
+            bioc_metadata: ballp,
             archive,
             bioc_root: broot,
         }
@@ -1076,19 +1077,19 @@ mod tests {
     #[test]
     fn test_classify_extended() {
         let mut p = nothing();
-        p.allpackages = ok();
-        let d = classify("https://ppm.r-pkg.org", &p);
+        p.metadata = ok();
+        let d = classify("https://ppm.r-pkg.org/v1", &p);
         assert_eq!(d.repo_type, RepoType::Extended);
         assert_eq!(d.extended_flavor.as_deref(), Some("cran"));
-        assert_eq!(d.metadata.as_deref(), Some("https://ppm.r-pkg.org"));
+        assert_eq!(d.metadata.as_deref(), Some("https://ppm.r-pkg.org/v1"));
 
-        let d = classify("https://ppm-bioc.r-pkg.org/3.22", &p);
+        let d = classify("https://ppm-bioc.r-pkg.org/v1/3.22", &p);
         assert_eq!(d.extended_flavor.as_deref(), Some("bioc"));
         assert_eq!(d.bioc_version.as_deref(), Some("3.22"));
 
         let mut p = nothing();
-        p.bioc_allpackages = ok();
-        let d = classify("https://ppm-bioc.r-pkg.org", &p);
+        p.bioc_metadata = ok();
+        let d = classify("https://ppm-bioc.r-pkg.org/v1", &p);
         assert_eq!(d.repo_type, RepoType::Extended);
         assert_eq!(d.extended_flavor.as_deref(), Some("bioc"));
     }
@@ -1337,9 +1338,9 @@ mod tests {
         assert_eq!(d.bioc_version.as_deref(), Some("3.22"));
         assert_eq!(d.bioc_subrepo, None);
 
-        let d = describe("https://ppm.r-pkg.org", RepoType::Extended);
+        let d = describe("https://ppm.r-pkg.org/v1", RepoType::Extended);
         assert_eq!(d.extended_flavor.as_deref(), Some("cran"));
-        let d = describe("https://ppm-bioc.r-pkg.org", RepoType::Extended);
+        let d = describe("https://ppm-bioc.r-pkg.org/v1", RepoType::Extended);
         assert_eq!(d.extended_flavor.as_deref(), Some("bioc"));
         let d = describe("https://x.org/meta/3.21", RepoType::Extended);
         assert_eq!(d.extended_flavor.as_deref(), Some("bioc"));
