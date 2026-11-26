@@ -1,6 +1,6 @@
 //! Match `SystemRequirements` fields against the rules, for one system.
 
-use log::warn;
+use crate::output::OUTPUT;
 
 use super::platform::SysreqsSystem;
 use super::rules::RuleDb;
@@ -44,10 +44,10 @@ pub fn resolve(
                 .iter()
                 .filter_map(|s| {
                     if s.command.is_none() {
-                        warn!(
+                        OUTPUT.warn(&format!(
                             "Not running script {:?} of system requirements rule {}",
                             s.script, rule.name
-                        );
+                        ));
                     }
                     s.command.clone()
                 })

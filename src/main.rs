@@ -1,11 +1,7 @@
 use std::error::Error;
-use std::fs::{File, OpenOptions};
-use std::io::{IsTerminal, Write};
-use std::sync::{Arc, Mutex};
 
 use clap::ArgMatches;
-use log::{error, info, Level, LevelFilter};
-use owo_colors::OwoColorize;
+use log::debug;
 use simple_error::SimpleError;
 use tabular::*;
 
@@ -57,6 +53,7 @@ mod hardcoded;
 mod install;
 mod install_receipt;
 mod library;
+mod logging;
 mod output;
 mod pager;
 mod pkg;
@@ -133,137 +130,25 @@ fn main_() -> i32 {
 
     // -- set up logger output --------------------------------------------
 
-    let verbose_count = args.get_count("verbose");
+    // `--quiet` overrides `--verbose`.
+    let quiet = args.get_count("quiet") >= 1;
+    let verbose_count = if quiet { 0 } else { args.get_count("verbose") };
     OUTPUT.set_verbose(verbose_count >= 1);
-    let mut loglevel = match verbose_count {
-        0 => LevelFilter::Info,
-        1 => LevelFilter::Debug,
-        _ => LevelFilter::Trace,
-    };
-
-    match args.get_count("quiet") {
-        0 => {}
-        1 => loglevel = LevelFilter::Warn,
-        2 => loglevel = LevelFilter::Error,
-        _ => loglevel = LevelFilter::Off,
-    };
-
-    // Build filter string: set default level for rig, lower level for noisy crates
-    let filter_str = match loglevel {
-        LevelFilter::Off => "off".to_string(),
-        LevelFilter::Trace => "rig=trace,reqwest=trace,hyper=trace,pubgrub=trace".to_string(),
-        LevelFilter::Debug => "rig=debug,reqwest=info,hyper=info,pubgrub=info".to_string(),
-        LevelFilter::Info => "rig=info,reqwest=warn,hyper=warn,pubgrub=warn".to_string(),
-        LevelFilter::Warn => "rig=warn,reqwest=warn,hyper=warn,pubgrub=warn".to_string(),
-        LevelFilter::Error => "rig=error,reqwest=error,hyper=error,pubgrub=error".to_string(),
-    };
-
-    // Set up file logging for interactive sessions
-    let is_interactive = std::io::stdout().is_terminal();
-    let log_file_writer: Option<Arc<Mutex<File>>> = if is_interactive {
-        match get_logs_dir() {
-            Ok(logs_dir) => {
-                if let Err(e) = cache::create_logs_dir(&logs_dir) {
-                    eprintln!("Warning: Could not create logs directory: {}", e);
-                    None
-                } else {
-                    let log_path = logs_dir.join("rig.log");
-
-                    match OpenOptions::new().create(true).append(true).open(&log_path) {
-                        Ok(file) => Some(Arc::new(Mutex::new(file))),
-                        Err(e) => {
-                            eprintln!("Warning: Could not create log file: {}", e);
-                            None
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("Warning: Could not determine logs directory: {}", e);
-                None
-            }
-        }
-    } else {
-        None
-    };
-
-    let log_file_for_format = log_file_writer.clone();
-
-    if let Err(e) = env_logger::Builder::from_env(env_logger::Env::default())
-        .filter(None, loglevel)
-        .parse_filters(&filter_str)
-        .target(env_logger::Target::Stderr)
-        .format(move |buf, record| {
-            // In interactive mode, write only to log file
-            if is_interactive {
-                if let Some(ref log_file) = log_file_for_format {
-                    if let Ok(mut file) = log_file.lock() {
-                        // Always include timestamps in log file
-                        let log_line = if verbose_count >= 1 {
-                            format!(
-                                "[{} {} {}:{}] {}\n",
-                                buf.timestamp(),
-                                record.level(),
-                                record.file().unwrap_or("unknown"),
-                                record.line().unwrap_or(0),
-                                record.args()
-                            )
-                        } else {
-                            format!(
-                                "[{} {}] {}\n",
-                                buf.timestamp(),
-                                record.level(),
-                                record.args()
-                            )
-                        };
-                        let _ = file.write_all(log_line.as_bytes());
-                    }
-                }
-                // Don't write to stderr in interactive mode
-                Ok(())
-            } else {
-                // Non-interactive: write to stderr with colors
-                let level_string = match record.level() {
-                    Level::Error => record.level().to_string().red().bold().to_string(),
-                    Level::Warn => record.level().to_string().yellow().bold().to_string(),
-                    Level::Info => record.level().to_string().blue().to_string(),
-                    Level::Debug => record.level().to_string().cyan().to_string(),
-                    Level::Trace => record.level().to_string().white().to_string(),
-                };
-
-                if verbose_count >= 1 {
-                    writeln!(
-                        buf,
-                        "[{} {} {}:{}] {}",
-                        buf.timestamp(),
-                        level_string,
-                        record.file().unwrap_or("unknown"),
-                        record.line().unwrap_or(0),
-                        record.args()
-                    )
-                } else {
-                    writeln!(buf, "[{}] {}", level_string, record.args())
-                }
-            }
-        })
-        .try_init()
-    {
-        eprintln!("Fatal error, cannot set up logger: {}", e);
-        return 2;
-    };
+    OUTPUT.set_cli_quiet(quiet);
+    let log_file = get_logs_dir().ok().map(|dir| dir.join("rig.log"));
+    logging::init(verbose_count, log_file.as_deref());
+    set_panic_hook();
 
     unset_r_envvars();
 
     if args.get_flag("user") {
         if let Err(e) = utils::set_mode(utils::Mode::User) {
             OUTPUT.error(&format!("{}", e));
-            error!("{}", e);
             return 1;
         }
     } else if args.get_flag("admin") {
         if let Err(e) = utils::set_mode(utils::Mode::Admin) {
             OUTPUT.error(&format!("{}", e));
-            error!("{}", e);
             return 1;
         }
     }
@@ -271,7 +156,6 @@ fn main_() -> i32 {
     if args.get_flag("no-cache") {
         if let Err(e) = cache::set_no_cache(true) {
             OUTPUT.error(&format!("{}", e));
-            error!("{}", e);
             return 1;
         }
     }
@@ -283,27 +167,22 @@ fn main_() -> i32 {
 
     let cmdline = std::env::args().collect::<Vec<_>>().join(" ");
     let pid = std::process::id();
-    info!("RIG START [pid:{}] {}", pid, cmdline);
+    debug!("RIG START [pid:{}] {}", pid, cmdline);
 
     let result = match main__(&args) {
         Ok(exitcode) => {
-            info!("RIG END [pid:{}] {}", pid, cmdline);
+            debug!("RIG END [pid:{}] {}", pid, cmdline);
             exitcode
         }
         Err(err) => {
-            let msg = format!("{}", err);
-            let (reported, status) = match err.downcast_ref::<output::ExitStatusError>() {
-                Some(e) => (
-                    e.error.downcast_ref::<output::ReportedError>().is_some(),
-                    e.status,
-                ),
-                None => (err.downcast_ref::<output::ReportedError>().is_some(), 1),
-            };
-            if !reported && !OUTPUT.error_shown(&msg) {
-                OUTPUT.error(&msg);
+            let status = output::find_error::<output::ExitStatusError>(err.as_ref())
+                .map(|e| e.status)
+                .unwrap_or(1);
+            OUTPUT.fatal(err.as_ref());
+            if json_requested(&args) {
+                print_json_error(err.as_ref());
             }
-            error!("{}", err);
-            info!("RIG END [pid:{}] {}", pid, cmdline);
+            debug!("RIG END [pid:{}] {}: {}", pid, cmdline, err);
             status
         }
     };
@@ -311,6 +190,54 @@ fn main_() -> i32 {
     cache::cleanup_ephemeral_cache_dir();
 
     result
+}
+
+/// Whether `--json` was given, to the command or to rig itself.
+fn json_requested(args: &ArgMatches) -> bool {
+    let mut next = Some(args);
+    while let Some(m) = next {
+        if m.try_get_one::<bool>("json").ok().flatten() == Some(&true) {
+            return true;
+        }
+        next = m.subcommand().map(|(_, sub)| sub);
+    }
+    false
+}
+
+/// With `--json`, a failed command writes `{"error": ..., "causes": [...]}`
+/// to stdout, so a program that reads the output does not have to parse
+/// stderr. The error is shown on stderr as well.
+fn print_json_error(err: &(dyn Error + 'static)) {
+    let mut msgs = output::error_messages(err);
+    if msgs.is_empty() {
+        // Already shown to the user, e.g. a failed package install.
+        msgs.push(err.to_string());
+    }
+    let json = serde_json::json!({
+        "error": msgs[0],
+        "causes": &msgs[1..],
+    });
+    if let Ok(text) = serde_json::to_string_pretty(&json) {
+        println!("{}", text);
+    }
+}
+
+/// Add a line to the default panic message, so a crash is reported, and
+/// write it to the log file as well.
+fn set_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        default_hook(info);
+        debug!("rig crashed: {}", info);
+        let log = get_logs_dir()
+            .map(|dir| format!(" The log file is at {}.", dir.join("rig.log").display()))
+            .unwrap_or_default();
+        OUTPUT.emit(&format!(
+            "rig crashed, this is a bug in rig. Please report it at \
+             https://github.com/r-lib/rig/issues.{}",
+            log
+        ));
+    }));
 }
 
 fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
@@ -461,8 +388,6 @@ fn sc_add_cmd(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
         let str: &String = args.get_one("str").unwrap();
         if json && str.starts_with("rtools") {
             let msg = "--json is not supported for `rig add rtools`, use `rig rtools add --json`";
-            OUTPUT.error(msg);
-            error!("{}", msg);
             bail!("{}", msg);
         }
     }
@@ -516,8 +441,6 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
 
     if args.get_flag("plain") {
         if args.get_flag("json") || mainargs.get_flag("json") {
-            OUTPUT.error("Error: --plain cannot be used with --json");
-            error!("the argument '--plain' cannot be used with '--json'");
             bail!("the argument '--plain' cannot be used with '--json'");
         }
         for ver in vers.iter() {
@@ -616,17 +539,13 @@ pub fn sc_system_add_pak(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // --devel is deprecated
     if devel && !pakverx {
-        OUTPUT.status(
-            "Note: --devel is now deprecated, use --pak-version instead. Selecting 'devel' version",
-        );
-        info!(
-            "Note: --devel is now deprecated, use --pak-version instead. Selecting 'devel' version"
+        OUTPUT.warn(
+            "--devel is now deprecated, use --pak-version instead. Selecting 'devel' version",
         );
         pakver = "devel";
     }
     if devel && pakverx {
-        OUTPUT.status("Note: --devel is ignored in favor of --pak-version");
-        info!("Note: --devel is ignored in favor of --pak-version");
+        OUTPUT.warn("--devel is ignored in favor of --pak-version");
     }
     if all {
         system_add_pak(Some(sc_get_list()?), pakver, true)?;

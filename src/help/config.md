@@ -67,7 +67,9 @@ configuration file takes precedence over rig's built-in default.
   `$XDG_CACHE_HOME/rig`), `~/Library/Caches/com.gaborcsardi.rig` on macOS and
   `%LOCALAPPDATA%\gaborcsardi\rig\cache` on Windows. On Linux and Windows the
   rig log files are also written into a `logs` directory inside it, even if
-  `no-cache` / `--no-cache` is in effect.
+  `no-cache` / `--no-cache` is in effect. The log file gets the debug
+  messages of every run. To see them on the screen, use `-v`, or set the
+  `RIG_LOG` environment variable to a filter, e.g. `RIG_LOG=rig=debug`.
 
 - `concurrent-downloads` (`RIG_CONCURRENT_DOWNLOADS`): the maximum number of
   downloads rig performs at the same time, e.g. when downloading package

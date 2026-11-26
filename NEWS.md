@@ -161,6 +161,25 @@
 
 * `rig self update` now works on Windows on ARM.
 
+* rig's messages are cleaner when its output is not a terminal, e.g. on CI.
+  It no longer prints each message twice, with an `[INFO]` copy, and its
+  internal progress messages are not shown, unless you ask for them with
+  `-v` / `-vv`, or with a filter in the `RIG_LOG` environment variable, e.g.
+  `RIG_LOG=rig=debug`. On GitHub Actions warnings and errors are shown as
+  annotations. Package installs print one line per package instead of a
+  progress bar. rig respects `NO_COLOR`, `CLICOLOR_FORCE` and `TERM=dumb`.
+
+* `-q` / `--quiet` now hides all messages except warnings and errors.
+
+* rig shows each error once, with its causes, and warnings that were only
+  written to the log file before, e.g. about an unreadable Package Manager
+  token or an invalid `RIG_NO_CACHE` value, are now shown as well. With
+  `--json`, a failed command writes the error as a JSON object to the
+  standard output.
+
+* rig now writes its log file on every run, not only in a terminal. See
+  `rig system dirs` for its location.
+
 # rig 0.11.1
 
 * New `rig proj sync --check` option to check that the project

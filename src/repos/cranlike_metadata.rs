@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use flate2::read::GzDecoder;
-use log::{debug, error, info, warn};
+use log::debug;
 use rds2rust::RObject;
 use rds2rust::RObject::*;
 use rds2rust::VectorData;
@@ -23,7 +23,7 @@ use crate::download::{
     download_first_available_, fetch_optional_if_modified_, fetch_range_suffix_, ConditionalFetch,
     RangeFetch,
 };
-use crate::output::OUTPUT;
+use crate::output::{Context, OUTPUT};
 use crate::rds::*;
 use crate::repos::feed::{
     resolve_download_url, CranlikeRepo, MetadataFeed, PkgRepo, RepoFilter, RepoId,
@@ -85,8 +85,6 @@ pub(crate) fn package_type_to_path(
             Ok(format!("bin/{}/contrib/{}", os, r_version))
         }
     } else {
-        OUTPUT.error(&format!("Invalid package type: {}", pkg_type));
-        error!("Invalid package type {}", pkg_type);
         bail!("Invalid package type: {}", pkg_type);
     }
 }
@@ -216,7 +214,7 @@ pub(crate) fn ensure_feeds_fresh(
         match ensure_feed_fresh(feed) {
             Ok(()) => out.push(feed.clone()),
             Err(e) => {
-                warn!(
+                debug!(
                     "Cannot load Bioconductor metadata from {}, using CRAN only: {}",
                     feed.allpackages_url, e
                 );
@@ -258,7 +256,7 @@ fn ensure_cranlike_sources_fresh(repos: &[PkgRepo]) -> Vec<PkgRepo> {
         match ensure_cranlike_index(cranlike, "src/contrib", "source", None, ".tar.gz") {
             Ok(()) => out.push(repo.clone()),
             Err(e) => {
-                warn!("Cannot load package metadata from {}: {}", key, e);
+                debug!("Cannot load package metadata from {}: {}", key, e);
                 OUTPUT.warn(&format!(
                     "Cannot load package metadata from repository {}, skipping it.",
                     cranlike.name
@@ -309,7 +307,7 @@ pub(crate) fn ensure_cranlike_index(
             ConditionalFetch::Fetched { bytes, etag } => {
                 let data = decompress_gzip_maybe(bytes)?;
                 let packages = parse_cranlike_packages(&data, repo, path, ext)?;
-                info!("Parsed {} packages from {}", packages.len(), url);
+                debug!("Parsed {} packages from {}", packages.len(), url);
                 save_packages_to_db(
                     &packages,
                     &db,
@@ -1333,7 +1331,7 @@ fn force_full_download(
     use_etag: bool,
 ) -> Result<CacheState, Box<dyn Error>> {
     create_parent_dir_if_needed(repo_local)?;
-    info!(
+    debug!(
         "Checking for repo metadata updates from {}",
         candidate_urls[0]
     );
@@ -1362,13 +1360,8 @@ fn force_full_download(
         if use_etag {
             return Ok(CacheState::Cached);
         }
-        OUTPUT.error("Failed to load package metadata, database is corrupt?");
-        error!(
-            "Failed to recover package metadata from {}",
-            candidate_urls[0]
-        );
         bail!(
-            "Failed to refresh package metadata from {}",
+            "Failed to refresh package metadata from {}, database is corrupt?",
             candidate_urls[0]
         );
     }
@@ -1418,19 +1411,19 @@ fn ensure_packages_cached(
     let should_download = match is_repo_cache_recent(&repo_db, repo_url_key, pkg_type) {
         Ok(is_recent) => {
             if is_recent {
-                info!("Database cache is recent, skipping download");
+                debug!("Database cache is recent, skipping download");
             }
             !is_recent
         }
         Err(_) => {
             // No database entry, need to download
-            info!("No database cache found, will download");
+            debug!("No database cache found, will download");
             true
         }
     };
 
     if !should_download {
-        info!("Repo metadata is up to date (cached)");
+        debug!("Repo metadata is up to date (cached)");
         // The database should hold the rows. It may not if a previous run
         // downloaded the metadata but was interrupted (or aborted) before
         // storing it: the cached download file then looks fresh while the
@@ -1444,7 +1437,7 @@ fn ensure_packages_cached(
         {
             return Ok(CacheState::Cached);
         }
-        info!("Cached metadata missing from database, forcing a fresh download");
+        debug!("Cached metadata missing from database, forcing a fresh download");
         announce_update(display_name);
         return force_full_download(
             candidate_urls,
@@ -1475,7 +1468,7 @@ fn ensure_packages_cached(
                 let packages = parse_dcf_bytes(new_suffix)?;
                 let new_parsed_len = parsed_len + new_suffix.len() as i64;
                 let new_tail_hash = hash_bytes(tail_slice(&data));
-                info!(
+                debug!(
                     "Appended {} new package record(s) from {}",
                     packages.len(),
                     plain_url
@@ -1513,7 +1506,8 @@ fn ensure_packages_cached(
                 return Ok(CacheState::FreshlyParsed);
             }
             Err(e) => {
-                warn!(
+                // Hidden: the full download below gives the same result.
+                debug!(
                     "Trailing refresh of {} failed, falling back to a full download: {}",
                     plain_url, e
                 );
@@ -1589,7 +1583,7 @@ fn parse_store_and_cleanup(
     etag: Option<&str>,
     feed: Feed,
 ) -> Result<Vec<Package>, Box<dyn Error>> {
-    info!("Downloaded new repo metadata to {}", repo_local.display());
+    debug!("Downloaded new repo metadata to {}", repo_local.display());
     // Parse DCF/RDS file and save to database
     let (packages, data) = parse_packages(repo_local)?;
     if let Err(e) = check_feed_version(&data, repo_url_key) {
@@ -1616,14 +1610,15 @@ fn parse_store_and_cleanup(
 
     // Delete the temporary data file after saving to database
     if let Err(e) = std::fs::remove_file(repo_local) {
-        info!(
+        // Hidden: a leftover file is harmless, it is not used as a cache.
+        debug!(
             "Could not delete temporary file {}: {}",
             repo_local.display(),
             e
         );
     }
 
-    info!("Saved {} packages to database cache", packages.len());
+    debug!("Saved {} packages to database cache", packages.len());
     match feed {
         Feed::Cranlike => Ok(packages),
         Feed::Archived => Ok(vec![]),
@@ -1643,7 +1638,7 @@ fn parse_packages(dcf_path: &PathBuf) -> Result<(Vec<Package>, Vec<u8>), Box<dyn
     // Rewind to start
     file.seek(SeekFrom::Start(0))?;
 
-    info!("Parsing repo metadata from {}", dcf_path.display());
+    debug!("Parsing repo metadata from {}", dcf_path.display());
 
     // Decompress if needed and read into memory to check format
     let data: Vec<u8> = if bytes_read >= 2 && magic[0..2] == [0x1f, 0x8b] {
@@ -1678,9 +1673,10 @@ fn parse_packages(dcf_path: &PathBuf) -> Result<(Vec<Package>, Vec<u8>), Box<dyn
         let is_rds = (data[0] == 0x58 || data[0] == 0x41 || data[0] == 0x42) && data[1] == 0x00;
 
         if is_rds {
-            info!("Detected RDS format, parsing as RDS");
+            debug!("Detected RDS format, parsing as RDS");
             let robj = read_rds(&data)?;
-            let packages = parse_packages_from_rds_object(robj)?;
+            let packages = parse_packages_from_rds_object(robj)
+                .context("Failed to parse PACKAGES.rds file")?;
             return Ok((packages, data));
         }
     }
@@ -1693,9 +1689,9 @@ fn parse_packages(dcf_path: &PathBuf) -> Result<(Vec<Package>, Vec<u8>), Box<dyn
 /// RDS detection — for feeds known to be plain DCF text, such as a
 /// trailing-only refresh's fetched suffix).
 fn parse_dcf_bytes(data: &[u8]) -> Result<Vec<Package>, Box<dyn Error>> {
-    info!("Parsing as DCF format");
+    debug!("Parsing as DCF format");
     let desc = parse_dcf_reader(data)?;
-    info!("Parsed {} packages from repo metadata", desc.len());
+    debug!("Parsed {} packages from repo metadata", desc.len());
 
     let mut packages: Vec<Package> = vec![];
 
@@ -1721,7 +1717,8 @@ fn parse_dcf_bytes(data: &[u8]) -> Result<Vec<Package>, Box<dyn Error>> {
         }
     }
     if skipped > 0 {
-        info!("Skipped {} package(s) with unparseable metadata", skipped);
+        // Hidden: expected for some repositories, and not actionable.
+        debug!("Skipped {} package(s) with unparseable metadata", skipped);
     }
 
     Ok(packages)
@@ -1731,8 +1728,6 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
     let (data, attr) = match robj {
         WithAttributes { object, attributes } => (object, attributes),
         _ => {
-            OUTPUT.error("Failed to parse PACKAGES.rds file.");
-            error!("Expected R object with attributes when reading PACKAGES.rds.");
             bail!("Expected R object with attributes when reading PACKAGES.rds.")
         }
     };
@@ -1742,14 +1737,10 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
             if let VectorData::Owned(v) = vd {
                 v
             } else {
-                OUTPUT.error("Failed to parse PACKAGES.rds file.");
-                error!("Expected data to be owned character vector in PACKAGES.rds.");
                 bail!("Expected data to be owned character vector in PACKAGES.rds.");
             }
         }
         _ => {
-            OUTPUT.error("Failed to parse PACKAGES.rds file.");
-            error!("Expected data to be a character vector in PACKAGES.rds.");
             bail!("Expected data to be a character vector in PACKAGES.rds.");
         }
     };
@@ -1763,19 +1754,13 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
                 if let [nrow, ncol] = &v[..] {
                     (*nrow as usize, *ncol as usize)
                 } else {
-                    OUTPUT.error("Failed to parse PACKAGES.rds file.");
-                    error!("Expected 'dim' to have length 2 in PACKAGES.rds.");
                     bail!("Expected 'dim' to have length 2 in PACKAGES.rds.");
                 }
             } else {
-                OUTPUT.error("Failed to parse PACKAGES.rds file.");
-                error!("Expected 'dim' to be owned integer vector in PACKAGES.rds.");
                 bail!("Expected 'dim' to be owned integer vector in PACKAGES.rds.");
             }
         }
         _ => {
-            OUTPUT.error("Failed to parse PACKAGES.rds file.");
-            error!("Expected 'dim' to be an integer vector in PACKAGES.rds.");
             bail!("Expected 'dim' to be an integer vector in PACKAGES.rds.");
         }
     };
@@ -1785,29 +1770,19 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
     let names = match dimnames {
         RObject::List(dn) => {
             if dn.len() != 2 {
-                OUTPUT.error("Failed to parse PACKAGES.rds file.");
-                error!("Expected 'dimnames' to have length 2 in PACKAGES.rds.");
                 bail!("Expected 'dimnames' to have length 2 in PACKAGES.rds.");
             }
             if let Character(vd) = &dn[1] {
                 if let VectorData::Owned(v) = vd {
                     v
                 } else {
-                    OUTPUT.error("Failed to parse PACKAGES.rds file.");
-                    error!("Expected 'dimnames' second element to be owned character vector in PACKAGES.rds.");
                     bail!("Expected 'dimnames' second element to be owned character vector in PACKAGES.rds.");
                 }
             } else {
-                OUTPUT.error("Failed to parse PACKAGES.rds file.");
-                error!(
-                    "Expected 'dimnames' second element to be character vector in PACKAGES.rds."
-                );
                 bail!("Expected 'dimnames' second element to be character vector in PACKAGES.rds.");
             }
         }
         _ => {
-            OUTPUT.error("Failed to parse PACKAGES.rds file.");
-            error!("Expected 'dimnames' to be a list in PACKAGES.rds.");
             bail!("Expected 'dimnames' to be a list in PACKAGES.rds.");
         }
     };
@@ -1922,6 +1897,7 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
 pub fn parse_packages_from_rds(rds_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
     let robj = read_rds_file(rds_path)?;
     parse_packages_from_rds_object(robj)
+        .with_context(|| format!("Failed to parse {}", rds_path.display()))
 }
 
 fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
@@ -1994,7 +1970,7 @@ fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
             [],
         ) {
             Ok(_) => {
-                info!("Added {} column, invalidating cached metadata", column);
+                debug!("Added {} column, invalidating cached metadata", column);
                 conn.execute(
                     "UPDATE repos SET etag = NULL, parsed_len = NULL, tail_hash = NULL,
                      last_updated = '1970-01-01 00:00:00'",
@@ -2274,7 +2250,7 @@ fn save_archived_to_db(
     drop(stmt); // Drop statement before committing
     tx.commit()?;
 
-    info!("Saved {} archived packages to database cache", stored);
+    debug!("Saved {} archived packages to database cache", stored);
     Ok(())
 }
 

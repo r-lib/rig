@@ -64,7 +64,7 @@ use std::path::{Path, PathBuf};
 
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 
-use log::info;
+use log::debug;
 
 use crate::output::OUTPUT;
 
@@ -460,13 +460,13 @@ pub fn link_library_compat_symlink(link_path: &Path, target: &Path) -> Result<()
         // sync -- the library is still fully usable at `target`, just not
         // discoverable at the old `.rvenv/lib` path.
         if let Err(err) = std::os::windows::fs::symlink_dir(target, link_path) {
-            log::warn!(
+            OUTPUT.warn(&format!(
                 "Could not create a compatibility link at {}: {}. \
                  The library is still usable at {}.",
                 link_path.display(),
                 err,
                 target.display()
-            );
+            ));
         }
     }
     Ok(())
@@ -1161,12 +1161,12 @@ pub fn ensure_rvenv_files(root: &Path) -> Result<(), Box<dyn Error>> {
                 "Filled in missing {}. Commit all of {}.{}",
                 what, RVENV_SHIM_DIR, hint
             ));
-            info!("Filled in missing {} in {}", what, root.display());
+            debug!("Filled in missing {} in {}", what, root.display());
         }
     } else {
         rvenv_init(root)?;
         OUTPUT.info("Filled in missing .Renviron/.rvenvlib for this project");
-        info!(
+        debug!(
             "Filled in missing .Renviron/.rvenvlib in {}",
             root.display()
         );
@@ -1208,11 +1208,11 @@ fn refresh_project_renviron(root: &Path) -> Result<(), Box<dyn Error>> {
     match old {
         None => {
             OUTPUT.info("Created missing .Renviron for this project");
-            info!("Created missing {}", path.display());
+            debug!("Created missing {}", path.display());
         }
         Some(old) if fs::read_to_string(&path)? != old => {
             OUTPUT.info("Updated rig's settings in the project .Renviron");
-            info!("Updated rig's block in {}", path.display());
+            debug!("Updated rig's block in {}", path.display());
         }
         Some(_) => {}
     }

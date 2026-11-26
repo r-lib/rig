@@ -6,8 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::ArgMatches;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use log::{debug, error, info, warn};
+use log::debug;
 use pubgrub::resolve;
 use rayon::prelude::*;
 use simple_error::SimpleError;
@@ -29,7 +28,7 @@ use crate::install::{
     REMOTE_LINKINGTO_FIELD, REMOTE_SHA_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
 };
 use crate::library::get_library_path;
-use crate::output::{ExitStatusError, ReportedError, OUTPUT};
+use crate::output::{Context, ExitStatusError, ReportedError, OUTPUT};
 use crate::pkg::default_r_feeds;
 use crate::pkg::deps::{
     dep_count, print_deps_json, print_deps_recursive, print_header, type_list, walk_deps,
@@ -160,7 +159,6 @@ fn sc_proj_init(
     for path in &created {
         let name = path.strip_prefix(&root).unwrap_or(path).to_string_lossy();
         OUTPUT.success(&format!("Created {}", name));
-        info!("Created {}", name);
     }
     OUTPUT.info(&format!(
         "Project set up for R {}. Next: add dependencies to {}, \
@@ -193,8 +191,6 @@ pub fn check_project_conflicts(root: &Path) -> Result<(), Box<dyn Error>> {
         names.join(", "),
         if names.len() == 1 { "s" } else { "" }
     );
-    OUTPUT.error(&msg);
-    error!("{}", msg);
     bail!("{}", msg);
 }
 
@@ -223,7 +219,6 @@ pub fn init_rvenv_files(root: &Path, manifest_path: &Path) -> Result<(), Box<dyn
     for path in &created {
         let name = path.strip_prefix(root).unwrap_or(path).to_string_lossy();
         OUTPUT.success(&format!("Created {}", name));
-        info!("Created {}", name);
     }
     Ok(())
 }
@@ -250,14 +245,11 @@ pub(crate) fn resolve_project_r_version(args: &ArgMatches) -> Result<String, Box
                 "No default R version, using the current release (R {}).",
                 rv
             ));
-            info!("No default R version, using the current release (R {})", rv);
             Ok(rv)
         }
         None => {
             let msg = "Cannot determine R version. Install R with `rig add`, \
                        or set the version with --r-version.";
-            OUTPUT.error(msg);
-            error!("{}", msg);
             bail!("{}", msg)
         }
     }
@@ -268,7 +260,10 @@ fn resolve_release_r_version(args: &ArgMatches) -> Option<String> {
     let platform = match get_platform(args) {
         Ok(p) => p,
         Err(err) => {
-            info!("Cannot detect platform to resolve R release: {}", err);
+            OUTPUT.warn(&format!(
+                "Cannot detect platform to resolve R release: {}",
+                err
+            ));
             return None;
         }
     };
@@ -276,7 +271,7 @@ fn resolve_release_r_version(args: &ArgMatches) -> Option<String> {
     match resolve_versions(vec!["release".to_string()], &platform, &arch) {
         Ok(vers) => vers.first().and_then(|v| v.version.clone()),
         Err(err) => {
-            info!("Cannot resolve the current R release: {}", err);
+            OUTPUT.warn(&format!("Cannot resolve the current R release: {}", err));
             None
         }
     }
@@ -335,8 +330,6 @@ fn sc_proj_import(
              remove it first.",
             RPROJ_MANIFEST_FILE
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -363,7 +356,6 @@ fn sc_proj_import(
                 "{} does not exist, creating a new one",
                 RPROJ_MANIFEST_FILE
             ));
-            info!("{} does not exist, creating a new one", RPROJ_MANIFEST_FILE);
             Rproj::minimal(&pkg.name)
         }
         None => Rproj::minimal(&pkg.name),
@@ -502,7 +494,6 @@ fn sc_proj_import(
                                 entry
                             );
                             OUTPUT.warn(&msg);
-                            info!("{}", msg);
                         }
                     }
                 }
@@ -526,7 +517,6 @@ fn sc_proj_import(
                             entry
                         );
                         OUTPUT.warn(&msg);
-                        info!("{}", msg);
                     }
                 },
                 Ok(crate::pkgsource::PkgSource::Cran)
@@ -538,7 +528,6 @@ fn sc_proj_import(
                         entry
                     );
                     OUTPUT.warn(&msg);
-                    info!("{}", msg);
                 }
             }
         }
@@ -655,7 +644,6 @@ fn sc_proj_import(
         )
     };
     OUTPUT.success(&msg);
-    info!("{}", msg);
 
     // A full import also rewrites the project's `DESCRIPTION` from the new
     // manifest, like `rig proj export --force`, so that the two files start
@@ -668,7 +656,6 @@ fn sc_proj_import(
         write_description_to(&description, &manifest)?;
         let msg = format!("Rewrote DESCRIPTION from {}", RPROJ_MANIFEST_FILE);
         OUTPUT.success(&msg);
-        info!("{}", msg);
     }
 
     // A full import sets up a whole project, not just its manifest, so it
@@ -680,14 +667,12 @@ fn sc_proj_import(
         if crate::rvenv::update_rbuildignore(&root)? {
             let msg = format!("Updated {}", crate::rvenv::RBUILDIGNORE_FILE);
             OUTPUT.success(&msg);
-            info!("{}", msg);
         }
         // R packages should not commit `rproj.lock`, see
         // `root_gitignore_block()`.
         if crate::rvenv::set_package_gitignore(&root)? {
             let msg = format!("Updated {}", crate::rvenv::RVENV_GITIGNORE_FILE);
             OUTPUT.success(&msg);
-            info!("{}", msg);
         }
     }
 
@@ -707,8 +692,6 @@ fn sc_proj_export(
 
     if path.exists() && !force && !description_is_rig_generated(path) {
         let msg = format!("{} already exists, use --force to overwrite", output);
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -720,7 +703,6 @@ fn sc_proj_export(
 
     let msg = format!("Exported {} to {}", RPROJ_MANIFEST_FILE, output);
     OUTPUT.success(&msg);
-    info!("{}", msg);
     Ok(())
 }
 
@@ -1022,11 +1004,7 @@ fn sc_proj_add(
     // in the last one does not leave the earlier ones added.
     let mut specs: Vec<AddSpec> = Vec::new();
     for spec in args.get_many::<String>("package").unwrap_or_default() {
-        specs.push(parse_add_arg(spec, &root).map_err(|err| {
-            OUTPUT.error(&err.to_string());
-            error!("{}", err);
-            err
-        })?);
+        specs.push(parse_add_arg(spec, &root)?);
     }
 
     let mut messages: Vec<String> = Vec::new();
@@ -1088,7 +1066,6 @@ fn sc_proj_add(
     }
     for msg in messages.iter() {
         OUTPUT.success(msg);
-        info!("{}", msg);
     }
 
     if args.get_flag("no-lock") {
@@ -1108,8 +1085,7 @@ fn sc_proj_add(
                 "Could not resolve the dependencies, {} unchanged",
                 RPROJ_MANIFEST_FILE
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
+            return Err(err).context(msg);
         }
         return Err(err);
     }
@@ -1174,8 +1150,6 @@ fn sc_proj_remove(
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -1194,7 +1168,6 @@ fn sc_proj_remove(
     }
     for msg in messages.iter() {
         OUTPUT.success(msg);
-        info!("{}", msg);
     }
 
     if args.get_flag("no-lock") {
@@ -1212,8 +1185,7 @@ fn sc_proj_remove(
                 "Could not resolve the dependencies, {} unchanged",
                 RPROJ_MANIFEST_FILE
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
+            return Err(err).context(msg);
         }
         return Err(err);
     }
@@ -1234,12 +1206,8 @@ fn read_description_paragraph(
     if !quiet {
         OUTPUT.status(&format!("Reading dependencies from {}", input));
     }
-    info!("Reading dependencies from {}", input);
-    let df: File = File::open(input).map_err(|e| {
-        OUTPUT.error(&format!("Cannot read {}: {}", input, e));
-        error!("Cannot read {}: {}", input, e);
-        e
-    })?;
+    debug!("Reading dependencies from {}", input);
+    let df: File = File::open(input).map_err(|e| format!("Cannot read {}: {}", input, e))?;
     parse_description_paragraph(df)
 }
 
@@ -1253,14 +1221,10 @@ pub(crate) fn parse_description_paragraph<R: std::io::Read>(
     let desc = parse_dcf_reader(reader)?;
 
     if desc.is_empty() {
-        OUTPUT.error("Empty DESCRIPTION file");
-        error!("Empty DESCRIPTION file");
         bail!("Empty DESCRIPTION file");
     }
 
     if desc.len() > 1 {
-        OUTPUT.error("Invalid DESCRIPTION file, empty lines are not allowed");
-        error!("Invalid DESCRIPTION file, empty lines are not allowed");
         bail!("Invalid DESCRIPTION file, empty lines are not allowed");
     }
 
@@ -1273,24 +1237,16 @@ pub(crate) fn parse_description_paragraph<R: std::io::Read>(
 fn proj_read_manifest(root: &Path) -> Result<Rproj, Box<dyn Error>> {
     let path = root.join(RPROJ_MANIFEST_FILE);
     if !path.exists() {
-        OUTPUT.error(&format!(
+        bail!(
             "{} not found, run `rig proj init` first",
             RPROJ_MANIFEST_FILE
-        ));
-        error!("{} not found", RPROJ_MANIFEST_FILE);
-        bail!("{} not found", RPROJ_MANIFEST_FILE);
+        );
     }
 
-    let manifest: Rproj = toml::from_str(&fs::read_to_string(path)?).map_err(|e| {
-        OUTPUT.error(&format!("Cannot parse {}: {}", RPROJ_MANIFEST_FILE, e));
-        error!("Cannot parse {}: {}", RPROJ_MANIFEST_FILE, e);
-        e
-    })?;
+    let manifest: Rproj = toml::from_str(&fs::read_to_string(path)?)
+        .map_err(|e| format!("Cannot parse {}: {}", RPROJ_MANIFEST_FILE, e))?;
     if let Err(e) = manifest.check_repositories() {
-        let msg = format!("Invalid {}: {}", RPROJ_MANIFEST_FILE, e);
-        OUTPUT.error(&msg);
-        error!("{}", msg);
-        bail!(ReportedError(msg));
+        bail!("Invalid {}: {}", RPROJ_MANIFEST_FILE, e);
     }
     Ok(manifest)
 }
@@ -1318,7 +1274,6 @@ pub(crate) fn proj_read_manifest_deps(
         "Reading dependencies from {}",
         RPROJ_MANIFEST_FILE
     ));
-    info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
     let manifest = proj_read_manifest(root)?;
 
     let deps = manifest.to_dep_version_specs(dev)?;
@@ -1347,7 +1302,6 @@ fn proj_read_manifest_deps_with_remotes(
         "Reading dependencies from {}",
         RPROJ_MANIFEST_FILE
     ));
-    info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
     let manifest = proj_read_manifest(root)?;
 
     let deps = manifest.to_dep_version_specs(dev)?;
@@ -1453,7 +1407,6 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
                 "Reading dependencies from {}",
                 RPROJ_MANIFEST_FILE
             ));
-            info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
             let deps = manifest.to_dep_version_specs(true)?;
             let group_roots = manifest.main_and_group_roots()?;
             let extra_roots = manifest.optional_dependency_roots();
@@ -1501,7 +1454,6 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
         dirs.len(),
         if dirs.len() == 1 { "member" } else { "members" }
     ));
-    info!("Reading dependencies from {} workspace members", dirs.len());
 
     let mut roots: Vec<SolveRoot> = vec![];
     let mut merged = PackageDependencies {
@@ -1530,7 +1482,6 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
                 RPROJ_MANIFEST_FILE
             );
             OUTPUT.warn(&msg);
-            info!("{}", msg);
         }
         let name = member.project.name.clone();
         git_deps.extend(member.git_dependencies(dir));
@@ -1867,7 +1818,7 @@ pub(crate) fn proj_binary_target_quiet(
     let spec = platform;
     let platform = match platform {
         Some(p) if p == "source" => {
-            info!("Solving for source packages only");
+            debug!("Solving for source packages only");
             return Ok((None, None));
         }
         Some(p) => parse_platform_string(p)?,
@@ -1885,21 +1836,18 @@ pub(crate) fn proj_binary_target_quiet(
     let target = match BinaryTarget::detect(&platform, r_version) {
         Ok(target) => target,
         Err(err) => {
-            // The error itself is reported by the download layer and again by
-            // main, so this only adds the way out.
-            OUTPUT.error(
+            debug!("Cannot look up binary package targets: {}", err);
+            return Err(err).context(
                 "Cannot look up binary package targets. \
                 Use --platform source to solve for source packages only.",
             );
-            error!("Cannot look up binary package targets: {}", err);
-            return Err(err);
         }
     };
 
     let requested = || spec.cloned().unwrap_or_else(|| platform_string(&platform));
     let note = match &target {
         Some(target) => {
-            info!("Solving for binary target {}", target.name());
+            debug!("Solving for binary target {}", target.name());
             // A specific distro P3M has no build for (or not for this arch)
             // gets the generic glibc build, see `PpmStatus::ppm_platform`. A
             // plain glibc Linux platform asks for exactly that.
@@ -1930,7 +1878,6 @@ impl TargetNote {
             TargetNote::NoBinaries(name) => {
                 let msg = format!("No binary packages for {}, using source packages", name);
                 OUTPUT.warn(&msg);
-                info!("{}", msg);
             }
             TargetNote::Generic { requested, target } => {
                 let msg = format!(
@@ -1938,7 +1885,6 @@ impl TargetNote {
                     requested, target
                 );
                 OUTPUT.info(&msg);
-                info!("{}", msg);
             }
         }
     }
@@ -2063,7 +2009,7 @@ pub(crate) fn sc_proj_solve_deps(
     pins: &SolvePins,
     report_status: bool,
 ) -> Result<(RPackageRegistry, RegistrySolution), Box<dyn Error>> {
-    info!("Solving dependencies");
+    debug!("Solving dependencies");
 
     // `r_version` may be a symbolic, installed R name (e.g. "devel", "next")
     // rather than a numeric version: resolve it before it reaches package
@@ -2138,7 +2084,7 @@ pub(crate) fn sc_proj_solve_deps(
         if report_status {
             OUTPUT.status("Registering git/GitHub/URL package sources");
         }
-        info!("Registering git/GitHub/URL package sources");
+        debug!("Registering git/GitHub/URL package sources");
         register_git_sources(&reg, git_sources);
     }
 
@@ -2164,7 +2110,7 @@ pub(crate) fn sc_proj_solve_deps(
     if report_status {
         OUTPUT.status("Downloading binary package metadata");
     }
-    info!("Downloading binary package metadata");
+    debug!("Downloading binary package metadata");
     // A root is a local directory, or synthetic, so there is no binary index
     // to fetch for it, however many members depend on it. Same for a
     // git/URL/path-sourced package (`git_sources`, despite the name, covers
@@ -2203,7 +2149,7 @@ pub(crate) fn sc_proj_solve_deps(
             );
             // Parallel callers print the one failure that aborts the command
             // themselves; N copies of the same report would say less, not more.
-            error!("{}", msg);
+            debug!("{}", msg);
             if report_status {
                 report_solve_failure(&msg);
                 bail!(ReportedError(msg))
@@ -2259,7 +2205,6 @@ fn record_r_universe_remotes(reg: &RPackageRegistry, solution: &RegistrySolution
                     req.package, req.version, req.repo_url
                 );
                 OUTPUT.warn(&msg);
-                warn!("{}", msg);
             }
         }
     }
@@ -2706,7 +2651,6 @@ fn warn_unknown_upgrade_packages(
                 name
             );
             OUTPUT.warn(&msg);
-            info!("{}", msg);
         }
     }
 }
@@ -3469,9 +3413,7 @@ fn sc_proj_lock(
 fn proj_lock_check(root: &Path, label: &str, update: &str) -> Result<(), Box<dyn Error>> {
     // Not a project at all, so there is nothing to be out of date.
     if !root.join(RPROJ_MANIFEST_FILE).exists() {
-        let msg = format!("No {} found in {}", RPROJ_MANIFEST_FILE, root.display());
-        OUTPUT.error(&msg);
-        bail!(ReportedError(msg));
+        bail!("No {} found in {}", RPROJ_MANIFEST_FILE, root.display());
     }
     let msg = if !root.join(RPROJ_LOCK_FILE).exists() {
         format!("No {} found, create it with `{}`", label, update)
@@ -3481,16 +3423,14 @@ fn proj_lock_check(root: &Path, label: &str, update: &str) -> Result<(), Box<dyn
         OUTPUT.info(&format!("{} is up to date", label));
         return Ok(());
     };
-    OUTPUT.error(&msg);
     Err(check_failed(msg))
 }
 
 /// The error of a `--check` that found something out of date: exit status 1.
-/// `msg` must have been shown already.
 fn check_failed(msg: String) -> Box<dyn Error> {
     Box::new(ExitStatusError {
         status: 1,
-        error: Box::new(ReportedError(msg)),
+        error: msg.into(),
     })
 }
 
@@ -3805,7 +3745,6 @@ pub(crate) fn proj_lock_root() -> Result<PathBuf, Box<dyn Error>> {
         if workspace != cwd {
             let msg = format!("Using the workspace at {}", workspace.display());
             OUTPUT.info(&msg);
-            info!("{}", msg);
         }
         return Ok(workspace);
     }
@@ -4204,7 +4143,7 @@ pub(crate) fn proj_lock_r_version(
         if allowed(&rv) {
             return Ok(rv);
         }
-        info!(
+        debug!(
             "The default R ({}) does not satisfy the project's R {}",
             rv,
             r_requirement(req)
@@ -4227,7 +4166,6 @@ pub(crate) fn proj_lock_r_version(
             r_requirement(req)
         );
         OUTPUT.info(&msg);
-        info!("{}", msg);
         return Ok(rv.original);
     }
 
@@ -4242,7 +4180,6 @@ pub(crate) fn proj_lock_r_version(
                 r_requirement(req)
             );
             OUTPUT.info(&msg);
-            info!("{}", msg);
             Ok(rv)
         }
         _ => {
@@ -4250,8 +4187,6 @@ pub(crate) fn proj_lock_r_version(
                 "No R version satisfies the project's R {}, specify one with --r-version.",
                 r_requirement(req)
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
             bail!("{}", msg)
         }
     }
@@ -4358,7 +4293,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             names
         );
         OUTPUT.info(&msg);
-        info!("{}", msg);
     }
 
     // Each R version has to satisfy the manifest's own `R` requirement,
@@ -4416,7 +4350,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 // Not worth a warning: with the default platform set, "this
                 // machine" routinely resolves to the same target as one of
                 // the three fixed platforms.
-                info!("Skipping duplicate target R {} / {}", key.0, key.1);
+                debug!("Skipping duplicate target R {} / {}", key.0, key.1);
                 continue;
             }
 
@@ -4490,7 +4424,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     if let Some(cutoff) = &lock_options.exclude_newer {
         let msg = format!("Ignoring package versions published after {}", cutoff);
         OUTPUT.info(&msg);
-        info!("{}", msg);
     }
     // The cutoff can choose between the Bioconductor releases of an R version.
     let bioc = repos.bioc_setting();
@@ -4600,7 +4533,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     let label = opts.lockfile_label.as_deref().unwrap_or(RPROJ_LOCK_FILE);
     if to_solve.is_empty() && reused.len() == existing_count {
         OUTPUT.success(&format!("{} is already up to date", label));
-        info!("{} is already up to date, nothing to solve", label);
         return Ok(());
     }
 
@@ -4638,7 +4570,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         let source_only = solve_targets.iter().all(|t| t.target.is_none());
         if opts.prefer_binary.is_some_and(|n| n > 0) && source_only {
             OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
-            info!("Ignoring --prefer-binary: solving for source packages only");
         }
 
         // The solves below run in parallel, so each one printing its own status
@@ -4759,7 +4690,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 constraint: format_constraints(&d.constraints),
             })
             .collect();
-        info!("Solved dependencies for R {} / {}", rver, platform_key);
+        debug!("Solved dependencies for R {} / {}", rver, platform_key);
 
         summaries.push(TargetSolution {
             r_version: rver.clone(),
@@ -4822,7 +4753,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     relative_local_paths(&mut rproj_lock, root, &solve.relative_paths);
     fs::write(root.join(RPROJ_LOCK_FILE), rproj_lock.to_toml()?)?;
     OUTPUT.success(&format!("Written project lockfile to {}", label));
-    info!("Written project lockfile to {}", label);
 
     Ok(())
 }
@@ -4871,11 +4801,9 @@ impl PolicyNotes {
 
     pub fn print(&self) {
         for msg in &self.blocked {
-            info!("{}", msg);
             OUTPUT.info(msg);
         }
         for msg in &self.vulnerable {
-            info!("{}", msg);
             OUTPUT.warn(msg);
         }
         if !self.vulnerable.is_empty() {
@@ -4921,7 +4849,7 @@ fn solution_rows(
         // that a version an ordinary constraint pushed back is not reported as
         // if the flag had done it.
         let held_back_from = registry.held_back_from(pkg, ver).map(|latest| {
-            info!(
+            debug!(
                 "Held {} back to {} for a binary package, latest is {}",
                 pkg, ver.version, latest
             );
@@ -5255,8 +5183,6 @@ fn rvenv_r_installation(
             arch,
             add_args[1..].join(" ")
         );
-        OUTPUT.info(&msg);
-        info!("{}", msg);
         bail!("{}", msg);
     }
     if !install {
@@ -5267,8 +5193,6 @@ fn rvenv_r_installation(
             arch,
             add_args[1..].join(" ")
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -5284,8 +5208,6 @@ fn rvenv_r_installation(
                 "Installed R {} ({}), but cannot find it now",
                 r_version, arch
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
             bail!("{}", msg)
         }
     }
@@ -5309,10 +5231,6 @@ fn install_r_with_rig_add(r_version: &str, arch: &str) -> Result<(), Box<dyn Err
         "R {} ({}) is not installed, installing it now",
         r_version, arch
     ));
-    info!(
-        "R {} ({}) is not installed, installing it now",
-        r_version, arch
-    );
     // In admin mode `rig add` escalates by re-running the whole current
     // command line with sudo (gsudo on Windows), so everything after the R
     // installation would run as root too, e.g. installing the packages into
@@ -5377,8 +5295,6 @@ fn install_r_with_rig_add_process(r_version: &str, arch: &str) -> Result<(), Box
     let status = cmd.status()?;
     if !status.success() {
         let msg = format!("Failed to install R {} ({})", r_version, arch);
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
     Ok(())
@@ -5414,7 +5330,6 @@ pub(crate) fn requested_r_installation(
                 r_add_args(r_version, &arch)[1..].join(" ")
             );
             OUTPUT.info(&msg);
-            info!("{}", msg);
             return Ok(None);
         }
         None => {
@@ -5703,8 +5618,6 @@ fn select_sync_target<'a>(
                 available.join(", ")
             }
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -6098,7 +6011,6 @@ fn sync_check_result(opts: &ProjSyncOptions, stale: &[String]) -> Result<(), Box
         "The project environment is out of date: {}. Run `rig proj sync` to update it",
         stale.join("; ")
     );
-    OUTPUT.error(&msg);
     Err(check_failed(msg))
 }
 
@@ -6131,8 +6043,6 @@ pub(crate) fn proj_sync(
     // `rig pkg sync` installs the lock file as it is, it never locks.
     if opts.pkg_sync.is_some() && !lock_path.is_file() {
         let msg = format!("Lock file {} does not exist", lock_path.display());
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
     if opts.locked {
@@ -6144,8 +6054,6 @@ pub(crate) fn proj_sync(
                 "No {} found, run `rig proj lock` first (without --frozen)",
                 RPROJ_LOCK_FILE
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
             bail!("{}", msg);
         }
         if opts.dry_run {
@@ -6158,8 +6066,7 @@ pub(crate) fn proj_sync(
                     RPROJ_LOCK_FILE,
                     root.display()
                 );
-                OUTPUT.error(&msg);
-                bail!(ReportedError(msg));
+                bail!("{}", msg);
             }
             OUTPUT.info(&format!(
                 "No {}, `rig proj sync` would run `rig proj lock` first",
@@ -6171,7 +6078,6 @@ pub(crate) fn proj_sync(
             "No {}, running `rig proj lock` first",
             RPROJ_LOCK_FILE
         ));
-        info!("No {}, running `rig proj lock` first", RPROJ_LOCK_FILE);
         proj_lock(root, &lock_opts, args)?;
     } else if opts.exclude_newer.is_some() || opts.repos.is_some() {
         // Re-lock with the new cutoff or repositories. `proj_lock` keeps the
@@ -6217,8 +6123,6 @@ pub(crate) fn proj_sync(
                     inst.describe()
                 );
                 if inst.explicit {
-                    OUTPUT.error(&msg);
-                    error!("{}", msg);
                     bail!("{}", msg);
                 }
                 None
@@ -6246,7 +6150,6 @@ pub(crate) fn proj_sync(
                     fallback.r_version
                 );
                 OUTPUT.info(&msg);
-                info!("{}", msg);
             }
             fallback
         }
@@ -6268,7 +6171,6 @@ pub(crate) fn proj_sync(
     for name in &skipped.incompatible {
         let msg = format!("Skipping {}, it does not work on {}", name, os_name);
         OUTPUT.info(&msg);
-        info!("{}", msg);
     }
     if !skipped.unneeded.is_empty() {
         let msg = format!(
@@ -6283,7 +6185,6 @@ pub(crate) fn proj_sync(
             skipped.unneeded.join(", ")
         );
         OUTPUT.info(&msg);
-        info!("{}", msg);
     }
     let wanted: &[RprojLockPackage] = &wanted;
 
@@ -6314,8 +6215,6 @@ pub(crate) fn proj_sync(
                 RPROJ_MANIFEST_FILE,
                 root.display()
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
             bail!("{}", msg);
         }
         if opts.dry_run {
@@ -6437,7 +6336,6 @@ pub(crate) fn proj_sync(
                     library_path.display()
                 );
                 OUTPUT.warn(&msg);
-                info!("{}", msg);
             }
         }
 
@@ -6476,7 +6374,7 @@ pub(crate) fn proj_sync(
         } else {
             let written = rvenv_sync(root, &cfg, repos, target.bioc_version.as_deref())?;
             if written.is_empty() {
-                info!(
+                debug!(
                     "Project environment for R {} ({}) is already up to date",
                     r_name,
                     r_binary.display()
@@ -6484,7 +6382,7 @@ pub(crate) fn proj_sync(
             } else {
                 for path in &written {
                     let path = path.strip_prefix(root).unwrap_or(path);
-                    info!("Updated {}", path.display());
+                    debug!("Updated {}", path.display());
                 }
                 OUTPUT.success(&format!(
                     "Updated the project environment for R {} ({})",
@@ -6569,7 +6467,7 @@ pub(crate) fn proj_sync(
                         RPROJ_LOCK_FILE,
                         names
                     ));
-                    info!("Removed {} from {}", names, library_path.display());
+                    debug!("Removed {} from {}", names, library_path.display());
                 }
                 if !failed.is_empty() {
                     bail!("Failed to remove {}", failed.join(", "));
@@ -6606,7 +6504,7 @@ pub(crate) fn proj_sync(
                 library_path.display()
             ));
         }
-        info!("Nothing to install in {}", library_path.display());
+        debug!("Nothing to install in {}", library_path.display());
         return sync_check_result(opts, &stale);
     }
 
@@ -6631,7 +6529,6 @@ pub(crate) fn proj_sync(
 
     // Download only the packages that are actually going to be installed
     OUTPUT.status("Downloading packages");
-    info!("Downloading packages");
     let to_download: Vec<RprojLockPackage> = todo.iter().map(|p| (*p).clone()).collect();
     download_lockfile_packages(&to_download)?;
 
@@ -6664,12 +6561,6 @@ pub(crate) fn proj_sync(
         wanted.len(),
         library_path.display()
     ));
-    info!(
-        "Installing {} of {} packages to {}",
-        total_packages,
-        wanted.len(),
-        library_path.display()
-    );
 
     let installed = install_packages(packages, &library_path, r_binary, max_concurrent)?;
 
@@ -6681,7 +6572,6 @@ pub(crate) fn proj_sync(
         "Deployment complete, installed {} packages",
         installed
     ));
-    info!("Deployment complete, installed {} packages", installed);
     Ok(())
 }
 
@@ -6973,7 +6863,6 @@ fn download_r_universe_packages(
             pkg.package, pkg.version, problem, url, commit
         );
         OUTPUT.warn(&msg);
-        info!("{}", msg);
         create_parent_dir_if_needed(&checkout)?;
         crate::pkgsource::git::fetch_git_checkout(
             &url,
@@ -7068,17 +6957,6 @@ fn download_http_lockfile_packages(
         return Ok(());
     }
 
-    // Create progress bars
-    let multi_progress = MultiProgress::new();
-    let overall_pb = multi_progress.add(ProgressBar::new(total as u64));
-    overall_pb.set_style(
-        ProgressStyle::default_bar()
-            .template("{msg} [{bar:40.green/blue}] {pos}/{len} packages")
-            .unwrap()
-            .progress_chars("=>-"),
-    );
-    overall_pb.set_message("Downloading");
-
     // Track results using Cell for interior mutability
     let success_count = Cell::new(0);
     let cached_count = Cell::new(0);
@@ -7086,8 +6964,8 @@ fn download_http_lockfile_packages(
 
     // Download all packages concurrently with progress updates
     OUTPUT.status(&format!("Downloading {} packages", total));
-    info!("Downloading {} packages", total);
-    download_multiple_first_available_with_progress(
+    let overall_pb = OUTPUT.progress(total as u64, "Downloading");
+    let result = download_multiple_first_available_with_progress(
         downloads,
         Some(PACKAGE_FILE_TTL),
         None,
@@ -7095,19 +6973,20 @@ fn download_http_lockfile_packages(
             Ok((downloaded, _etag)) => {
                 if *downloaded {
                     success_count.set(success_count.get() + 1);
-                    overall_pb.println(format!("✓ Downloaded: {}", packages[idx].package));
+                    overall_pb.println(&format!("Downloaded: {}", packages[idx].package));
                 } else {
                     cached_count.set(cached_count.get() + 1);
-                    overall_pb.println(format!("✓ Cached: {}", packages[idx].package));
+                    overall_pb.println(&format!("Cached: {}", packages[idx].package));
                 }
                 overall_pb.inc(1);
             }
             Err(e) => {
                 errors.borrow_mut().push((idx, e.to_string()));
-                overall_pb.finish_and_clear();
             }
         },
-    )?;
+    );
+    overall_pb.finish();
+    result?;
 
     // Report every failure, in package order, before failing
     let mut errors = errors.into_inner();
@@ -7116,9 +6995,6 @@ fn download_http_lockfile_packages(
         .iter()
         .map(|(idx, err)| format!("Failed to download {}: {}", packages[*idx].package, err))
         .collect();
-    for msg in &messages {
-        error!("{}", msg);
-    }
     match messages.len() {
         0 => {}
         1 => bail!("{}", messages[0]),
@@ -7130,8 +7006,8 @@ fn download_http_lockfile_packages(
         }
     }
 
-    overall_pb.finish_with_message(format!(
-        "Complete: {} downloaded, {} cached",
+    OUTPUT.success(&format!(
+        "{} packages downloaded, {} already cached",
         success_count.get(),
         cached_count.get()
     ));

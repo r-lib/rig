@@ -15,9 +15,9 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
-use log::{debug, info};
+use log::debug;
 
-use crate::output::OUTPUT;
+use crate::output::{ReportedError, OUTPUT};
 use crate::proj::BASE_PKGS;
 
 use super::list::{read_installed, resolve_library, InstalledPackage, ResolvedLibrary};
@@ -52,7 +52,7 @@ pub fn sc_pkg_remove(
                 target.path.display()
             ));
         }
-        info!("Removing {} from {}", target.package, target.path.display());
+        debug!("Removing {} from {}", target.package, target.path.display());
         match remove_package(&target.path) {
             Ok(()) => removed.push(target),
             Err(err) => {
@@ -151,15 +151,18 @@ fn select_packages(
             if base.len() == 1 { "it" } else { "them" },
             if base.len() == 1 { "it" } else { "them" }
         );
-        OUTPUT.error(&msg);
         bail!(msg);
     }
 
+    if missing.len() == 1 {
+        bail!(missing[0].clone());
+    }
     if !missing.is_empty() {
+        // Each missing package is an error of its own.
         for msg in &missing {
             OUTPUT.error(msg);
         }
-        bail!(missing.join(" "));
+        bail!(ReportedError(missing.join(" ")));
     }
 
     Ok(targets)

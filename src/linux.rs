@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use clap::ArgMatches;
-use log::{debug, error, info, trace, warn};
+use log::{debug, trace};
 use simple_error::SimpleError;
 
 use crate::rversion::*;
@@ -168,7 +168,6 @@ fn parse_libc(text: &str) -> Result<Libc, Box<dyn Error>> {
         LibcType::Glibc
     } else {
         let msg = "Could not determine libc type from `ldd --version` output".to_string();
-        OUTPUT.error(&msg);
         bail!(msg);
     };
 
@@ -181,7 +180,6 @@ fn parse_libc(text: &str) -> Result<Libc, Box<dyn Error>> {
                 "Could not determine {} version from `ldd --version` output",
                 kind
             );
-            OUTPUT.error(&msg);
             bail!(msg);
         }
     };
@@ -222,7 +220,6 @@ fn check_libc_supported(libc: &Libc) -> Result<(), Box<dyn Error>> {
              {} {} or later",
             libc.kind, libc.version, libc.kind, minimum
         );
-        OUTPUT.error(&msg);
         bail!(msg);
     }
     Ok(())
@@ -270,8 +267,6 @@ pub fn maybe_expand_portable(platform: &str) -> Result<String, Box<dyn Error>> {
 
 pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     if args.value_source("arch") == Some(clap::parser::ValueSource::CommandLine) {
-        OUTPUT.error("`--arch` is not supported on Linux.");
-        error!("`--arch` is not supported on Linux");
         bail!("`--arch` is not supported on Linux");
     }
 
@@ -325,10 +320,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
                      falling back to the portable build `{}`.",
                     platform, portable
                 ));
-                warn!(
-                    "No build for platform {}, falling back to portable build {}",
-                    platform, portable
-                );
                 install_platform = portable.clone();
                 get_resolve_for(args, &portable)?
             } else {
@@ -357,11 +348,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     let url: String = match &version.url {
         Some(s) => s.to_string(),
         None => {
-            OUTPUT.error(&format!(
-                "Cannot find a download url for R version {}",
-                verstr
-            ));
-            error!("Cannot find a download url for R version {}", verstr);
             bail!("Cannot find a download url for R version {}", verstr)
         }
     };
@@ -371,7 +357,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
         if let Some(ref v) = ver {
             if let Some(name) = find_installed_by_version(v, Some(str))? {
                 if installed_etag_matches(&name, etag.as_deref()) {
-                    info!("The R-{} installer at {} has not changed", str, url);
+                    debug!("The R-{} installer at {} has not changed", str, url);
                     return report_already_installed(&name, alias);
                 }
             }
@@ -414,7 +400,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
         }
         if let Err(e) = ensure_positron_setup(None) {
             OUTPUT.warn(&format!("Could not update Positron settings: {}", e));
-            warn!("Could not update Positron settings: {}", e);
         }
     }
 
@@ -422,7 +407,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
         check_usr_bin_which();
         if let Err(e) = setup_user_cert(&dirname.to_string(), false) {
             OUTPUT.warn(&format!("Could not set up CA certificate bundle: {}", e));
-            warn!("Could not set up CA certificate bundle: {}", e);
         }
         // Unlike the CA bundle this is fatal: the portable builds bundle
         // libfontconfig but no fontconfig configuration and no fonts, so
@@ -628,14 +612,6 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
     } else {
         let distro = platform.distro.as_deref().unwrap_or("<unknown>");
         let version = platform.version.as_deref().unwrap_or("<unknown>");
-        OUTPUT.error(&format!(
-            "I don't know how to install a system package on {} {}",
-            distro, version
-        ));
-        error!(
-            "I don't know how to install a system package on {} {}",
-            distro, version
-        );
         bail!(
             "I don't know how to install a system package on {} {}",
             distro,
@@ -651,7 +627,6 @@ fn add_package(path: &OsStr, platform: &OsVersion) -> Result<String, Box<dyn Err
         let cmd = format_cmd_args(cmd.to_vec(), path);
         let cmdline = cmd.join(&OsString::from(" "));
         OUTPUT.status(&format!("Running {:?}", cmdline));
-        info!("Running {:?}", cmdline);
         let cmd0 = cmd[0].to_owned();
         run(cmd0, cmd[1..].to_vec(), "installation")?;
     }
@@ -690,7 +665,7 @@ fn safe_user_install(
     std::fs::create_dir_all(&staging)?;
 
     OUTPUT.status(&format!("Unpacking {}", target.display()));
-    info!("Unpacking {} into {}", target.display(), staging.display());
+    debug!("Unpacking {} into {}", target.display(), staging.display());
     if let Err(e) = unpack_tar_gz(target, &staging) {
         let _ = std::fs::remove_dir_all(&staging);
         return Err(e);
@@ -708,7 +683,6 @@ fn safe_user_install(
     let dest = root.join(&dirname);
     if dest.exists() {
         OUTPUT.status(&format!("Removing existing {}", dest.display()));
-        info!("Removing existing {}", dest.display());
         std::fs::remove_dir_all(&dest)?;
     }
 
@@ -718,15 +692,12 @@ fn safe_user_install(
     patch_r_home_dir(&dest)?;
     if let Err(e) = patch_renviron_tar(&dest) {
         OUTPUT.warn(&format!("Could not set TAR in Renviron: {}", e));
-        warn!("Could not set TAR in Renviron: {}", e);
     }
     if let Err(e) = shim_bundled_xcursor(&dest) {
         OUTPUT.warn(&format!("Could not shim libXcursor: {}", e));
-        warn!("Could not shim libXcursor: {}", e);
     }
     if let Err(e) = setup_user_libs(&dest) {
         OUTPUT.warn(&format!("Could not set up bundled libraries: {}", e));
-        warn!("Could not set up bundled libraries: {}", e);
     }
 
     // Clean up the staging wrapper if we descended into a subdirectory.
@@ -737,7 +708,6 @@ fn safe_user_install(
     write_install_metadata(&dest, platform)?;
 
     OUTPUT.success(&format!("Installed R to {}", dest.display()));
-    info!("Installed R to {}", dest.display());
 
     Ok(dirname)
 }
@@ -1018,7 +988,6 @@ fn copy_user_libs(libs: &Path, libdir: &Path) -> Result<(), Box<dyn Error>> {
                     pattern,
                     libs.display(),
                 ));
-                warn!("No {} in {}, not copying it", pattern, libs.display());
                 continue;
             }
         };
@@ -1257,19 +1226,16 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
             if out.status.success() {
                 OUTPUT.status(&format!("Removing {} package", pkgname));
-                info!("Removing {} package", pkgname);
                 let cmd = format_cmd_args(tools.delete.clone(), opkgname);
                 let cmd0 = cmd[0].to_owned();
                 run(cmd0, cmd[1..].to_vec(), "deleting system package")?;
             } else {
                 OUTPUT.success(&format!("{} package is not installed", pkgname));
-                info!("{} package is not installed", pkgname);
             }
         }
 
         if dir.exists() {
             OUTPUT.status(&format!("Removing {}", dir.display()));
-            info!("Removing {}", dir.display());
             std::fs::remove_dir_all(&dir)?;
         }
     }
@@ -1279,7 +1245,6 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             "Could not clean up the rig library directory: {}",
             e
         ));
-        warn!("Could not clean up the rig library directory: {}", e);
     }
 
     sc_system_make_links()?;
@@ -1311,7 +1276,6 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                 linkfile.display(),
                 target.display()
             ));
-            info!("Adding {} -> {}", linkfile.display(), target.display());
             symlink(&target, &linkfile)?;
         }
     }
@@ -1335,15 +1299,12 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
             match std::fs::read_link(&path) {
                 Err(_) => {
                     OUTPUT.warn(&format!("{} is not a symlink", path.display()));
-                    warn!("{} is not a symlink", path.display())
                 }
                 Ok(target) => {
                     if !target.exists() {
                         OUTPUT.status(&format!("Cleaning up {}", target.display()));
-                        info!("Cleaning up {}", target.display());
                         if let Err(err) = std::fs::remove_file(&path) {
                             OUTPUT.warn(&format!("Failed to remove {}: {}", path.display(), err));
-                            warn!("Failed to remove {}: {}", path.display(), err)
                         }
                     }
                 }
@@ -1518,7 +1479,6 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
                 "Could not register rig R versions in Positron: {}",
                 e
             ));
-            warn!("Could not update Positron settings: {}", e);
         }
     }
 
@@ -1531,7 +1491,6 @@ pub fn sc_get_default() -> Result<Option<String>, Box<dyn Error>> {
 
 fn set_sysreqs_false(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     OUTPUT.status("Disabling automatic system requirements installation.");
-    info!("Disabling automatic system requirements installation.");
 
     let vers = match vers {
         Some(x) => x,
@@ -1681,7 +1640,6 @@ pub fn sc_system_user_mode(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     if sudo::check() == sudo::RunningAs::Root {
         OUTPUT.warn("`rig system user-mode` is meant to be run as a normal user, not with `sudo`.");
-        warn!("rig system user-mode is running as root");
     }
 
     // 1. Capture the admin-mode setup from the system locations, before we
@@ -1696,13 +1654,11 @@ pub fn sc_system_user_mode(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // would leave the user with no working R installation.
     if !no_reinstall && !versions.is_empty() {
         if let Err(e) = user_mode_platform() {
-            OUTPUT.error(&format!(
+            bail!(
                 "Cannot reinstall R in user mode: {}. Re-run with `--no-reinstall` \
                  to switch to user mode and clean up without reinstalling.",
                 e
-            ));
-            error!("Cannot switch to user mode: {}", e);
-            return Err(e);
+            );
         }
     }
 
@@ -1816,20 +1772,17 @@ fn reinstall_in_user_mode(
                 "R '{}' is already installed in user mode, not reinstalling",
                 udir
             ));
-            info!("R '{}' already installed in user mode, skipping", udir);
             map.push((admin_dir.clone(), udir));
             continue;
         }
         let spec = user_mode_install_spec(admin_dir, aliases);
         OUTPUT.status(&format!("Reinstalling R '{}' in user mode", spec));
-        info!("Reinstalling R '{}' in user mode", spec);
         let before = sc_get_list()?;
         let status = Command::new(&exe)
             .args(["add", &spec, "--without-pak"])
             .status()?;
         if !status.success() {
             OUTPUT.warn(&format!("Failed to reinstall R '{}' in user mode", spec));
-            warn!("Failed to reinstall R '{}' in user mode", spec);
             continue;
         }
         let after = sc_get_list()?;
@@ -1851,10 +1804,8 @@ fn clean_admin_installations(keep_install: bool, keep_links: bool) -> Result<(),
     }
     if keep_install {
         OUTPUT.status("Removing admin-mode links, keeping installations (this needs `sudo`)");
-        info!("Removing admin-mode links, keeping installations");
     } else {
         OUTPUT.status("Removing admin-mode R installations (this needs `sudo`)");
-        info!("Removing admin-mode R installations");
     }
     let exe = std::env::current_exe()?;
     let mut cmd = Command::new(&exe);
@@ -1937,10 +1888,8 @@ fn remove_admin_installations() -> Result<(), Box<dyn Error>> {
             continue;
         }
         OUTPUT.status(&format!("Removing {}", dir));
-        info!("Removing {}", dir);
         if let Err(e) = std::fs::remove_dir_all(path) {
             OUTPUT.warn(&format!("Cannot remove {}: {}", dir, e));
-            warn!("Cannot remove {}: {}", dir, e);
         }
     }
 
@@ -1950,7 +1899,6 @@ fn remove_admin_installations() -> Result<(), Box<dyn Error>> {
     // that the migration has just populated.
     if let Err(e) = remove_user_lib_dir(Path::new(ADMIN_LIB_DIR)) {
         OUTPUT.warn(&format!("Cannot remove {}: {}", ADMIN_LIB_DIR, e));
-        warn!("Cannot remove {}: {}", ADMIN_LIB_DIR, e);
     }
 
     let admin_root = Path::new(R_ROOT_);
@@ -1982,12 +1930,10 @@ fn remove_admin_installations() -> Result<(), Box<dyn Error>> {
             match Command::new(cmd0).args(cmd[1..].to_vec()).output() {
                 Ok(out) if out.status.success() => {
                     OUTPUT.status(&format!("Removing {} package", pkgname));
-                    info!("Removing {} package", pkgname);
                     let cmd = format_cmd_args(tools.delete.clone(), opkgname);
                     let cmd0 = cmd[0].to_owned();
                     if let Err(e) = run(cmd0, cmd[1..].to_vec(), "deleting system package") {
                         OUTPUT.warn(&format!("Could not remove {} package: {}", pkgname, e));
-                        warn!("Could not remove {} package: {}", pkgname, e);
                     }
                 }
                 _ => debug!("{} package is not installed", pkgname),
@@ -1997,10 +1943,8 @@ fn remove_admin_installations() -> Result<(), Box<dyn Error>> {
         let dir = admin_root.join(ver);
         if dir.exists() {
             OUTPUT.status(&format!("Removing {}", dir.display()));
-            info!("Removing {}", dir.display());
             if let Err(e) = std::fs::remove_dir_all(&dir) {
                 OUTPUT.warn(&format!("Cannot remove {}: {}", dir.display(), e));
-                warn!("Cannot remove {}: {}", dir.display(), e);
             }
         }
     }
@@ -2033,10 +1977,8 @@ fn remove_admin_links() -> Result<(), Box<dyn Error>> {
         if let Ok(tgt) = std::fs::read_link(&path) {
             if link_points_into_admin_root(&tgt) {
                 OUTPUT.status(&format!("Removing {}", path.display()));
-                info!("Removing {}", path.display());
                 if let Err(e) = std::fs::remove_file(&path) {
                     OUTPUT.warn(&format!("Cannot remove {}: {}", path.display(), e));
-                    warn!("Cannot remove {}: {}", path.display(), e);
                 }
             }
         }
@@ -2081,7 +2023,6 @@ pub fn sc_rstudio_(
     }
 
     OUTPUT.status(&format!("Running {} {:?}", cmd, args.join(&os(" "))));
-    info!("Running {} {:?}", cmd, args.join(&os(" ")));
 
     Command::new(cmd)
         .args(args)
@@ -2126,7 +2067,6 @@ fn check_usr_bin_which() {
         let msg = "/usr/bin/which does not exist, R may not work properly. \
                    Install it via your OS package manager, e.g. `dnf install which`.";
         OUTPUT.warn(msg);
-        warn!("{}", msg);
     }
 }
 
@@ -2172,8 +2112,6 @@ fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
            but it is missing on your system.\n        \
            Run `ln -s /bin/sed /usr/bin/sed` as the root user to fix this,\n        \
            and then run rig again.";
-    OUTPUT.error(msg);
-    error!("{}", msg);
     bail!(msg);
 }
 
@@ -2225,7 +2163,6 @@ fn download_cacert(force: bool) -> Result<PathBuf, Box<dyn Error>> {
         CACERT_URL,
         cert.display()
     ));
-    info!("Downloading CA bundle {} -> {}", CACERT_URL, cert.display());
     let client = &http_client();
     download_file(client, CACERT_URL, cert.as_os_str())?;
     Ok(cert)
@@ -2329,7 +2266,7 @@ fn probe_system_cert() {
 fn get_cert_bundle(force: bool) -> Result<PathBuf, Box<dyn Error>> {
     probe_system_cert();
     if let Some(Some(cert)) = SYSTEM_CERT.get() {
-        info!("Using system CA bundle {}", cert.display());
+        debug!("Using system CA bundle {}", cert.display());
         return Ok(cert.clone());
     }
     download_cacert(force)
@@ -2345,11 +2282,6 @@ fn setup_user_cert(rver: &str, force: bool) -> Result<(), Box<dyn Error>> {
         cert.display(),
         rver
     ));
-    info!(
-        "Configured CA certificate bundle {} for R {}",
-        cert.display(),
-        rver
-    );
     Ok(())
 }
 
@@ -2382,11 +2314,6 @@ pub fn sc_system_update_certs() -> Result<(), Box<dyn Error>> {
             cert.display(),
             ver
         ));
-        info!(
-            "Configured CA certificate bundle {} for R {}",
-            cert.display(),
-            ver
-        );
     }
     Ok(())
 }
@@ -2477,7 +2404,7 @@ fn download_fonts(force: bool) -> Result<(), Box<dyn Error>> {
         url,
         fonts.display()
     ));
-    info!("Downloading fallback fonts {} -> {}", url, target.display());
+    debug!("Downloading fallback fonts {} -> {}", url, target.display());
     let client = &http_client();
     if let Err(e) = download_file(client, &url, target.as_os_str()) {
         bail!(
@@ -2532,7 +2459,6 @@ fn download_fonts(force: bool) -> Result<(), Box<dyn Error>> {
     result?;
 
     OUTPUT.success(&format!("Installed fallback fonts to {}", fonts.display()));
-    info!("Installed fallback fonts to {}", fonts.display());
     Ok(())
 }
 
@@ -2670,7 +2596,6 @@ fn setup_user_fonts(rver: &str, with_fonts: bool, force: bool) -> Result<(), Box
     let fonts_conf = write_fonts_conf()?;
     configure_fontconfig(rver, &fonts_conf)?;
     OUTPUT.success(&format!("Configured fontconfig for R {}", rver));
-    info!("Configured fontconfig for R {}", rver);
     Ok(())
 }
 

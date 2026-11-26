@@ -13,7 +13,7 @@ use std::time::Duration;
 use std::time::SystemTime;
 
 use filetime::FileTime;
-use log::*;
+use log::debug;
 use reqwest::StatusCode;
 
 use crate::output::OUTPUT;
@@ -39,14 +39,6 @@ pub fn download_r(version: &Rversion, etag: Option<&str>) -> Result<OsString, Bo
     let url: String = match &version.url {
         Some(s) => s.to_string(),
         None => {
-            OUTPUT.error(&format!(
-                "Cannot find a download url for R version {}",
-                ver.as_ref().unwrap_or(&"???".to_string())
-            ));
-            error!(
-                "Cannot find a download url for R version {}",
-                ver.as_ref().unwrap_or(&"???".to_string())
-            );
             bail!(
                 "Cannot find a download url for R version {}",
                 ver.unwrap_or("???".to_string())
@@ -89,10 +81,8 @@ pub fn download_installer(
     };
     if target.exists() && crate::utils::not_too_old(&target.to_path_buf()) && same_build {
         OUTPUT.success(&format!("{} is cached at {}", filename, target.display()));
-        info!("{} is cached at {}", filename, target.display());
     } else {
         OUTPUT.status(&format!("Downloading {} -> {}", url, target.display()));
-        info!("Downloading {} -> {}", url, target.display());
         let client = &http_client();
         download_file(client, url, target.as_os_str())?;
         write_etag_file(&etag_path, etag);
@@ -169,9 +159,7 @@ pub async fn download_file(
     let resp = match resp {
         Ok(resp) => resp,
         Err(err) => {
-            OUTPUT.error(&format!("HTTP error at {}: {}", url, err));
-            error!("HTTP error at {}: {}", url, err);
-            bail!("HTTP error at {}: {}", url, err.to_string())
+            bail!("HTTP error at {}: {}", url, err)
         }
     };
     if !resp.status().is_success() {
@@ -182,8 +170,6 @@ pub async fn download_file(
             rate_limit: None,
             body: error_body(resp).await,
         };
-        OUTPUT.error(&format!("HTTP error at {}: {}", url, unexpected.reason()));
-        error!("HTTP error at {}: {}", url, unexpected.reason());
         bail!("HTTP error at {}: {}", url, unexpected.reason())
     }
 
@@ -192,22 +178,14 @@ pub async fn download_file(
     if let Some(dir) = dir {
         if let Err(err) = std::fs::create_dir_all(dir) {
             let dir = dir.to_str().unwrap_or("???");
-            OUTPUT.error(&format!("Cannot create directory {}: {}", dir, err));
-            error!("Cannot create directory {}: {}", dir, err);
-            bail!("Cannot create directory {}: {}", dir, err.to_string())
+            bail!("Cannot create directory {}: {}", dir, err)
         };
     };
     let file = File::create(path);
     let mut file = match file {
         Ok(file) => file,
         Err(err) => {
-            OUTPUT.error(&format!("Cannot create file '{}': {}", path.display(), err));
-            error!("Cannot create file '{}': {}", path.display(), err);
-            bail!(
-                "Cannot create file '{}': {}",
-                path.display(),
-                err.to_string()
-            )
+            bail!("Cannot create file '{}': {}", path.display(), err)
         }
     };
     let mut stream = resp.bytes_stream();
@@ -216,30 +194,21 @@ pub async fn download_file(
         let chunk = match item {
             Ok(chunk) => chunk,
             Err(err) => {
-                OUTPUT.error(&format!("HTTP error at {}: {}", url, err));
-                error!("HTTP error at {}: {}", url, err);
-                bail!("HTTP error at {}: {}", url, err.to_string())
+                bail!("HTTP error at {}: {}", url, err)
             }
         };
         if let Err(err) = file.write(&chunk) {
-            OUTPUT.error(&format!(
-                "Failed to write to file {}: {}",
-                path.display(),
-                err
-            ));
-            error!("Failed to write to file {}: {}", path.display(), err);
-            bail!(
-                "Failed to write to file {}: {}",
-                path.display(),
-                err.to_string()
-            )
+            bail!("Failed to write to file {}: {}", path.display(), err)
         };
     }
 
     if let Err(err) = std::fs::rename(Path::new(&path), Path::new(&opath)) {
-        OUTPUT.error(&format!("Failed to rename downloaded file: {}", err));
-        error!("Failed to rename downloaded file: {}", err);
-        bail!("Failed to rename downloaded file: {}", err.to_string())
+        bail!(
+            "Failed to rename downloaded file {} to {}: {}",
+            path.display(),
+            Path::new(&opath).display(),
+            err
+        )
     };
 
     Ok(())
@@ -258,14 +227,7 @@ async fn download_if_newer(
     local_path: &PathBuf,
     etag: Option<&str>,
 ) -> Result<(bool, Option<String>), Box<dyn Error>> {
-    match download_if_newer_retrying(client, url, local_path, etag).await {
-        Err(err) if err.downcast_ref::<UnexpectedStatus>().is_some() => {
-            OUTPUT.error(&err.to_string());
-            error!("{}", err);
-            Err(err)
-        }
-        result => result,
-    }
+    download_if_newer_retrying(client, url, local_path, etag).await
 }
 
 #[derive(Debug)]
@@ -445,7 +407,7 @@ fn pause_server(url: &str, wait: Duration, status: StatusCode, rate_limit: Optio
         let until = now + wait;
         pauses.insert(origin, Pause { until, announced });
     }
-    info!(
+    debug!(
         "Pausing downloads from {} for {:?}, status {}",
         url, wait, status
     );
@@ -551,9 +513,8 @@ fn parse_http_date(value: &str) -> Option<jiff::Timestamp> {
         .map(|zoned| zoned.timestamp())
 }
 
-/// [`download_if_newer`], which leaves it to the caller to report a response
-/// that is not a success, for a caller that has other URLs to try. It tries
-/// once, see [`download_if_newer_retrying`].
+/// Download `url` to `local_path`, for a caller that has other URLs to try.
+/// It tries once, see [`download_if_newer_retrying`].
 async fn download_if_newer_quiet(
     client: &reqwest::Client,
     url: &str,
@@ -566,7 +527,7 @@ async fn download_if_newer_quiet(
             req = req.header("If-None-Match", etag_value);
         }
     }
-    info!("Checking for updates for {}", local_path.display());
+    debug!("Checking for updates for {}", local_path.display());
     let resp = req.send().await?;
 
     match resp.status() {
@@ -634,7 +595,7 @@ async fn download_if_newer_retrying(
                     return Err(error);
                 }
                 if wait > MAX_PAUSE {
-                    info!(
+                    debug!(
                         "Not retrying {}, the server asked to wait {:?}: {}",
                         url, wait, error
                     );
@@ -668,7 +629,7 @@ async fn download_if_newer_retrying(
         }
         let delay = retry_delay(*base);
         retries += 1;
-        info!(
+        debug!(
             "Cannot download {}, will retry in {:?} ({} of {}): {}",
             url,
             delay,
@@ -711,7 +672,7 @@ pub fn download_if_newer_(
 
         if elapsed < update_older {
             // File is newer than the threshold, skip update
-            info!("{} is up to date, skipping download", local_path.display());
+            debug!("{} is up to date, skipping download", local_path.display());
             return Ok((false, None));
         }
     }
@@ -729,15 +690,15 @@ async fn download_first_available(
     let mut failures: Vec<String> = vec![];
 
     for (i, url) in urls.iter().enumerate() {
-        info!("Trying to download from {}", url);
+        debug!("Trying to download from {}", url);
         match download_if_newer_retrying(client, url, local_path, etag).await {
             Ok((downloaded, etag)) => {
-                info!("Successfully downloaded from {}", url);
+                debug!("Successfully downloaded from {}", url);
                 return Ok((downloaded, etag));
             }
             Err(e) => {
                 if i + 1 < urls.len() {
-                    info!("Cannot download from {}, trying the next URL: {}", url, e);
+                    debug!("Cannot download from {}, trying the next URL: {}", url, e);
                 } else {
                     debug!("Cannot download from {}: {}", url, e);
                 }
@@ -751,12 +712,9 @@ async fn download_first_available(
     }
 
     if failures.is_empty() {
-        OUTPUT.error("No URLs provided.");
-        error!("No URLs provided.");
         bail!("No URLs provided")
     }
     let msg = format!("All download URLs failed: {}", failures.join("; "));
-    error!("{}", msg);
     bail!("{}", msg)
 }
 
@@ -782,7 +740,7 @@ pub fn download_first_available_(
 
         if elapsed < update_older {
             // File is newer than the threshold, skip update
-            info!("{} is up to date, skipping download", local_path.display());
+            debug!("{} is up to date, skipping download", local_path.display());
             return Ok((false, None));
         }
     }
@@ -857,7 +815,7 @@ pub async fn fetch_optional_if_modified(
     if let Some(etag) = etag {
         req = req.header("If-None-Match", etag);
     }
-    info!("Checking for updates for {}", url);
+    debug!("Checking for updates for {}", url);
     let resp = req.send().await?;
 
     match resp.status() {
@@ -879,7 +837,6 @@ pub async fn fetch_optional_if_modified(
         }
 
         status => {
-            error!("Failed to download {}, status: {}", url, status);
             bail!(
                 "Failed to download {}, status: {}{}",
                 url,
@@ -934,7 +891,7 @@ pub async fn fetch_range_suffix(
     url: &str,
     from: u64,
 ) -> Result<RangeFetch, Box<dyn Error>> {
-    info!("Fetching {} from byte {}", url, from);
+    debug!("Fetching {} from byte {}", url, from);
     let resp = crate::auth::get(client, url)
         .header("Range", format!("bytes={}-", from))
         .send()
@@ -945,10 +902,6 @@ pub async fn fetch_range_suffix(
         StatusCode::OK => Ok(RangeFetch::Full(resp.bytes().await?.to_vec())),
         StatusCode::RANGE_NOT_SATISFIABLE => Ok(RangeFetch::OutOfRange),
         status => {
-            error!(
-                "Failed to fetch {} from byte {}, status: {}",
-                url, from, status
-            );
             bail!(
                 "Failed to fetch {} from byte {}, status: {}",
                 url,
@@ -996,7 +949,7 @@ pub struct UrlProbe {
 /// Some servers do not implement `HEAD` (405, 501); those are retried once as a
 /// single-byte ranged `GET`, which every static file server answers.
 pub async fn probe_url(client: &reqwest::Client, url: &str) -> UrlProbe {
-    info!("Probing {}", url);
+    debug!("Probing {}", url);
     let start = std::time::Instant::now();
     let mut resp = crate::auth::head(client, url)
         .timeout(PROBE_TIMEOUT)
@@ -1115,7 +1068,7 @@ async fn download_optional_if_newer(
             req = req.header("If-None-Match", etag_value);
         }
     }
-    info!("Checking for updates for {}", local_path.display());
+    debug!("Checking for updates for {}", local_path.display());
     let resp = req.send().await?;
 
     match resp.status() {
@@ -1143,11 +1096,6 @@ async fn download_optional_if_newer(
 
         status => {
             let hint = crate::auth::status_hint(status);
-            OUTPUT.error(&format!(
-                "Failed to download {}, status: {}{}",
-                url, status, hint
-            ));
-            error!("Failed to download {}, status: {}", url, status);
             bail!("Failed to download {}, status: {}{}", url, status, hint);
         }
     }
@@ -1190,7 +1138,7 @@ pub fn download_optional_if_newer_(
 
         if elapsed < update_older {
             // File is newer than the threshold, skip update
-            info!("{} is up to date, skipping download", local_path.display());
+            debug!("{} is up to date, skipping download", local_path.display());
             return Ok(Some((false, None)));
         }
     }
@@ -1253,7 +1201,7 @@ async fn download_multiple_first_available(
             let elapsed = SystemTime::now().duration_since(modified)?;
 
             if elapsed < update_older {
-                info!("{} is up to date, skipping download", local_path.display());
+                debug!("{} is up to date, skipping download", local_path.display());
                 return Ok((false, None));
             }
         }
@@ -1320,7 +1268,7 @@ async fn download_multiple_with_progress_async<F>(
                         let elapsed = SystemTime::now().duration_since(modified)?;
 
                         if elapsed < update_older {
-                            info!("{} is up to date, skipping download", local_path.display());
+                            debug!("{} is up to date, skipping download", local_path.display());
                             return Ok((false, None));
                         }
                     }
@@ -1388,9 +1336,7 @@ pub async fn download_json(
         match v {
             Ok(v) => vers2.push(v),
             Err(e) => {
-                OUTPUT.error(&format!("Cannot download JSON: {}", e));
-                error!("Cannot download JSON: {}", e);
-                bail!("Cannot download JSON: {}", e.to_string())
+                bail!("Cannot download JSON: {}", e)
             }
         };
     }
@@ -1583,8 +1529,6 @@ mod tests {
             err
         );
         assert!(!file.exists());
-        // The caller reports the failure, with its own context.
-        assert!(!OUTPUT.error_shown(&err), "{}", err);
     }
 
     /// A server that answers the n-th connection with the n-th of `replies`,

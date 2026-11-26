@@ -13,7 +13,7 @@ use std::error::Error;
 use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
-use log::info;
+use log::debug;
 
 use crate::install_receipt::{
     gate, read_receipt, receipt_path, refusal_message, GateResult, Receipt,
@@ -293,7 +293,7 @@ pub fn sc_self_uninstall(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<()
     OUTPUT.status(
         "Run 'rig rm all' first next time if you also want to remove installed R versions.",
     );
-    info!("rig self uninstall: removed {}", receipt.bin_path);
+    debug!("rig self uninstall: removed {}", receipt.bin_path);
 
     Ok(())
 }

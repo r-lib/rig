@@ -6,9 +6,6 @@
 
 use clap::{Arg, ArgGroup, ArgMatches, Command};
 
-#[cfg(target_os = "macos")]
-use log::warn;
-
 #[cfg(target_os = "windows")]
 mod windows_arch;
 #[cfg(target_os = "windows")]
@@ -444,7 +441,10 @@ pub fn rig_app() -> Command {
         }
 
         if _default_arch.is_empty() {
-            warn!("Failed to detect arch, default is 'x86_64'.");
+            // This runs before the logger is set up, and this file is also
+            // compiled into build.rs, where `OUTPUT` does not exist, so
+            // print the warning directly.
+            eprintln!("Warning: Failed to detect arch, default is 'x86_64'.");
             _default_arch = _arch_x86_64;
         };
     }
@@ -4084,7 +4084,7 @@ pub fn rig_app() -> Command {
     rig = rig
         .arg(
             Arg::new("quiet")
-                .help("Suppress output (overrides `--verbose`)")
+                .help("Show only warnings and errors (overrides `--verbose`)")
                 .short('q')
                 .long("quiet")
                 .required(false)
@@ -4092,7 +4092,7 @@ pub fn rig_app() -> Command {
         )
         .arg(
             Arg::new("verbose")
-                .help("Verbose output")
+                .help("Show debug messages, use `-vv` for even more")
                 .short('v')
                 .long("verbose")
                 .required(false)

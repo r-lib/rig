@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use clap::ArgMatches;
 use jsonc_parser::cst::{CstInputValue, CstObject, CstRootNode};
 use jsonc_parser::ParseOptions;
-use log::{debug, error, info, warn};
+use log::debug;
 use semver::Version;
 use simple_error::SimpleError;
 use tabular::*;
@@ -192,7 +192,6 @@ pub fn report_already_installed(
         add_alias(name, &alias)?;
     }
     OUTPUT.success(&format!("R version {} is already installed", name));
-    info!("R version {} is already installed", name);
     Ok(Some(AddResult {
         name: name.to_string(),
         new_install: false,
@@ -207,8 +206,6 @@ pub fn sc_get_default_or_fail() -> Result<String, Box<dyn Error>> {
     let default = sc_get_default()?;
     match default {
         None => {
-            OUTPUT.error("No default R version is set, call `rig default <version>`");
-            error!("No default R version is set, call `rig default <version>`");
             bail!("No default R version is set, call `rig default <version>`")
         }
         Some(d) => Ok(d),
@@ -259,10 +256,8 @@ pub fn switch_to_user_mode() -> Result<(), Box<dyn Error>> {
     crate::config::set_global_config_value("mode", "user")?;
     if already_user {
         OUTPUT.success("rig already in user mode");
-        info!("rig already in user mode");
     } else {
         OUTPUT.success("Switched rig to user mode");
-        info!("Switched rig to user mode");
     }
     Ok(())
 }
@@ -280,7 +275,6 @@ pub fn restore_user_mode_default(map: &[(String, String)], default: &Option<Stri
             OUTPUT.status(&format!("Restoring default R version ({})", udef));
             if let Err(e) = sc_set_default(udef) {
                 OUTPUT.warn(&format!("Could not restore default R version: {}", e));
-                warn!("Could not restore default R version: {}", e);
             }
         }
         None => {
@@ -288,7 +282,6 @@ pub fn restore_user_mode_default(map: &[(String, String)], default: &Option<Stri
                 "Could not restore the previous default R version ({})",
                 adef
             ));
-            warn!("Could not restore default R version {}", adef);
         }
     }
 }
@@ -346,7 +339,6 @@ pub fn get_r_version_data(
         Ok(v) => Some(v),
         Err(e) => {
             OUTPUT.warn(&format!("R installation '{}' looks broken: {}", name, e));
-            warn!("R installation '{}' looks broken: {}", name, e);
             None
         }
     };
@@ -408,8 +400,6 @@ pub fn check_has_pak(ver: &str) -> Result<bool, Box<dyn Error>> {
 
     let v350 = Version::parse("3.5.0")?;
     if vv < v350 {
-        OUTPUT.error("Pak is only available for R 3.5.0 or later");
-        error!("Pak is only available for R 3.5.0 or later");
         bail!("Pak is only available for R 3.5.0 or later");
     }
     Ok(true)
@@ -433,7 +423,6 @@ pub fn system_add_pak(
             format!("Installing pak for R {} (if not installed yet)", ver)
         };
         OUTPUT.status(&msg);
-        info!("{}", msg);
         check_has_pak(&ver)?;
 
         // We do this to create the user library, because currently there
@@ -442,8 +431,6 @@ pub fn system_add_pak(
         match r(&ver, "invisible()") {
             Ok(_) => {}
             Err(x) => {
-                OUTPUT.error(&format!("Failed to to install pak for R {}: {}", ver, x));
-                error!("Failed to to install pak for R {}: {}", ver, x);
                 bail!("Failed to to install pak for R {}: {}", ver, x.to_string())
             }
         };
@@ -465,8 +452,6 @@ pub fn system_add_pak(
         match r(&ver, &cmd) {
             Ok(_) => {}
             Err(x) => {
-                OUTPUT.error(&format!("Failed to install pak for R {}: {}", ver, x));
-                error!("Failed to install pak for R {}: {}", ver, x);
                 bail!("Failed to install pak for R {}: {}", ver, x.to_string())
             }
         };
@@ -537,22 +522,12 @@ pub fn get_rstudio_config_path() -> Result<PathBuf, Box<dyn Error>> {
     let path = match xdg.to_str() {
         Some(x) => x,
         None => {
-            OUTPUT.error("RStudio config path cannot be represented as Unicode. :(");
-            error!("RStudio config path cannot be represented as Unicode. :(");
             bail!("RStudio config path cannot be represented as Unicode. :(")
         }
     };
     let path = match shellexpand::full(path) {
         Ok(x) => x.to_string(),
         Err(e) => {
-            OUTPUT.error(&format!(
-                "RStudio config path contains unknown environment variable: {}",
-                e.var_name
-            ));
-            error!(
-                "RStudio config path contains unknown environment variable: {}",
-                e.var_name
-            );
             bail!(
                 "RStudio config path contains unknown environment variable: {}",
                 e.var_name
@@ -573,15 +548,8 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let mut prj: Option<&String> = args.get_one("project-file");
 
     if args.get_flag("config-path") {
-        let cp = get_rstudio_config_path();
-        match cp {
-            Ok(x) => println!("{}", x.display()),
-            Err(x) => {
-                OUTPUT.error(&format!("Error: {}", x));
-                error!("Error: {}", x);
-                bail!("Error: {}", x.to_string())
-            }
-        };
+        let cp = get_rstudio_config_path()?;
+        println!("{}", cp.display());
         return Ok(());
     }
 
@@ -638,8 +606,6 @@ fn find_project_dir(path: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("Find project dir in {}", path);
     let ppath = Path::new(path);
     if !ppath.exists() {
-        OUTPUT.error(&format!("Could not find path {}", path));
-        error!("Could not find path {}", path);
         bail!("Could not find path {}", path);
     }
     let ret = if ppath.is_dir() {
@@ -699,7 +665,6 @@ fn get_project_version(path: &str) -> Result<Option<String>, Box<dyn Error>> {
             }
         );
         OUTPUT.info(&msg);
-        info!("{}", msg);
 
         Ok(Some(usever.name.to_owned()))
     } else {

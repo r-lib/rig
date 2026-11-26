@@ -2,7 +2,7 @@ use std::error::Error;
 use std::path::Path;
 
 use clap::ArgMatches;
-use log::{debug, info, warn};
+use log::debug;
 use regex::Regex;
 use tabular::*;
 use winreg::enums::*;
@@ -187,7 +187,6 @@ pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     escalate("cleaning up the Windows registry")?;
 
     OUTPUT.status("Cleaning leftover registry entries");
-    info!("Cleaning leftover registry entries");
 
     // R and Rtools register in HKLM for admin installs and in HKCU for
     // per-user installs, and so do their uninstaller entries.
@@ -207,7 +206,7 @@ pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
 // stale uninstaller entries.
 pub(super) fn clean_admin_registry() -> Result<(), Box<dyn Error>> {
     OUTPUT.status("Cleaning leftover registry entries");
-    info!("Cleaning leftover admin-mode registry entries");
+    debug!("Cleaning leftover admin-mode registry entries");
 
     let hive = RegKey::predef(HKEY_LOCAL_MACHINE);
     clean_registry_r(&hive)?;
@@ -306,7 +305,6 @@ pub(super) fn remove_r_uninstall_entries(dir: &str) {
                             hive_name, full, e
                         );
                         OUTPUT.warn(&msg);
-                        warn!("{}", msg);
                     }
                 }
             }
@@ -400,11 +398,9 @@ pub(super) fn add_user_bin_to_path() -> Result<(), Box<dyn Error>> {
     )?;
 
     OUTPUT.status(&format!("Added {} to user PATH", bin_dir));
-    info!("Added {} to user PATH", bin_dir);
     OUTPUT.warn(
         "Restart your terminal (or sign out and back in) for the PATH change to take effect.",
     );
-    warn!("Restart your terminal for the PATH change to take effect.");
 
     Ok(())
 }
@@ -708,17 +704,20 @@ impl Drop for LegacyRtoolsRegRelocation {
     }
 }
 
-// Recreate the backed-up HKLM Rtools keys. Best-effort: failures are logged but
+// Recreate the backed-up HKLM Rtools keys. Best-effort: failures are warned about but
 // not propagated, since this runs both on the success and the cleanup paths.
 fn restore_reg_backup(hklm: &RegKey, backup: &[(String, RegNode)]) {
     for (path, tree) in backup {
         match hklm.create_subkey(path) {
             Ok((key, _)) => {
                 if let Err(e) = write_reg_tree(&key, tree) {
-                    warn!("Failed to restore HKLM\\{}: {}", path, e);
+                    OUTPUT.warn(&format!("Failed to restore HKLM\\{}: {}", path, e));
                 }
             }
-            Err(e) => warn!("Failed to recreate HKLM\\{} for restore: {}", path, e),
+            Err(e) => OUTPUT.warn(&format!(
+                "Failed to recreate HKLM\\{} for restore: {}",
+                path, e
+            )),
         }
     }
 }
@@ -1163,7 +1162,6 @@ fn script_assoc_add() -> Result<(), Box<dyn Error>> {
     let (owp, _) = ext.create_subkey("OpenWithProgids")?;
     owp.set_value(RIG_SCRIPT_PROGID, &"")?;
     OUTPUT.status(&format!("Associated .R files with {}", command));
-    info!("Associated .R files with {}", command);
 
     // A user PATHEXT replaces the system one, it is not appended to it, so
     // a new user PATHEXT starts from the system value.
@@ -1178,7 +1176,7 @@ fn script_assoc_add() -> Result<(), Box<dyn Error>> {
     if let Some(new) = pathext_with_r(&pathext) {
         env.set_value("PATHEXT", &new)?;
         OUTPUT.status("Added .R to the user PATHEXT");
-        info!("Added .R to the user PATHEXT: {}", new);
+        debug!("Added .R to the user PATHEXT: {}", new);
     }
 
     if let Some(choice) = r_user_choice().filter(|c| c != RIG_SCRIPT_PROGID) {
@@ -1190,7 +1188,6 @@ fn script_assoc_add() -> Result<(), Box<dyn Error>> {
             choice
         );
         OUTPUT.warn(&msg);
-        warn!("{}", msg);
     }
 
     OUTPUT.warn("Double-clicking a .R file now runs it, instead of opening it in an editor.");
@@ -1228,7 +1225,6 @@ fn script_assoc_undo() -> Result<(), Box<dyn Error>> {
     }
     classes.delete_subkey_all(RIG_SCRIPT_PROGID)?;
     OUTPUT.status("Removed the association of .R files with rig");
-    info!("Removed the association of .R files with rig");
 
     let env = hkcu.open_subkey_with_flags("Environment", KEY_READ | KEY_WRITE)?;
     if let Ok(pathext) = env.get_value::<String, _>("PATHEXT") {
@@ -1241,7 +1237,6 @@ fn script_assoc_undo() -> Result<(), Box<dyn Error>> {
                 env.set_value("PATHEXT", &new)?;
             }
             OUTPUT.status("Removed .R from the user PATHEXT");
-            info!("Removed .R from the user PATHEXT");
             OUTPUT.warn("Open a new terminal for the PATHEXT change to take effect.");
         }
     }

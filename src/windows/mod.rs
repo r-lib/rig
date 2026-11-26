@@ -19,7 +19,7 @@ use std::process::Command;
 
 use clap::ArgMatches;
 use directories::BaseDirs;
-use log::{debug, error, info, trace, warn};
+use log::{debug, trace};
 use owo_colors::OwoColorize;
 use remove_dir_all::remove_dir_all;
 use simple_error::SimpleError;
@@ -30,7 +30,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
-use crate::output::OUTPUT;
+use crate::output::{Context, OUTPUT};
 use crate::repos::*;
 use crate::resolve::*;
 use crate::run::*;
@@ -190,7 +190,7 @@ fn move_exe_aside(path: &Path) -> Result<Option<PathBuf>, Box<dyn Error>> {
                 "Old {} is still running, it will be removed later",
                 name
             ));
-            info!("Cannot remove {} yet: {}", old.display(), e);
+            debug!("Cannot remove {} yet: {}", old.display(), e);
             Ok(Some(old))
         }
     }
@@ -224,7 +224,6 @@ fn remove_old_shim(path: &Path) {
             path.display(),
             err
         ));
-        warn!("Cannot remove old shim {}: {}", path.display(), err);
     } else {
         debug!("Cannot remove {} yet: {}", path.display(), err);
     }
@@ -305,12 +304,10 @@ fn report_shim_upgrade(path: &Path, what: &str) {
     match upgrade_shim_link(path) {
         Ok(true) => {
             OUTPUT.status(&format!("Updated {}", what));
-            info!("Updated {}", what);
         }
         Ok(false) => {}
         Err(e) => {
             OUTPUT.warn(&format!("Failed to update {}: {}", what, e));
-            warn!("Failed to update {}: {}", what, e);
         }
     }
 }
@@ -643,7 +640,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
         if let (Some(url), Some(v)) = (&version_info.url, &version_info.version) {
             if let Some(name) = find_installed_dev_build(str, v, &installed_arch)? {
                 if installed_etag_matches(&name, etag.as_deref()) {
-                    info!("The R-{} installer at {} has not changed", str, url);
+                    debug!("The R-{} installer at {} has not changed", str, url);
                     return report_already_installed(
                         &name,
                         alias_with_arch_suffix(alias, &installed_arch),
@@ -658,7 +655,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     let target_path = Path::new(&target);
 
     OUTPUT.status(&format!("Installing {}", target_path.display()));
-    info!("Installing {}", target_path.display());
 
     let user_mode = get_mode()? == Mode::User;
 
@@ -708,8 +704,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
                 temp_dir,
                 rversion_h.display()
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
             bail!("{}", msg);
         }
 
@@ -717,9 +711,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
             Ok(name) => name,
             Err(err) => {
                 let _ = remove_dir_all(&temp_dir);
-                OUTPUT.error(&format!("Cannot determine installed R version: {}", err));
-                error!("Cannot determine installed R version: {}", err);
-                return Err(err);
+                return Err(err).context("Cannot determine installed R version");
             }
         };
         let final_dir = format!("{}\\{}", r_root, rig_name);
@@ -730,29 +722,21 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
                     "Cannot replace existing R installation at {}: {}",
                     final_dir, err
                 );
-                OUTPUT.error(&msg);
-                error!("{}", msg);
                 bail!("{}", msg);
             }
         }
         if let Err(err) = std::fs::rename(&temp_dir, &final_dir) {
             let _ = remove_dir_all(&temp_dir);
-            OUTPUT.error(&format!(
-                "Cannot move R installation into {}: {}",
-                final_dir, err
-            ));
-            error!("Cannot move R installation into {}: {}", final_dir, err);
-            return Err(err.into());
+            bail!("Cannot move R installation into {}: {}", final_dir, err);
         }
         if let Err(e) = register_r_version(&rig_name, &final_dir) {
             OUTPUT.warn(&format!(
                 "Could not record R {} in the registry: {}",
                 rig_name, e
             ));
-            warn!("Could not record R {} in the registry: {}", rig_name, e);
         }
         OUTPUT.status(&format!("Installed R as '{}'", rig_name));
-        info!("Installed R as '{}' in {}", rig_name, final_dir);
+        debug!("Installed R as '{}' in {}", rig_name, final_dir);
         Some(rig_name)
     } else {
         run(target, cmd_args, "installer")?;
@@ -763,8 +747,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
                     in the registry. This usually means the installer failed, e.g. \
                     because there was not enough space on the disk."
                     .to_string();
-                OUTPUT.error(&msg);
-                error!("{}", msg);
                 bail!("{}", msg);
             }
         }
@@ -805,14 +787,12 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     if get_mode()? == Mode::User {
         if let Err(e) = ensure_positron_setup(None) {
             OUTPUT.warn(&format!("Could not update Positron settings: {}", e));
-            warn!("Could not update Positron settings: {}", e);
         }
     }
 
     match dirname {
         None => {
             OUTPUT.warn("Cannot set up repositories, cannot determine installation directory");
-            warn!("Cannot set up repositories, cannot determine installation directory");
         }
         Some(ref dirname) => {
             let setup = interpret_repos_args(args, true);
@@ -824,7 +804,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
         match dirname {
             None => {
                 OUTPUT.warn("Cannot install pak, cannot determine installation directory");
-                warn!("Cannot install pak, cannot determine installation directory");
             }
             Some(ref dirname) => {
                 let explicit = args.value_source("pak-version")
@@ -1054,7 +1033,6 @@ fn patch_env_file(path: &Path, body: &str, pos: BlockPos) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => {
             OUTPUT.warn(&format!("Couldn't read {}: {}", path.display(), e));
-            warn!("Couldn't read {}: {}", path.display(), e);
             return;
         }
     };
@@ -1071,7 +1049,6 @@ fn patch_env_file(path: &Path, body: &str, pos: BlockPos) {
     if let Err(e) = write {
         let _ = std::fs::remove_file(&tmp);
         OUTPUT.warn(&format!("Couldn't update {}: {}", path.display(), e));
-        warn!("Couldn't update {}: {}", path.display(), e);
     }
 }
 
@@ -1103,10 +1080,6 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<Vec<AddedRtools>,
                 "Rtools{} ({}) is already installed",
                 item.version, item.arch
             ));
-            info!(
-                "Rtools{} ({}) is already installed",
-                item.version, item.arch
-            );
             added.push(AddedRtools {
                 version: item.version,
                 arch: item.arch,
@@ -1121,10 +1094,8 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<Vec<AddedRtools>,
         let tmp_dir = crate::cache::ensure_download_dir()?;
         let target = tmp_dir.join(&filename);
         OUTPUT.status(&format!("Downloading {} -> {}", url, target.display()));
-        info!("Downloading {} -> {}", url, target.display());
         download_file(client, &url, target.as_os_str())?;
         OUTPUT.status(&format!("Installing {}", target.display()));
-        info!("Installing {}", target.display());
 
         // In User mode install per-user (/CURRENTUSER) into the rig-managed rtools root,
         // which writes the Rtools registry key to HKCU. Admin mode keeps the system install.
@@ -1157,13 +1128,10 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<Vec<AddedRtools>,
                 item.arch,
                 instdirpath.display()
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
             bail!("{}", msg);
         }
         crate::cache::remove_download_if_no_cache(&target);
         OUTPUT.success(&format!("Installed Rtools{} ({})", item.version, item.arch));
-        info!("Installed Rtools{} ({})", item.version, item.arch);
         added.push(AddedRtools {
             version: item.version,
             arch: item.arch,
@@ -1215,7 +1183,6 @@ fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
             .join("etc");
         if !etc.exists() {
             OUTPUT.warn(&format!("{} does not exist, skipping", etc.display()));
-            warn!("{} does not exist, skipping", etc.display());
             continue;
         }
 
@@ -1264,8 +1231,6 @@ fn get_rtools_needed(
         let rtvers = match rtversval.as_array() {
             Some(x) => x,
             None => {
-                OUTPUT.error(errmsg);
-                error!("{}", errmsg);
                 bail!("{}", errmsg)
             }
         };
@@ -1320,12 +1285,8 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
                     "Removing default version, set new default with {}",
                     "rig default <version>".bold(),
                 ));
-                warn!(
-                    "Removing default version, set new default with {}",
-                    "rig default <version>".bold()
-                );
                 if let Err(e) = unset_default() {
-                    warn!("Failed to unset default version: {}", e)
+                    OUTPUT.warn(&format!("Failed to unset default version: {}", e))
                 };
             }
         }
@@ -1334,7 +1295,6 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         let base = version_dir_key(&ver);
         let dir = Path::new(&rroot).join(r_dirname(&base)?);
         OUTPUT.status(&format!("Removing {}", dir.display()));
-        info!("Removing {}", dir.display());
         remove_dir_all(&dir)?;
     }
 
@@ -1356,12 +1316,6 @@ fn rm_rtools(ver: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
             arch,
             dir.display()
         ));
-        warn!(
-            "Rtools {} ({}) is not installed at {}",
-            version,
-            arch,
-            dir.display()
-        );
         // On aarch64 there is no native Rtools, so an x86_64 build is installed
         // under a "-x86_64" suffixed directory. If the user did not pass --arch we
         // defaulted to the (aarch64) native arch and looked in the wrong place.
@@ -1375,7 +1329,6 @@ fn rm_rtools(ver: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
     OUTPUT.status(&format!("Removing {}", dir.display()));
-    info!("Removing {}", dir.display());
     if let Err(_err) = remove_dir_all(&dir) {
         let cmd = format!(
             "Remove-Item -Recurse -Force -LiteralPath '{}'",
@@ -1386,8 +1339,6 @@ fn rm_rtools(ver: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
             .output()?;
         let stderr = std::str::from_utf8(&out.stderr).unwrap_or("cannot parse stderr");
         if !out.status.success() {
-            OUTPUT.error(&format!("Failed to remove {}: {}", dir.display(), stderr));
-            error!("Failed to remove {}: {}", dir.display(), stderr);
             bail!("Cannot remove {}: {}", dir.display(), stderr);
         }
     }
@@ -1425,10 +1376,6 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                         "Migrating default R version ({}) from the legacy .bat shims",
                         marker_ver
                     ));
-                    info!(
-                        "Migrating default R version ({}) from the legacy .bat shims",
-                        marker_ver
-                    );
                     write_default_shims(linkdir, &marker_ver)?;
                     update_registry_default()?;
                 }
@@ -1462,7 +1409,6 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
             op = "Adding";
         };
         OUTPUT.status(&format!("{} R-{} -> {}", op, ver, target_dir.display()));
-        info!("{} R-{} -> {}", op, ver, target_dir.display());
         write_shim_link(&linkfile, &target, "")?;
     }
 
@@ -1482,10 +1428,8 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     || (filename.starts_with("R-") && filename.ends_with(".bat"))
                 {
                     OUTPUT.status(&format!("Deleting legacy {}", filename));
-                    info!("Deleting legacy {}", filename);
                     if let Err(e) = std::fs::remove_file(path.path()) {
                         OUTPUT.warn(&format!("Failed to remove {}: {}", filename, e));
-                        warn!("Failed to remove {}: {}", filename, e);
                     }
                     continue;
                 }
@@ -1500,10 +1444,8 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     let exe = path.path().with_extension("exe");
                     if !exe.exists() {
                         OUTPUT.status(&format!("Deleting unused {}", filename));
-                        info!("Deleting unused {}", filename);
                         if let Err(e) = std::fs::remove_file(path.path()) {
                             OUTPUT.warn(&format!("Failed to remove {}: {}", filename, e));
-                            warn!("Failed to remove {}: {}", filename, e);
                         }
                     }
                     continue;
@@ -1531,12 +1473,10 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                 }
                 if !new_links.contains(&filename) {
                     OUTPUT.status(&format!("Deleting unused {}", filename));
-                    info!("Deleting unused {}", filename);
                     match remove_shim_link(&path.path()) {
                         Ok(_) => {}
                         Err(e) => {
                             OUTPUT.warn(&format!("Failed to remove {}: {}", filename, e));
-                            warn!("Failed to remove {}: {}", filename, e);
                         }
                     }
                 }
@@ -1648,7 +1588,7 @@ fn warn_skipped_alias_link(path: &Path, why: &str) {
 
     let name = path.file_name().unwrap_or_default().to_string_lossy();
     OUTPUT.warn(&format!("Ignoring {}: {}", name, why));
-    warn!("Ignoring {}: {}", path.display(), why);
+    debug!("Ignoring {}: {}", path.display(), why);
 }
 
 // User mode: <root>\<version>\bin\R.exe, so the version is the path
@@ -1774,7 +1714,6 @@ pub fn sc_system_fix_r_alias(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     if profiles.is_empty() {
         OUTPUT.warn("Could not find a PowerShell profile to update.");
-        warn!("`rig system fix-r-alias`: no PowerShell profile found");
         return Ok(());
     }
 
@@ -1785,12 +1724,10 @@ pub fn sc_system_fix_r_alias(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             match remove_fix_r_alias_block(&existing) {
                 None => {
                     OUTPUT.status(&format!("{} not modified by rig", profile.display()));
-                    info!("{} has no rig 'R' alias block to remove", profile.display());
                 }
                 Some(content) => {
                     std::fs::write(&profile, content)?;
                     OUTPUT.status(&format!("Reverted {}", profile.display()));
-                    info!("Removed the rig 'R' alias block from {}", profile.display());
                 }
             }
             continue;
@@ -1798,10 +1735,6 @@ pub fn sc_system_fix_r_alias(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
         if existing.contains(FIX_R_ALIAS_BEGIN) {
             OUTPUT.status(&format!("{} already updated", profile.display()));
-            info!(
-                "{} already contains the rig 'R' alias fix",
-                profile.display()
-            );
             continue;
         }
 
@@ -1817,7 +1750,6 @@ pub fn sc_system_fix_r_alias(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         std::fs::write(&profile, content)?;
 
         OUTPUT.status(&format!("Updated {}", profile.display()));
-        info!("Updated {} to enable the 'R' command", profile.display());
     }
 
     OUTPUT.status("Start a new PowerShell session for the change to take effect.");
@@ -2222,10 +2154,6 @@ fn reinstall_in_user_mode(
                 "R '{}' is already installed in user mode",
                 admin_name
             ));
-            info!(
-                "R '{}' already installed in user mode, not reinstalling",
-                admin_name
-            );
             recreate_aliases_for(admin_name, aliases);
             map.push((admin_name.clone(), admin_name.clone()));
             continue;
@@ -2235,14 +2163,12 @@ fn reinstall_in_user_mode(
             "Reinstalling R '{}' ({}) in user mode",
             spec, arch
         ));
-        info!("Reinstalling R '{}' ({}) in user mode", spec, arch);
         let before = sc_get_list()?;
         let status = Command::new(&exe)
             .args(["add", &spec, "--arch", &arch, "--without-pak"])
             .status()?;
         if !status.success() {
             OUTPUT.warn(&format!("Failed to reinstall R '{}' in user mode", spec));
-            warn!("Failed to reinstall R '{}' in user mode", spec);
             continue;
         }
         let after = sc_get_list()?;
@@ -2267,7 +2193,6 @@ fn recreate_aliases_for(admin_name: &str, aliases: &[Alias]) {
         }
         if let Err(e) = add_alias(admin_name, &al.alias) {
             OUTPUT.warn(&format!("Could not create R-{} alias: {}", al.alias, e));
-            warn!("Could not create R-{} alias: {}", al.alias, e);
         }
     }
 }
@@ -2290,17 +2215,12 @@ fn reinstall_rtools_in_user_mode(rtools: &[(String, String)]) -> Result<(), Box<
                 "Rtools{} ({}) is already installed in user mode",
                 version, arch
             ));
-            info!(
-                "Rtools{} ({}) already installed in user mode, not reinstalling",
-                version, arch
-            );
             continue;
         }
         OUTPUT.status(&format!(
             "Reinstalling Rtools{} ({}) in user mode",
             version, arch
         ));
-        info!("Reinstalling Rtools{} ({}) in user mode", version, arch);
         let status = Command::new(&exe)
             .args(["system", "rtools", "add", version, "--arch", arch])
             .status()?;
@@ -2309,10 +2229,6 @@ fn reinstall_rtools_in_user_mode(rtools: &[(String, String)]) -> Result<(), Box<
                 "Failed to reinstall Rtools{} ({}) in user mode",
                 version, arch
             ));
-            warn!(
-                "Failed to reinstall Rtools{} ({}) in user mode",
-                version, arch
-            );
         }
     }
     Ok(())
@@ -2327,10 +2243,8 @@ fn clean_admin_installations(keep_install: bool, keep_links: bool) -> Result<(),
     }
     if keep_install {
         OUTPUT.status("Removing admin-mode links, keeping installations (this needs admin rights)");
-        info!("Removing admin-mode links, keeping installations");
     } else {
         OUTPUT.status("Removing admin-mode R and Rtools installations (this needs admin rights)");
-        info!("Removing admin-mode R and Rtools installations");
     }
     // Run the cleanup in admin mode (`--admin`), overriding the `RIG_MODE=user`
     // we just set, so that `escalate()` in the child actually elevates — in user
@@ -2418,10 +2332,8 @@ pub fn sc_system_clean_admin_r(args: &ArgMatches) -> Result<(), Box<dyn Error>> 
 fn remove_admin_rtools() -> Result<(), Box<dyn Error>> {
     for path in admin_rtools_paths()? {
         OUTPUT.status(&format!("Removing {}", path));
-        info!("Removing {}", path);
         if let Err(e) = remove_dir_all(Path::new(&path)) {
             OUTPUT.warn(&format!("Cannot remove {}: {}", path, e));
-            warn!("Cannot remove {}: {}", path, e);
         }
     }
     clean_admin_rtools_registry()?;
@@ -2447,10 +2359,8 @@ fn remove_admin_installations() -> Result<(), Box<dyn Error>> {
                 continue;
             }
             OUTPUT.status(&format!("Removing {}", path.display()));
-            info!("Removing {}", path.display());
             if let Err(e) = remove_dir_all(&path) {
                 OUTPUT.warn(&format!("Cannot remove {}: {}", path.display(), e));
-                warn!("Cannot remove {}: {}", path.display(), e);
             }
         }
     }
@@ -2492,7 +2402,6 @@ fn remove_admin_links() -> Result<(), Box<dyn Error>> {
             continue;
         }
         OUTPUT.status(&format!("Removing {}", path.display()));
-        info!("Removing {}", path.display());
         let result = if name.ends_with(".exe") {
             move_exe_aside(&path)
                 .map(|_| ())
@@ -2502,7 +2411,6 @@ fn remove_admin_links() -> Result<(), Box<dyn Error>> {
         };
         if let Err(e) = result {
             OUTPUT.warn(&format!("Cannot remove {}: {}", path.display(), e));
-            warn!("Cannot remove {}: {}", path.display(), e);
         }
     }
 
@@ -2631,7 +2539,6 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
                 "Could not register rig R versions in Positron: {}",
                 e
             ));
-            warn!("Could not update Positron settings: {}", e);
         }
     }
 
@@ -2656,7 +2563,6 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
             };
             if let Err(e) = result {
                 OUTPUT.warn(&format!("Failed to remove {}: {}", f.display(), e));
-                warn!("Failed to remove {}: {}", f.display(), e)
             };
         }
     };
@@ -2875,8 +2781,6 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
     let mut path = match xdg.to_str() {
         Some(x) => String::from(x),
         None => {
-            OUTPUT.error("RStudio config path cannot be represented as Unicode. :(");
-            error!("RStudio config path cannot be represented as Unicode. :(");
             bail!("RStudio config path cannot be represented as Unicode. :(")
         }
     };
@@ -2905,7 +2809,6 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
                     }
                     None => {
                         OUTPUT.warn("Cannot determine HOME directory");
-                        warn!("Cannot determine HOME directory");
                     }
                 };
             }
@@ -2930,14 +2833,6 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
         path = match shellexpand::env(&path) {
             Ok(x) => x.to_string(),
             Err(e) => {
-                OUTPUT.error(&format!(
-                    "RStudio config path contains unknown environment variable: {}",
-                    e.var_name
-                ));
-                error!(
-                    "RStudio config path contains unknown environment variable: {}",
-                    e.var_name
-                );
                 bail!(
                     "RStudio config path contains unknown environment variable: {}",
                     e.var_name
@@ -2991,13 +2886,11 @@ pub fn sc_rstudio_(
         // TODO: this does not work aarch64 windows
         let bin = get_r_binary_x64(&ver)?;
         OUTPUT.status(&format!("Setting RSTUDIO_WHICH_R=\"{}\"", bin.display()));
-        info!("Setting RSTUDIO_WHICH_R=\"{}\"", bin.display());
         std::env::set_var("RSTUDIO_WHICH_R", bin);
     }
 
     let cmdline = osjoin(args.to_owned(), " ");
     OUTPUT.status(&format!("Running cmd.exe {}", cmdline));
-    info!("Running cmd.exe {}", cmdline);
     let status = run("cmd.exe".into(), args, "start");
 
     // restore version env var
@@ -3009,8 +2902,6 @@ pub fn sc_rstudio_(
     }
 
     if let Err(e) = status {
-        OUTPUT.error(&format!("`start` failed: {}", e));
-        error!("`start` failed: {}", e);
         bail!("`start` failed: {}", e.to_string());
     };
 

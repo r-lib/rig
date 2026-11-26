@@ -21,7 +21,6 @@ use std::error::Error;
 use std::fmt::Write as _;
 use std::path::Path;
 
-use log::warn;
 use serde::{Deserialize, Serialize};
 use simple_error::SimpleError;
 
@@ -36,6 +35,7 @@ use crate::install::{
     REMOTE_REF_FIELD, REMOTE_REPO_FIELD, REMOTE_SHA_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
     REMOTE_URL_FIELD, REMOTE_USERNAME_FIELD, REPO_BUILT_FIELD,
 };
+use crate::output::OUTPUT;
 use crate::pkgsource::lock::LockSource;
 use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::minor_r_version;
@@ -297,7 +297,7 @@ impl Author {
             .filter_map(|args| match parse_person_call(args) {
                 Ok(author) => Some(author),
                 Err(err) => {
-                    warn!("Skipping unparseable Authors@R person(): {}", err);
+                    OUTPUT.warn(&format!("Skipping unparseable Authors@R person(): {}", err));
                     None
                 }
             })
@@ -1358,10 +1358,10 @@ impl Rproj {
             .as_array()
             .and_then(|list| list.iter().map(|v| v.as_str().map(String::from)).collect());
         fields.unwrap_or_else(|| {
-            warn!(
+            OUTPUT.warn(&format!(
                 "Ignoring `{}` in `[tool.rig]`, it must be a list of DESCRIPTION field names",
                 DESCRIPTION_FIELD_ORDER_KEY
-            );
+            ));
             vec![]
         })
     }
@@ -1426,12 +1426,12 @@ impl Rproj {
     pub fn merge_config_needs(&mut self, needs: &[(String, String)]) {
         for (group_name, value) in needs.iter() {
             if DESCRIPTION_DEP_GROUPS.contains(&group_name.as_str()) {
-                warn!(
+                OUTPUT.warn(&format!(
                     "Config/Needs/{} is merged into the `{}` dependency group, \
                      which `rig proj export` writes as a DESCRIPTION dependency \
                      field, not as Config/Needs/{}",
                     group_name, group_name, group_name
-                );
+                ));
             }
             let group = self
                 .dependency_groups
@@ -1457,13 +1457,13 @@ impl Rproj {
     pub fn merge_optional_dependencies(&mut self, needs: &[(String, String)]) {
         for (group_name, value) in needs.iter() {
             if DESCRIPTION_DEP_GROUPS.contains(&group_name.as_str()) {
-                warn!(
+                OUTPUT.warn(&format!(
                     "Config/Needs/Optional/{} is merged into the `{}` \
                      dependency group, which `rig proj export` writes as a \
                      DESCRIPTION dependency field, not as \
                      Config/Needs/Optional/{}",
                     group_name, group_name, group_name
-                );
+                ));
             }
             let group = self
                 .optional_dependencies
@@ -2748,10 +2748,10 @@ fn config_needs_entry(entry: &str) -> (String, Dependency) {
     let name = match pak_ref_name(entry) {
         Some(name) => name,
         None => {
-            warn!(
+            OUTPUT.warn(&format!(
                 "Cannot tell which package `{}` refers to, keeping it as is",
                 entry
-            );
+            ));
             entry.to_string()
         }
     };

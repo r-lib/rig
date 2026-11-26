@@ -24,7 +24,7 @@ use std::fs;
 use std::io::ErrorKind;
 
 use clap::ArgMatches;
-use log::{debug, info};
+use log::debug;
 use tabular::*;
 
 #[cfg(target_os = "macos")]
@@ -101,7 +101,6 @@ pub fn sc_pkg_install(
     if no_install_self && local_named.is_empty() {
         let msg = "--no-install-self needs a local package, e.g. `.`, \
             a package directory or a package file";
-        OUTPUT.error(msg);
         bail!(msg);
     }
     let exclude_newer =
@@ -110,7 +109,6 @@ pub fn sc_pkg_install(
                 let cutoff = spec.cutoff()?;
                 let msg = format!("Ignoring package versions published after {}", cutoff);
                 OUTPUT.info(&msg);
-                info!("{}", msg);
                 Some(cutoff)
             }
             None => None,
@@ -154,7 +152,7 @@ pub fn sc_pkg_install(
         None => config_prefer_binary()?,
     };
     if prefer_binary.is_some() && target.is_none() {
-        info!("Ignoring prefer-binary: solving for source packages only");
+        debug!("Ignoring prefer-binary: solving for source packages only");
     }
 
     let roots = [SolveRoot::request(deps.clone())?];
@@ -176,7 +174,6 @@ pub fn sc_pkg_install(
         true,
     )?;
     OUTPUT.success("Solved dependencies");
-    info!("Solved dependencies");
     let mut policy_notes = crate::proj::PolicyNotes::default();
     policy_notes.add(&registry, &solution);
     policy_notes.print();
@@ -226,7 +223,7 @@ pub fn sc_pkg_install(
 
     if dry_run {
         crate::sysreqs::ensure(&todo, sysreqs, true)?;
-        info!("--dry-run, not installing anything");
+        debug!("--dry-run, not installing anything");
         return Ok(());
     }
 
@@ -234,7 +231,6 @@ pub fn sc_pkg_install(
         if !json {
             OUTPUT.success(&format!("Everything is up to date {}", lib.tag()));
         }
-        info!("Nothing to install");
         return Ok(());
     }
 
@@ -274,7 +270,7 @@ pub fn sc_pkg_install(
         let word = if n == 1 { "package" } else { "packages" };
         OUTPUT.success(&format!("Installed {} {} {}", n, word, lib.tag()));
     }
-    info!("Installed {} packages into {}", n, lib.path.display());
+    debug!("Installed {} packages into {}", n, lib.path.display());
 
     Ok(())
 }
@@ -325,9 +321,7 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
             continue;
         }
 
-        let source = parse_pkg_source(name).inspect_err(|err| {
-            OUTPUT.error(&err.to_string());
-        })?;
+        let source = parse_pkg_source(name)?;
         let mut constraints: Vec<crate::dcf::VersionConstraint> = vec![];
         let resolved_name = match source {
             PkgSource::Cran => {
@@ -341,23 +335,16 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
                 let git_url = table.git.clone().unwrap_or_default();
                 OUTPUT.status(&format!("Fetching {}", git_url));
                 let (pkg, _source, _remotes) =
-                    fetch_and_read_git_package(&git_url, &table, &HashMap::new(), &HashMap::new())
-                        .inspect_err(|err| {
-                            OUTPUT.error(&err.to_string());
-                        })?;
+                    fetch_and_read_git_package(&git_url, &table, &HashMap::new(), &HashMap::new())?;
                 dev_packages.push(pkg.clone());
                 let resolved_name = r.name_override.unwrap_or(pkg.name);
                 git_deps.push((resolved_name.clone(), table));
                 resolved_name
             }
             PkgSource::Local(l) => {
-                let path = resolve_local_path(&l.path).inspect_err(|err| {
-                    OUTPUT.error(&err.to_string());
-                })?;
+                let path = resolve_local_path(&l.path)?;
                 let table = dep_table_from_local(&path);
-                let (pkg, _source, _remotes) = read_local_package(&path).inspect_err(|err| {
-                    OUTPUT.error(&err.to_string());
-                })?;
+                let (pkg, _source, _remotes) = read_local_package(&path)?;
                 dev_packages.push(pkg.clone());
                 let resolved_name = l.name_override.unwrap_or(pkg.name);
                 git_deps.push((resolved_name.clone(), table));
@@ -366,10 +353,7 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
             PkgSource::Url(u) => {
                 let table = dep_table_from_url(&u);
                 OUTPUT.status(&format!("Fetching {}", u.url));
-                let (pkg, _source, _remotes) = fetch_and_read_url_package(&u.url, &table)
-                    .inspect_err(|err| {
-                        OUTPUT.error(&err.to_string());
-                    })?;
+                let (pkg, _source, _remotes) = fetch_and_read_url_package(&u.url, &table)?;
                 dev_packages.push(pkg.clone());
                 let resolved_name = u.name_override.unwrap_or(pkg.name);
                 git_deps.push((resolved_name.clone(), table));
@@ -395,7 +379,6 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
             base.join(", "),
             if base.len() == 1 { "is" } else { "are" }
         );
-        OUTPUT.error(&msg);
         bail!(msg);
     }
 
@@ -461,12 +444,7 @@ fn add_dev_deps(
                 "Skipping {}, not available in the repositories",
                 unavailable.join(", ")
             ));
-            info!(
-                "Skipping unavailable dev dependencies: {}",
-                unavailable.join(", ")
-            );
         } else {
-            OUTPUT.error(&msg);
             bail!(msg);
         }
     }
