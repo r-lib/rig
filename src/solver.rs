@@ -613,6 +613,43 @@ impl RPackageRegistry {
         self
     }
 
+    /// The version in `in_range` closest to `preferred`, which is not in it:
+    /// the smallest newer version, or else the largest older one, best
+    /// artifact first. With `prefer_binary` it goes on to the next closest
+    /// version, at most `lookback` versions away, to find one that has a
+    /// binary package, and takes the closest one if none of them has.
+    fn nearest_version<'a>(
+        &self,
+        in_range: &[&'a RegistryPackageVersion],
+        preferred: &RPackageVersion,
+    ) -> Option<&'a RegistryPackageVersion> {
+        let mut versions: Vec<&RPackageVersion> = in_range.iter().map(|v| &v.version).collect();
+        versions.sort_unstable();
+        versions.dedup();
+        // Newer versions first, closest first, then older ones, closest first.
+        let (older, newer): (Vec<_>, Vec<_>) = versions.into_iter().partition(|v| *v < preferred);
+        let candidates: Vec<&RPackageVersion> =
+            newer.into_iter().chain(older.into_iter().rev()).collect();
+        let best_of = |version: &RPackageVersion| {
+            in_range
+                .iter()
+                .copied()
+                .filter(|v| &v.version == version)
+                .max()
+        };
+        if let Some(lookback) = self.prefer_binary {
+            let binary = candidates
+                .iter()
+                .take(lookback.max(1))
+                .filter_map(|v| best_of(v))
+                .find(|v| v.artifact.is_binary());
+            if binary.is_some() {
+                return binary;
+            }
+        }
+        candidates.first().and_then(|v| best_of(v))
+    }
+
     /// `range` narrowed by the override of `package`, if it has one.
     fn effective_range(
         &self,
@@ -1318,6 +1355,9 @@ impl DependencyProvider for RPackageRegistry {
             vlist.iter().filter(|v| range.contains(v)).collect();
 
         // The preferred version, if it is still allowed, best artifact first.
+        // If it is not, the closest allowed version: the smallest newer one,
+        // or else the largest older one. E.g. a new platform that has no
+        // build of the version the rest of the lock pins.
         if let Some(preferred) = self.preferred.get(package) {
             if let Some(best) = in_range
                 .iter()
@@ -1326,6 +1366,20 @@ impl DependencyProvider for RPackageRegistry {
                 .max()
             {
                 return Ok(Some(best.clone()));
+            }
+            // An override, e.g. `--upgrade-package a@>=2.0.0`, asks for the
+            // newest version it allows instead.
+            let nearest = if self.overrides.contains_key(package) {
+                None
+            } else {
+                self.nearest_version(&in_range, preferred)
+            };
+            if let Some(nearest) = nearest {
+                debug!(
+                    "Choosing {} {}, the closest version to the preferred {}",
+                    package, nearest, preferred
+                );
+                return Ok(Some(nearest.clone()));
             }
         }
 
@@ -2663,11 +2717,55 @@ mod tests {
     }
 
     #[test]
-    fn a_preferred_version_out_of_range_falls_back_to_the_newest() {
+    fn a_preferred_version_out_of_range_falls_back_to_the_next_newer() {
         let reg = RPackageRegistry::with_loaders(Box::new(three_versions()), None)
             .with_preferences(prefer("a", "1.0.0"));
         let solution = solve_with(reg, "a (>= 2.0.0)").unwrap();
-        assert_eq!(solution["a"], source("a", "3.0.0"));
+        assert_eq!(solution["a"], source("a", "2.0.0"));
+    }
+
+    #[test]
+    fn a_missing_preferred_version_falls_back_to_the_next_newer() {
+        let reg = RPackageRegistry::with_loaders(Box::new(three_versions()), None)
+            .with_preferences(prefer("a", "1.5.0"));
+        let solution = solve_with(reg, "a").unwrap();
+        assert_eq!(solution["a"], source("a", "2.0.0"));
+    }
+
+    #[test]
+    fn a_preferred_version_without_newer_falls_back_to_the_next_older() {
+        let reg = RPackageRegistry::with_loaders(Box::new(three_versions()), None)
+            .with_preferences(prefer("a", "2.5.0"));
+        let solution = solve_with(reg, "a (< 2.5.0)").unwrap();
+        assert_eq!(solution["a"], source("a", "2.0.0"));
+    }
+
+    #[test]
+    fn the_nearest_version_prefers_a_binary_within_the_lookback() {
+        let binaries = StubBinaries {
+            builds: vec![("a", "3.0.0", 1, "")],
+            ..Default::default()
+        };
+        let reg =
+            RPackageRegistry::with_loaders(Box::new(three_versions()), Some(Box::new(binaries)))
+                .prefer_binary(Some(2))
+                .with_preferences(prefer("a", "1.5.0"));
+        let solution = solve_with(reg, "a").unwrap();
+        assert_eq!(solution["a"], binary("a", "3.0.0", 1));
+    }
+
+    #[test]
+    fn the_nearest_version_ignores_a_binary_beyond_the_lookback() {
+        let binaries = StubBinaries {
+            builds: vec![("a", "3.0.0", 1, "")],
+            ..Default::default()
+        };
+        let reg =
+            RPackageRegistry::with_loaders(Box::new(three_versions()), Some(Box::new(binaries)))
+                .prefer_binary(Some(1))
+                .with_preferences(prefer("a", "1.5.0"));
+        let solution = solve_with(reg, "a").unwrap();
+        assert_eq!(solution["a"], source("a", "2.0.0"));
     }
 
     #[test]
