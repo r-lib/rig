@@ -9,6 +9,13 @@
   with only a `DESCRIPTION` file. A project can replace them with its own
   scripts, declared as `[[bin]]` entries named `test` and `check`.
 
+* New `rig proj scan` command: it finds the R packages that a project's
+  code uses, in R scripts and in R Markdown, Quarto and Sweave documents.
+  `--check` compares them with the dependencies in `rproj.toml` and exits
+  with status 1 if one is missing, `--fix` adds the missing ones. `rig proj
+  init --scan` creates a project with the packages that the existing code
+  uses (#538).
+
 * New `rig audit` command: it checks the packages of a project's lock file
   and library, or of an R library, for known vulnerabilities and for
   versions that the repository blocks. `rig audit --fix` upgrades them to
@@ -112,6 +119,9 @@
   install when the error happens outside of `R CMD INSTALL`, e.g. when the
   library is not writeable. Before, this error was only in the debug
   output (#504).
+
+* rig now reports R package installation failures better, in particular
+  it shows the full output in non-interactive contexts (#535).
 
 * `rig pkg install` and `rig proj lock` now choose binary packages for
   the architecture of the R version, not rig's own. Before, an x86_64

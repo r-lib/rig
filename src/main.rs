@@ -72,6 +72,7 @@ mod rproj;
 mod run;
 mod rvenv;
 mod rversion;
+mod scan_deps;
 mod self_uninstall;
 mod self_update;
 mod solver;

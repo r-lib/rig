@@ -1079,19 +1079,23 @@ where
             hint
         ));
 
-        // With `-v`, show the whole build log as well, e.g. for CI and
-        // Docker builds, where the log file is gone after the run. #535
-        if OUTPUT.is_verbose() {
-            let log = std::fs::read(&log_file_path)
-                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-                .unwrap_or_else(|err| format!("cannot read {}: {}", log_file_path.display(), err));
-            OUTPUT.println(&format!(
-                "--- {} ---\n{}\n--- end of {} ---",
-                log_file_path.display(),
-                log.trim_end(),
-                log_file_path.display()
-            ));
-        }
+        // Show the build log. In an interactive terminal only its tail,
+        // the file is still there to look at. Elsewhere, e.g. on CI and in
+        // Docker builds, the log file is gone after the run, so show all of
+        // it. `-v` always shows all of it. #535
+        let log = std::fs::read(&log_file_path)
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+            .unwrap_or_else(|err| format!("cannot read {}: {}", log_file_path.display(), err));
+        let max_lines = if OUTPUT.term().animate && !OUTPUT.is_verbose() {
+            Some(BUILD_LOG_TAIL_LINES)
+        } else {
+            None
+        };
+        OUTPUT.println(&format_build_log(
+            &log_file_path.display().to_string(),
+            &log,
+            max_lines,
+        ));
 
         debug!(
             "Installation failed for {} from {}: exit code {}",
@@ -1104,6 +1108,31 @@ where
             "Installation failed for {}",
             package_name
         ))))
+    }
+}
+
+/// How many lines of a failed build log to show in an interactive terminal.
+const BUILD_LOG_TAIL_LINES: usize = 10;
+
+/// Format the build log of a failed install for the user. With `max_lines`,
+/// show only the last that many lines, and point to the log file for the
+/// rest. Without it, show the whole log.
+fn format_build_log(path: &str, log: &str, max_lines: Option<usize>) -> String {
+    let lines: Vec<&str> = log.trim_end().lines().collect();
+    match max_lines {
+        Some(max) if lines.len() > max => format!(
+            "--- last {} lines of {} ---\n{}\n--- see {} for the full log ---",
+            max,
+            path,
+            lines[lines.len() - max..].join("\n"),
+            path
+        ),
+        _ => format!(
+            "--- {} ---\n{}\n--- end of {} ---",
+            path,
+            lines.join("\n"),
+            path
+        ),
     }
 }
 
@@ -1547,6 +1576,30 @@ pub fn install_packages(
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn test_format_build_log() {
+        let log: String = (1..=15).map(|i| format!("line {}\n", i)).collect();
+
+        let full = format_build_log("x.log", &log, None);
+        assert!(full.starts_with("--- x.log ---\nline 1\n"));
+        assert!(full.ends_with("line 15\n--- end of x.log ---"));
+
+        let tail = format_build_log("x.log", &log, Some(10));
+        assert_eq!(
+            tail,
+            "--- last 10 lines of x.log ---\n\
+             line 6\nline 7\nline 8\nline 9\nline 10\n\
+             line 11\nline 12\nline 13\nline 14\nline 15\n\
+             --- see x.log for the full log ---"
+        );
+
+        // A short log is shown in full, even with a limit.
+        assert_eq!(
+            format_build_log("x.log", "a\nb\n", Some(10)),
+            "--- x.log ---\na\nb\n--- end of x.log ---"
+        );
+    }
 
     /// A `PackageInfo` for a built package at `path`, with the given provenance.
     fn info(

@@ -534,6 +534,72 @@ is_retired() {
     [[ "$(grep -c '^# rig rvenv start$' .Renviron)" -eq 1 ]]
 }
 
+@test "proj scan" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf scanproj && mkdir scanproj && cd scanproj
+    mkdir -p R tests/testthat data-raw
+    echo 'library(dplyr)' > analysis.R
+    echo 'cli::cli_text("x")' > R/utils.R
+    echo 'library(testthat)' > tests/testthat/test-a.R
+    echo 'library(notused)' > data-raw/make.R
+    printf -- '---\ntitle: x\n---\n\n```{r}\nlibrary(ggplot2)\n```\n' > report.Rmd
+
+    # Works without a project, too
+    run rig proj scan --json
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q '"package": "dplyr"'
+    echo "$output" | grep -q '"package": "rmarkdown"'
+
+    # Without --scan, init only hints at the scan
+    run rig proj init -r 4.1
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "rig proj scan --fix"
+    ! grep -q dplyr rproj.toml
+
+    # --check fails with exit status 1, and names the missing packages
+    run rig proj scan --check
+    [[ "$status" -eq 1 ]]
+    echo "$output" | grep -q "dplyr"
+    echo "$output" | grep -q "testthat (dev"
+
+    # --fix keeps comments, puts dev packages in the dev group
+    sed -i.bak 's/^R = /# my comment\nR = /' rproj.toml && rm rproj.toml.bak
+    grep -q '^# my comment$' rproj.toml
+    run rig proj scan --fix --no-lock
+    [[ "$status" -eq 0 ]]
+    grep -q '^# my comment$' rproj.toml
+    grep -q '^dplyr = "[*]"$' rproj.toml
+    grep -q '^notused = "[*]"$' rproj.toml
+    grep -q '^\[dependency-groups.dev\]$' rproj.toml
+    grep -q '^testthat = "[*]"$' rproj.toml
+    run rig proj scan --check
+    [[ "$status" -eq 0 ]]
+
+    # After excluding data-raw, notused is unused: --check passes, unless
+    # --strict, and --fix --prune removes it
+    printf '\n[tool.rig.scan]\nexclude = ["data-raw/**"]\n' >> rproj.toml
+    run rig proj scan --check
+    [[ "$status" -eq 0 ]]
+    run rig proj scan --check --strict
+    [[ "$status" -eq 1 ]]
+    run rig proj scan --fix --prune --no-lock
+    [[ "$status" -eq 0 ]]
+    ! grep -q notused rproj.toml
+
+    # init --scan
+    rm -rf ../scanproj2 && mkdir ../scanproj2 && cd ../scanproj2
+    mkdir -p tests data-raw
+    echo 'library(dplyr)' > analysis.R
+    echo 'library(testthat)' > tests/test.R
+    echo 'library(notused)' > data-raw/make.R
+    run rig proj init -r 4.1 --scan --scan-exclude 'data-raw/**'
+    [[ "$status" -eq 0 ]]
+    grep -q '^dplyr = "[*]"$' rproj.toml
+    grep -q '^testthat = "[*]"$' rproj.toml
+    ! grep -q notused rproj.toml
+    grep -q '^exclude = \["data-raw/[*][*]"\]$' rproj.toml
+}
+
 @test "proj add" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf addproj && mkdir addproj && cd addproj
