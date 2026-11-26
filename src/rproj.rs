@@ -45,7 +45,7 @@ use crate::rvenv::RPROJ_LOCK_FILE;
 use crate::solver::{RPackageRegistry, RegistrySolution};
 use crate::utils::is_r_package_name;
 
-pub const RPROJ_LOCK_VERSION: usize = 7;
+pub const RPROJ_LOCK_VERSION: usize = 8;
 
 /// The last lockfile version that names platforms by their P3M target
 /// (`macos-arm64`, `jammy-x86_64`) instead of their canonical platform string
@@ -58,6 +58,12 @@ const RPROJ_LOCK_VERSION_P3M_PLATFORMS: usize = 5;
 /// entry that names the commit (or archive sha256) and subdir, see
 /// [`LockSource`]. rig still reads it, see [`RprojLock::parse`].
 const RPROJ_LOCK_VERSION_METADATA_SOURCES: usize = 6;
+
+/// The last lockfile version that spells the generic glibc Linux platform
+/// `<arch>-unknown-linux-gnu`, instead of
+/// `<arch>-unknown-linux-gnu-manylinux_2_28`, the spelling of Tidyup 12. rig
+/// still reads it, see [`RprojLock::parse`].
+const RPROJ_LOCK_VERSION_PLAIN_GNU: usize = 7;
 
 // `rproj.toml`: the project/package manifest (see the design doc). This is the
 // *requirements* file a human edits, as opposed to `rproj.lock` (the solved
@@ -3555,16 +3561,19 @@ impl RprojLock {
     /// Parse the text of `rproj.lock`, after checking its version, see
     /// [`RprojLock::check_version`].
     ///
-    /// Version 5 and 6 lockfiles are read too. Version 5 spells platforms
+    /// Version 5, 6 and 7 lockfiles are read too. Version 5 spells platforms
     /// differently, and they are brought into their canonical spelling here,
-    /// in memory. Both versions keep what is needed to install a remote
-    /// package in its `metadata`, and its `sources` are rebuilt from that,
-    /// see [`RprojLock::upgrade_remote_sources`]. The next `rig proj lock`
-    /// writes the current version.
+    /// in memory. Versions 5 to 7 spell the generic glibc Linux platform
+    /// without its glibc version, see
+    /// [`RprojLock::upgrade_manylinux_platforms`]. Versions 5 and 6 keep
+    /// what is needed to install a remote package in its `metadata`, and its
+    /// `sources` are rebuilt from that, see
+    /// [`RprojLock::upgrade_remote_sources`]. The next `rig proj lock` writes
+    /// the current version.
     pub fn parse(text: &str) -> Result<RprojLock, Box<dyn Error>> {
         let found: RprojLockVersion = toml::from_str(text)?;
-        if found.version == RPROJ_LOCK_VERSION_P3M_PLATFORMS
-            || found.version == RPROJ_LOCK_VERSION_METADATA_SOURCES
+        if (RPROJ_LOCK_VERSION_P3M_PLATFORMS..=RPROJ_LOCK_VERSION_PLAIN_GNU)
+            .contains(&found.version)
         {
             let mut lock: RprojLock = toml::from_str(text)?;
             if found.version == RPROJ_LOCK_VERSION_P3M_PLATFORMS {
@@ -3579,7 +3588,10 @@ impl RprojLock {
                     );
                 }
             }
-            lock.upgrade_remote_sources();
+            lock.upgrade_manylinux_platforms();
+            if found.version <= RPROJ_LOCK_VERSION_METADATA_SOURCES {
+                lock.upgrade_remote_sources();
+            }
             lock.version = RPROJ_LOCK_VERSION;
             return Ok(lock);
         }
@@ -3612,6 +3624,29 @@ impl RprojLock {
             let source = LockSource::from_remote(remote_type, url, sha, get(REMOTE_SUBDIR_FIELD));
             if let Some(source) = source {
                 package.sources = vec![source.to_string()];
+            }
+        }
+    }
+
+    /// Rewrite the generic glibc Linux platform of every target and package,
+    /// `<arch>-unknown-linux-gnu`, into its current spelling,
+    /// `<arch>-unknown-linux-gnu-manylinux_2_28`.
+    fn upgrade_manylinux_platforms(&mut self) {
+        let upgrade = |platform: &mut String| {
+            for arch in ["x86_64", "aarch64"] {
+                if *platform == format!("{}-unknown-linux-gnu", arch) {
+                    *platform = format!(
+                        "{}-unknown-linux-gnu-{}",
+                        arch,
+                        crate::repos::binaries::MANYLINUX
+                    );
+                }
+            }
+        };
+        for target in &mut self.targets {
+            upgrade(&mut target.platform);
+            for package in &mut target.packages {
+                upgrade(&mut package.platform);
             }
         }
     }
@@ -5436,6 +5471,56 @@ foo = "bar"
         assert_eq!(m.r_versions().unwrap(), Some(vec!["4.4.1".to_string()]));
     }
 
+    /// A version 7 lockfile spells the generic glibc Linux platform without
+    /// its glibc version, and is read with the current spelling.
+    #[test]
+    fn reads_a_version_7_lockfile() {
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION_PLAIN_GNU,
+            tool: Default::default(),
+            targets: [
+                ("x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"),
+                (
+                    "aarch64-unknown-linux-gnu-ubuntu-24.04",
+                    "aarch64-unknown-linux-gnu",
+                ),
+            ]
+            .iter()
+            .map(|(target, package)| RprojLockTarget {
+                r_version: "4.6".to_string(),
+                platform: target.to_string(),
+                direct_dependencies: vec![],
+                bioc_version: None,
+                packages: vec![RprojLockPackage {
+                    platform: package.to_string(),
+                    ..sample_package()
+                }],
+            })
+            .collect(),
+        };
+        let text = toml::to_string_pretty(&lock).unwrap();
+        let parsed = RprojLock::parse(&text).unwrap();
+        assert_eq!(parsed.version, RPROJ_LOCK_VERSION);
+        let platforms: Vec<(&str, &str)> = parsed
+            .targets
+            .iter()
+            .map(|t| (t.platform.as_str(), t.packages[0].platform.as_str()))
+            .collect();
+        assert_eq!(
+            platforms,
+            vec![
+                (
+                    "x86_64-unknown-linux-gnu-manylinux_2_28",
+                    "x86_64-unknown-linux-gnu-manylinux_2_28"
+                ),
+                (
+                    "aarch64-unknown-linux-gnu-ubuntu-24.04",
+                    "aarch64-unknown-linux-gnu-manylinux_2_28"
+                ),
+            ]
+        );
+    }
+
     /// A version 5 lockfile names platforms by their P3M target, and is read
     /// with canonical platform strings.
     #[test]
@@ -5469,7 +5554,10 @@ foo = "bar"
             platforms,
             vec![
                 ("aarch64-apple-darwin", "aarch64-apple-darwin"),
-                ("x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"),
+                (
+                    "x86_64-unknown-linux-gnu-manylinux_2_28",
+                    "x86_64-unknown-linux-gnu-manylinux_2_28"
+                ),
                 ("source", "source"),
             ]
         );

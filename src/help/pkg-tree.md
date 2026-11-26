@@ -43,7 +43,7 @@ without names leaves out all configured repositories, so only the ones in
 --index=https://r-lib.r-universe.dev`. URLs cannot contain commas.
 
 For P3M and for Bioconductor's software repository rig reads their full
-package history, from <https://ppm.r-pkg.org> and <https://ppm-bioc.r-pkg.org>,
+package history, from <https://ppm.r-pkg.org/v1> and <https://ppm-bioc.r-pkg.org/v1>,
 so older and archived versions are available, too. Any other repository,
 e.g. CRAN itself, an r-universe, or one added with [`rig repos add`](repos.qmd#rig-repos-add), is read
 from its `PACKAGES` files, so only its current packages are available.

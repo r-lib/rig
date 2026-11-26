@@ -1,9 +1,8 @@
 //! `--exclude-newer`: hide CRAN package versions published after a date from
 //! the dependency solver.
 //!
-//! A version's publish date is the P3M snapshot it first appeared in, i.e. the
-//! date in its ALLPACKAGES `DownloadURL`, see
-//! [`crate::repos::cranlike_metadata::snapshot_date`]. That is a day, so the
+//! A version's publish date is the P3M snapshot it first appeared in, i.e.
+//! the `Snapshot` field of its ALLPACKAGES record. That is a day, so the
 //! cutoff is a day too: a version is kept if its snapshot date is on or before
 //! the cutoff.
 

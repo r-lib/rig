@@ -37,6 +37,13 @@
 
 ## Projects
 
+* `rproj.lock` is now version 8. The platform of generic glibc Linux
+  binaries is now `<arch>-unknown-linux-gnu-manylinux_2_28` instead of
+  `<arch>-unknown-linux-gnu`, and the platforms of Linux distributions
+  that use the binaries of another one are named after that one, e.g.
+  `x86_64-unknown-linux-gnu-rhel-8` for CentOS 8. rig still reads version
+  5, 6 and 7 lock files, and `rig proj lock` writes them as version 8.
+
 * R sessions in synced rig projects now read `.Renviron.rig` after
   `~/.Renviron`. Put secrets that must not be committed into this file
   (#518).

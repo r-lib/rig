@@ -1127,7 +1127,7 @@ mod tests {
             let mut e = make_entry();
             e.name = name.to_string();
             e.url = url.to_string();
-            e.metadata = Some("https://ppm.r-pkg.org".to_string());
+            e.metadata = Some("https://ppm.r-pkg.org/v1".to_string());
             e.platforms = platforms.map(|p| vec![p.to_string()]);
             e.fallback = fallback;
             e

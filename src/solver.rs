@@ -1044,7 +1044,7 @@ impl RPackageRegistry {
                                 .insert((pkg.clone(), src.clone()), repo.clone());
                         }
                         // The index's source row is authoritative when we have
-                        // one; the source metadata's own `SHA256Original` is the
+                        // one; the source metadata's own `Id` is the
                         // fallback, and the only thing available for a
                         // source-only solve, where no index is loaded at all.
                         if let Some(sha) = artifacts

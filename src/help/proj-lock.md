@@ -85,7 +85,7 @@ type = "cran"
   Package Manager (`ppm-cran`, `ppm-bioc`), and the root of a Bioconductor
   mirror (`bioc`) have the same packages as the built-in CRAN and
   Bioconductor repositories. rig reads the full package history of these
-  from <https://ppm.r-pkg.org> and <https://ppm-bioc.r-pkg.org>, so older
+  from <https://ppm.r-pkg.org/v1> and <https://ppm-bioc.r-pkg.org/v1>, so older
   versions are available, too. The CRAN history also has the known
   vulnerabilities of each version. A source package of CRAN is downloaded from
   the mirror first, and from Posit Package Manager if the mirror does not
@@ -93,7 +93,7 @@ type = "cran"
   `extend = false` turns this off, and rig only reads the `PACKAGES` files of
   the repository. A CRAN repository of Posit Package Manager may serve its
   own full package history, and then rig reads that instead of
-  <https://ppm.r-pkg.org>. It also says which versions the repository blocks,
+  <https://ppm.r-pkg.org/v1>. It also says which versions the repository blocks,
   and their known vulnerabilities. rig never locks a blocked version, and it
   warns about a version with known vulnerabilities, see
   [`rig audit`](audit.qmd).

@@ -991,11 +991,11 @@ mod tests {
         HashMap::from([
             (
                 "p3m".to_string(),
-                setting(Some("https://ppm.r-pkg.org"), RepoType::PpmCran),
+                setting(Some("https://ppm.r-pkg.org/v1"), RepoType::PpmCran),
             ),
             (
                 "biocsoft".to_string(),
-                setting(Some("https://ppm-bioc.r-pkg.org/%v"), RepoType::Bioc),
+                setting(Some("https://ppm-bioc.r-pkg.org/v1/%v"), RepoType::Bioc),
             ),
             ("biocann".to_string(), setting(None, RepoType::Bioc)),
             ("biocexp".to_string(), setting(None, RepoType::Bioc)),

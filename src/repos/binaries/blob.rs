@@ -6,7 +6,7 @@
 //! though the underlying `.tsv.zst` only changes once a day at most.
 //!
 //! This module moves that work onto the download path. A `.tsv.zst` is parsed
-//! once, out of the response body, and what gets cached is a `.v1.rbi` blob
+//! once, out of the response body, and what gets cached is a `.v2.rbi` blob
 //! that later runs read directly, with no parsing at all. See [`build`] and
 //! [`IndexBlob::open`].
 //!
@@ -25,16 +25,18 @@
 //! ```
 //!
 //! The body is columnar and dictionary-encoded. Every string in the file —
-//! platform names, arches, R versions, hashes, URLs, package names — is stored
+//! platforms, R versions, hashes, URLs, package names — is stored
 //! once in a single blob, and the columns hold `u32` ids into it. That is what
 //! makes reading free: a column is a range of bytes, and a field is two
 //! integer reads plus a slice.
 //!
 //! Three properties of the data drive the layout:
 //!
-//! * **Almost every column is low-cardinality.** dplyr's 3773 rows use 24
-//!   distinct platforms, 3 arches, 13 R versions and 48 hashes. Only `url` is
-//!   effectively unique per row.
+//! * **Almost every column is low-cardinality.** dplyr's rows use a few dozen
+//!   distinct platforms, a dozen R versions and a few dozen source ids. Only
+//!   `url` is effectively unique per row. The optional columns (`sha256`,
+//!   `built`, `yanked`, `yanked_reason`) are mostly missing, which is stored
+//!   as the empty string.
 //! * **`linkingto` is the largest column and has 21 distinct values** across
 //!   those 3773 rows — distinct *whole lists*, not entries. So the dictionary
 //!   holds complete lists ([`IndexBlob::linkingto`]), not individual
@@ -82,7 +84,7 @@ const MAGIC: [u8; 4] = *b"RBI\0";
 
 /// Bumped whenever the layout changes. It is part of the file *name*, so an
 /// old blob is never read at all rather than being read and rejected.
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
 
 /// magic, format version, body length, flags.
 const PREAMBLE_BYTES: usize = 16;
@@ -115,15 +117,31 @@ const H_PACKAGE: usize = 7;
 /// The per-row columns, in the order they are laid out.
 const COL_VERSION: usize = 0;
 const COL_PLATFORM: usize = 1;
-const COL_ARCH: usize = 2;
-const COL_R_VERSION: usize = 3;
-const COL_SHA256: usize = 4;
-const COL_URL: usize = 5;
-const COL_LINKINGTO: usize = 6;
-const NCOLS: usize = 7;
+const COL_R_VERSION: usize = 2;
+const COL_SOURCE_ID: usize = 3;
+const COL_URL: usize = 4;
+const COL_LINKINGTO: usize = 5;
+const COL_SHA256: usize = 6;
+const COL_BUILT: usize = 7;
+const COL_YANKED: usize = 8;
+const COL_YANKED_REASON: usize = 9;
+const NCOLS: usize = 10;
 
-/// One `pkg@version=sha256` entry of a row's `linkingto` list, borrowed from
-/// the blob.
+/// The string columns, i.e. every column except the version and `linkingto`
+/// ones, which hold ids into other tables.
+const STRING_COLS: [usize; 8] = [
+    COL_PLATFORM,
+    COL_R_VERSION,
+    COL_SOURCE_ID,
+    COL_URL,
+    COL_SHA256,
+    COL_BUILT,
+    COL_YANKED,
+    COL_YANKED_REASON,
+];
+
+/// One `pkg@version=id` entry of a row's `linkingto` list, borrowed from
+/// the blob. `sha256` is the `Id` of that dependency version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LinkingTo<'a> {
     pub package: &'a str,
@@ -195,7 +213,8 @@ fn version_key(v: &str) -> Option<Vec<u32>> {
 /// ver_row_off  nver + 1     row range of each version
 /// lt_off       nlt + 1      offsets into lt_ents, counted in triples
 /// lt_ents      3 * nlt_ents (package, version, sha256) string ids
-/// columns      7 * nrows    one string id per row per column, see NCOLS
+/// columns      10 * nrows   one id per row per column, see NCOLS; a missing
+///                           optional value is the empty string
 /// ```
 pub fn build(package: &str, rows: &[BinaryRow]) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut int = Interner::new();
@@ -229,10 +248,14 @@ pub fn build(package: &str, rows: &[BinaryRow]) -> Result<Vec<u8>, Box<dyn Error
         let row = &rows[*i];
         cols[COL_VERSION].push(version_index[row.version.as_str()]);
         cols[COL_PLATFORM].push(int.intern(&row.platform));
-        cols[COL_ARCH].push(int.intern(&row.arch));
         cols[COL_R_VERSION].push(int.intern(&row.r_version));
-        cols[COL_SHA256].push(int.intern(&row.sha256));
+        cols[COL_SOURCE_ID].push(int.intern(&row.source_id));
         cols[COL_URL].push(int.intern(&row.url));
+        let opt = |v: &Option<String>| v.as_deref().unwrap_or("").to_string();
+        cols[COL_SHA256].push(int.intern(&opt(&row.sha256)));
+        cols[COL_BUILT].push(int.intern(&opt(&row.built)));
+        cols[COL_YANKED].push(int.intern(&opt(&row.yanked)));
+        cols[COL_YANKED_REASON].push(int.intern(&opt(&row.yanked_reason)));
 
         let mut triples = Vec::with_capacity(row.linkingto.len() * 3);
         for l in &row.linkingto {
@@ -515,7 +538,7 @@ impl IndexBlob {
         {
             bail!("Binary index blob has an out-of-range id");
         }
-        for col in [COL_PLATFORM, COL_ARCH, COL_R_VERSION, COL_SHA256, COL_URL] {
+        for col in STRING_COLS {
             if !ids_ok(&body, cols_at[col], nrows, nstr as u32) {
                 bail!("Binary index blob has an out-of-range id");
             }
@@ -607,16 +630,33 @@ impl IndexBlob {
         self.s(self.col(COL_PLATFORM, row))
     }
 
-    pub fn row_arch(&self, row: usize) -> &str {
-        self.s(self.col(COL_ARCH, row))
-    }
-
     pub fn row_r_version(&self, row: usize) -> &str {
         self.s(self.col(COL_R_VERSION, row))
     }
 
-    pub fn row_sha256(&self, row: usize) -> &str {
-        self.s(self.col(COL_SHA256, row))
+    pub fn row_source_id(&self, row: usize) -> &str {
+        self.s(self.col(COL_SOURCE_ID, row))
+    }
+
+    /// An optional column, `None` if the value is missing.
+    fn opt_col(&self, col: usize, row: usize) -> Option<&str> {
+        Some(self.s(self.col(col, row))).filter(|v| !v.is_empty())
+    }
+
+    pub fn row_sha256(&self, row: usize) -> Option<&str> {
+        self.opt_col(COL_SHA256, row)
+    }
+
+    pub fn row_built(&self, row: usize) -> Option<&str> {
+        self.opt_col(COL_BUILT, row)
+    }
+
+    pub fn row_yanked(&self, row: usize) -> Option<&str> {
+        self.opt_col(COL_YANKED, row)
+    }
+
+    pub fn row_yanked_reason(&self, row: usize) -> Option<&str> {
+        self.opt_col(COL_YANKED_REASON, row)
     }
 
     pub fn row_url(&self, row: usize) -> &str {
@@ -657,10 +697,13 @@ pub fn to_rows(blob: &IndexBlob) -> Vec<BinaryRow> {
         .map(|i| BinaryRow {
             version: blob.versions()[blob.row_version(i)].clone(),
             platform: blob.row_platform(i).to_string(),
-            arch: blob.row_arch(i).to_string(),
             r_version: blob.row_r_version(i).to_string(),
-            sha256: blob.row_sha256(i).to_string(),
+            source_id: blob.row_source_id(i).to_string(),
             url: blob.row_url(i).to_string(),
+            sha256: blob.row_sha256(i).map(String::from),
+            built: blob.row_built(i).map(String::from),
+            yanked: blob.row_yanked(i).map(String::from),
+            yanked_reason: blob.row_yanked_reason(i).map(String::from),
             linkingto: blob
                 .linkingto(i)
                 .map(|l| LinkingToRef {
@@ -716,10 +759,10 @@ mod tests {
                     r.url.clone(),
                     r.version.clone(),
                     r.platform.clone(),
-                    r.arch.clone(),
                     r.r_version.clone(),
-                    r.sha256.clone(),
+                    r.source_id.clone(),
                     format!("{:?}", r.linkingto),
+                    format!("{:?}", (&r.sha256, &r.built, &r.yanked, &r.yanked_reason)),
                 )
             };
             let mut want = rows.clone();
@@ -732,12 +775,14 @@ mod tests {
 
     #[test]
     fn orders_versions_numerically_and_groups_rows() {
-        let (rows, blob) = roundtrip("pak", "pak.tsv.zst");
-        assert_eq!(blob.versions().len(), 26);
-        assert_eq!(blob.versions().first().unwrap(), "0.1.2");
-        assert_eq!(blob.versions().last().unwrap(), "0.11.1");
-        // The raw file really is in the misleading string order.
+        let (mut rows, _) = roundtrip("pak", "pak.tsv.zst");
+        // Rows in string order, as some indices have them.
+        rows.sort_by(|a, b| a.version.cmp(&b.version));
         assert_eq!(rows.last().unwrap().version, "0.9.5");
+        let blob = IndexBlob::open(&build("pak", &rows).unwrap()).unwrap();
+        assert_eq!(blob.versions().len(), 27);
+        assert_eq!(blob.versions().first().unwrap(), "0.1.2");
+        assert_eq!(blob.versions().last().unwrap(), "0.11.2");
 
         // Every row falls inside its version's range, and the ranges tile the
         // whole row space.
@@ -759,12 +804,19 @@ mod tests {
         let (rows, blob) = roundtrip("dplyr", "dplyr.tsv.zst");
         let want: Vec<&str> = rows
             .iter()
-            .filter(|r| r.version == "0.7.4" && r.platform == "xenial" && r.r_version == "3.4")
+            .filter(|r| {
+                r.version == "0.7.4"
+                    && r.platform == "x86_64-unknown-linux-gnu-ubuntu-16.04"
+                    && r.r_version == "3.4"
+            })
             .map(|r| r.url.as_str())
             .collect();
         let got: Vec<&str> = blob
             .version_rows(blob.versions().iter().position(|v| v == "0.7.4").unwrap())
-            .filter(|i| blob.row_platform(*i) == "xenial" && blob.row_r_version(*i) == "3.4")
+            .filter(|i| {
+                blob.row_platform(*i) == "x86_64-unknown-linux-gnu-ubuntu-16.04"
+                    && blob.row_r_version(*i) == "3.4"
+            })
             .map(|i| blob.row_url(i))
             .collect();
         assert_eq!(got.len(), 7);
@@ -785,20 +837,26 @@ mod tests {
             BinaryRow {
                 version: "1.0.0".to_string(),
                 platform: "source".to_string(),
-                arch: "*".to_string(),
                 r_version: "*".to_string(),
-                sha256: "aa".to_string(),
+                source_id: "aa".to_string(),
                 url: "https://example.com/a.tar.gz".to_string(),
                 linkingto: vec![],
+                sha256: None,
+                built: None,
+                yanked: None,
+                yanked_reason: None,
             },
             BinaryRow {
                 version: "not-a-version".to_string(),
                 platform: "source".to_string(),
-                arch: "*".to_string(),
                 r_version: "*".to_string(),
-                sha256: "bb".to_string(),
+                source_id: "bb".to_string(),
                 url: "https://example.com/b.tar.gz".to_string(),
                 linkingto: vec![],
+                sha256: None,
+                built: None,
+                yanked: None,
+                yanked_reason: None,
             },
         ];
         let blob = IndexBlob::open(&build("x", &rows).unwrap()).unwrap();
@@ -815,7 +873,10 @@ mod tests {
         let v = blob.versions().iter().position(|x| x == "0.7.4").unwrap();
         let row = blob
             .version_rows(v)
-            .find(|i| blob.row_platform(*i) == "xenial" && blob.row_r_version(*i) == "3.4")
+            .find(|i| {
+                blob.row_platform(*i) == "x86_64-unknown-linux-gnu-ubuntu-16.04"
+                    && blob.row_r_version(*i) == "3.4"
+            })
             .unwrap();
         let lt: Vec<LinkingTo> = blob.linkingto(row).collect();
         assert_eq!(lt.len(), 4);

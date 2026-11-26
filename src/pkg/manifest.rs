@@ -17,7 +17,7 @@
 //! the sha256 of the original CRAN tarball rather than by position.
 //!
 //! The snapshot date and that sha256 both come from the ALLPACKAGES history in
-//! the local metadata database (`Snapshot` / `SHA256Original`), so no extra
+//! the local metadata database (`Snapshot` / `Id`), so no extra
 //! request is needed to find them.
 //!
 //! Because the newest manifest of a package carries its whole CRAN archive, one
@@ -351,25 +351,22 @@ mod tests {
     fn ver(version: &str, snapshot: &str, sha: Option<&str>) -> AllPackagesVersion {
         AllPackagesVersion {
             version: RPackageVersion::from_str(version).unwrap(),
-            download_url: Some(format!(
-                "https://p3m.dev/cran/{}/src/contrib/pkg_{}.tar.gz",
-                snapshot, version
-            )),
             sha256sum: sha.map(|s| s.to_string()),
+            snapshot: Some(snapshot.to_string()),
         }
     }
 
     #[test]
-    fn snapshot_comes_from_the_download_url() {
+    fn snapshot_comes_from_the_snapshot_field() {
         let v = ver("1.0.0", "2026-06-08", None);
         assert_eq!(v.snapshot().as_deref(), Some("2026-06-08"));
 
-        let no_url = AllPackagesVersion {
+        let none = AllPackagesVersion {
             version: RPackageVersion::from_str("1.0.0").unwrap(),
-            download_url: None,
             sha256sum: None,
+            snapshot: None,
         };
-        assert_eq!(no_url.snapshot(), None);
+        assert_eq!(none.snapshot(), None);
     }
 
     #[test]

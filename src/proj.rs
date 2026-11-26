@@ -4305,7 +4305,7 @@ fn lock_platform_specs(opts: &ProjLockOptions, manifest: Option<&[String]>) -> V
         vec![
             None,
             Some("x86_64-w64-mingw32".to_string()),
-            Some("x86_64-unknown-linux-gnu".to_string()),
+            Some("x86_64-unknown-linux-gnu-manylinux_2_28".to_string()),
             Some("aarch64-apple-darwin".to_string()),
             Some("source".to_string()),
         ]
@@ -8076,7 +8076,7 @@ mod tests {
             vec![
                 None,
                 Some("x86_64-w64-mingw32".to_string()),
-                Some("x86_64-unknown-linux-gnu".to_string()),
+                Some("x86_64-unknown-linux-gnu-manylinux_2_28".to_string()),
                 Some("aarch64-apple-darwin".to_string()),
                 Some("source".to_string()),
                 Some("ubuntu-24.04".to_string()),
@@ -8200,7 +8200,7 @@ mod tests {
         assert_eq!(windows.arch, "x86_64");
         assert_eq!(windows.os, "mingw32");
 
-        let manylinux = parse_platform_string("x86_64-unknown-linux-gnu").unwrap();
+        let manylinux = parse_platform_string("x86_64-unknown-linux-gnu-manylinux_2_28").unwrap();
         assert_eq!(manylinux.arch, "x86_64");
         assert!(manylinux.os.starts_with("linux"));
         assert_eq!(manylinux.distro, None);
@@ -8219,7 +8219,10 @@ mod tests {
         assert_eq!(target_os_family("linux-ubuntu-24.04-x86_64"), Some("linux"));
         assert_eq!(target_os_family("aarch64-apple-darwin"), Some("macos"));
         assert_eq!(target_os_family("x86_64-w64-mingw32"), Some("windows"));
-        assert_eq!(target_os_family("x86_64-unknown-linux-gnu"), Some("linux"));
+        assert_eq!(
+            target_os_family("x86_64-unknown-linux-gnu-manylinux_2_28"),
+            Some("linux")
+        );
         assert_eq!(
             target_os_family("aarch64-unknown-linux-gnu-ubuntu-24.04"),
             Some("linux")
@@ -8948,12 +8951,12 @@ mod tests {
         // The generic glibc target is used instead.
         let targets = vec![
             target("4.6.1", "x86_64-unknown-linux-gnu-ubuntu-22.04"),
-            target("4.6.1", "x86_64-unknown-linux-gnu"),
+            target("4.6.1", "x86_64-unknown-linux-gnu-manylinux_2_28"),
             target("4.6.1", "source"),
         ];
         for host in [&fedora, &noble] {
             let picked = select_sync_target(&targets, None, None, host).unwrap();
-            assert_eq!(picked.platform, "x86_64-unknown-linux-gnu");
+            assert_eq!(picked.platform, "x86_64-unknown-linux-gnu-manylinux_2_28");
         }
     }
 
@@ -8961,7 +8964,7 @@ mod tests {
     fn select_sync_target_prefers_this_distro_over_generic_linux() {
         let jammy = linux_host(false, Some(("ubuntu", "22.04")));
         let specific = target("4.6.1", "x86_64-unknown-linux-gnu-ubuntu-22.04");
-        let generic = target("4.6.1", "x86_64-unknown-linux-gnu");
+        let generic = target("4.6.1", "x86_64-unknown-linux-gnu-manylinux_2_28");
         for targets in [
             vec![specific.clone(), generic.clone()],
             vec![generic.clone(), specific.clone()],
@@ -8971,16 +8974,19 @@ mod tests {
         }
 
         // A higher R version still wins.
-        let targets = vec![specific, target("4.6.2", "x86_64-unknown-linux-gnu")];
+        let targets = vec![
+            specific,
+            target("4.6.2", "x86_64-unknown-linux-gnu-manylinux_2_28"),
+        ];
         let picked = select_sync_target(&targets, None, None, &jammy).unwrap();
-        assert_eq!(picked.platform, "x86_64-unknown-linux-gnu");
+        assert_eq!(picked.platform, "x86_64-unknown-linux-gnu-manylinux_2_28");
     }
 
     #[test]
     fn select_sync_target_keeps_glibc_and_musl_apart() {
         let alpine = linux_host(true, None);
         let targets = vec![
-            target("4.6.1", "x86_64-unknown-linux-gnu"),
+            target("4.6.1", "x86_64-unknown-linux-gnu-manylinux_2_28"),
             target("4.6.1", "x86_64-unknown-linux-gnu-ubuntu-22.04"),
         ];
         assert!(select_sync_target(&targets, None, None, &alpine).is_err());

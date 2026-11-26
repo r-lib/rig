@@ -1,42 +1,51 @@
-//! Per-package binary index from Posit Package Manager.
+//! Per-package binary index of an extended metadata feed (Tidyup 12, format
+//! 1.x).
 //!
-//! P3M serves one compressed TSV per package at
-//! `https://ppm.r-pkg.org/binaries/<package>.tsv.zst`, listing every source and
+//! A feed serves one compressed TSV per package at
+//! `<base>/binaries/<package>.tsv.zst`, e.g.
+//! `https://ppm.r-pkg.org/v1/binaries/pak.tsv.zst`, listing every source and
 //! binary artifact ever published for that package, with a snapshot-pinned
 //! download URL for each. It is the R analogue of the Python simple-repo API
 //! index that uv consumes.
 //!
-//! Columns: `package version platform arch r_version sha256 url linkingto`.
+//! The file starts with a `# Format-Version: 1.0` comment, then a header.
+//! Required columns: `package version platform r_version source-id url`.
+//! Optional: `linkingto sha256 md5 filesize built yanked yanked_reason`, where
+//! a missing value is `NA`.
 //!
 //! ```text
-//! pak 0.9.5 source  *      *   f5f899… https://p3m.dev/cran/2026-04-27/src/contrib/pak_0.9.5.tar.gz
-//! pak 0.9.5 macos   arm64  4.5 f5f899… https://p3m.dev/cran/2026-04-27/bin/macosx/big-sur-arm64/contrib/4.5/pak_0.9.5.tgz
-//! pak 0.9.5 windows x86_64 4.5 f5f899… https://p3m.dev/cran/2026-04-27/bin/windows/contrib/4.5/pak_0.9.5.zip
-//! pak 0.9.5 jammy   x86_64 4.5 f5f899… https://p3m.dev/cran/2026-04-27/bin/linux/jammy-x86_64/4.5/src/contrib/pak_0.9.5.tar.gz
+//! pak 0.9.5 source                                  *   f5f899… ../2026-04-27/src/contrib/pak_0.9.5.tar.gz
+//! pak 0.9.5 aarch64-apple-darwin                    4.5 f5f899… ../2026-04-27/bin/macosx/big-sur-arm64/contrib/4.5/pak_0.9.5.tgz
+//! pak 0.9.5 x86_64-w64-mingw32                      4.5 f5f899… ../2026-04-27/bin/windows/contrib/4.5/pak_0.9.5.zip
+//! pak 0.9.5 x86_64-unknown-linux-gnu-ubuntu-22.04   4.5 f5f899… ../2026-04-27/bin/linux/jammy-x86_64/4.5/src/contrib/pak_0.9.5.tar.gz
 //! ```
+//!
+//! `platform` is `source` or a platform string, the same ones `rproj.lock`
+//! uses, see [`crate::platform`]. `url` is relative to the index file.
 //!
 //! Things about this data that are easy to get wrong:
 //!
-//! * **`sha256` verifies nothing that P3M serves.** It is the hash of the
-//!   *original CRAN* source tarball, repeated byte-identically on every platform
-//!   row of a version. So it is not the hash of the binary on that row, and it
-//!   is not even the hash of the source tarball at that row's own `p3m.dev`
-//!   URL, because P3M rewrites `Repository: CRAN` to `Repository: RSPM` in the
-//!   DESCRIPTION before serving it. Treat it strictly as an identity key for the
-//!   upstream CRAN artifact; do not build download verification on it.
+//! * **`source-id` verifies nothing that P3M serves.** It is the `Id` of the
+//!   source version in ALLPACKAGES, for P3M the hash of the *original CRAN*
+//!   source tarball, repeated on every platform row of a version. So it is not
+//!   the hash of the binary on that row, and not even the hash of the source
+//!   tarball at that row's own URL, because P3M rewrites `Repository: CRAN` to
+//!   `Repository: RSPM` in the DESCRIPTION before serving it. Treat it strictly
+//!   as an identity key for the upstream artifact. The optional `sha256`
+//!   column is the checksum of the file at `url`.
 //! * **`linkingto` records build provenance**, and is populated on binary rows
 //!   exactly when the package has a `LinkingTo:` field. It lists the dependency
 //!   source versions the binary was compiled against, as comma-separated
-//!   `pkg@version=sha256` (those hashes being the same upstream-CRAN identity
-//!   hashes as the `sha256` column). It is the *transitive* header closure, not
+//!   `pkg@version=id` (those ids being the same kind of identity as the
+//!   `source-id` column). It is the *transitive* header closure, not
 //!   a copy of the package's own `LinkingTo:` field: ragg links to `systemfonts`
 //!   and `textshaping` only, but its rows also list `cpp11`, which those two
 //!   link to. So an entry need not be a declared dependency of the package at
 //!   all — see `crate::solver::binary_artifact_deps` for what the solver does
 //!   with that.
-//! * **Several rows can share `(version, platform, arch, r_version)`, and
+//! * **Several rows can share `(version, platform, r_version)`, and
 //!   `linkingto` is exactly what distinguishes them** — e.g. dplyr 0.7.4 on
-//!   xenial/R 3.4 has seven rows, one built against `plogr 0.1-1` and another
+//!   Ubuntu 16.04/R 3.4 has seven rows, one built against `plogr 0.1-1` and another
 //!   against `plogr 0.2.0`. There is therefore no correct single-row answer
 //!   without knowing which LinkingTo dependency versions were resolved, which is
 //!   why [`BinaryIndex::binary_rows`] returns every candidate rather than
@@ -95,13 +104,12 @@ pub use blob::LinkingTo;
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 
 /// Columns we require to be present in the header.
-const REQUIRED_COLUMNS: [&str; 7] = [
+const REQUIRED_COLUMNS: [&str; 6] = [
     "package",
     "version",
     "platform",
-    "arch",
     "r_version",
-    "sha256",
+    "source-id",
     "url",
 ];
 
@@ -110,11 +118,11 @@ const REQUIRED_COLUMNS: [&str; 7] = [
 /// lists it against the distro it is built on rather than the ones it serves.
 pub(crate) const MANYLINUX: &str = "manylinux_2_28";
 
-/// One `pkg@version=sha256` entry from the `linkingto` column: a dependency
+/// One `pkg@version=id` entry from the `linkingto` column: a dependency
 /// source version this binary was compiled against.
 ///
-/// `sha256` is the same upstream-CRAN identity hash as [`BinaryRow::sha256`],
-/// not a checksum of anything downloadable from P3M.
+/// `sha256` is the `Id` of that version, the same kind of identity as
+/// [`BinaryRow::source_id`], not a checksum of anything downloadable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinkingToRef {
     pub package: String,
@@ -127,19 +135,25 @@ pub struct LinkingToRef {
 pub struct BinaryRow {
     /// Package version, exactly as published. Matched by string equality.
     pub version: String,
-    /// `source`, `macos`, `windows`, or a Linux codename such as `jammy`.
+    /// `source`, or a platform string such as `aarch64-apple-darwin` or
+    /// `x86_64-unknown-linux-gnu-ubuntu-22.04`.
     pub platform: String,
-    /// `*` for source rows, otherwise `x86_64` or `arm64` (note: `arm64`, not
-    /// the `aarch64` that `std::env::consts::ARCH` uses).
-    pub arch: String,
     /// `*` for source rows, otherwise a minor R version such as `4.5`.
     pub r_version: String,
-    /// Hash of the upstream CRAN source tarball, *not* a checksum for `url`.
-    /// See the module docs.
-    pub sha256: String,
+    /// The `Id` of the source version, *not* a checksum for `url`. See the
+    /// module docs.
+    pub source_id: String,
     pub url: String,
     /// Empty on source rows and for packages without `LinkingTo:`.
     pub linkingto: Vec<LinkingToRef>,
+    /// SHA-256 checksum of the file at `url`, if the index has it.
+    pub sha256: Option<String>,
+    /// The `Built` field of a binary, if the index has it.
+    pub built: Option<String>,
+    /// The time the build was yanked, if it was.
+    pub yanked: Option<String>,
+    /// Why the build was yanked, if it was.
+    pub yanked_reason: Option<String>,
 }
 
 /// A package's index, and how we got it.
@@ -426,9 +440,10 @@ fn store_index(
     etag: Option<String>,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut rows = parse_binaries_tsv(tsv)?;
-    // The blob holds full URLs, relative ones are relative to ALLPACKAGES.
+    // The blob holds full URLs, relative ones are relative to the index.
+    let index_url = binary_index_url_in(feed, package);
     for row in rows.iter_mut() {
-        row.url = feed.resolve_url(&row.url);
+        row.url = crate::repos::feed::resolve_download_url(&index_url, &row.url);
     }
     let built = blob::build(package, &rows)?;
     debug!(
@@ -652,17 +667,31 @@ fn parse_linkingto(field: &str) -> Vec<LinkingToRef> {
 
 /// Parse a binary index, plain or zstd-compressed.
 ///
-/// Columns are looked up by name from the header row, so extra or reordered
-/// columns are tolerated; a missing required column is an error. Individual
+/// The leading comment lines are skipped, and the first one must give a
+/// format version rig reads, see [`crate::repos::format_version`]. Columns
+/// are looked up by name from the header row, so extra or reordered columns
+/// are tolerated; a missing required column is an error. Individual
 /// malformed rows are skipped rather than failing the whole file.
 pub fn parse_binaries_tsv(bytes: &[u8]) -> Result<Vec<BinaryRow>, Box<dyn Error>> {
     let reader = BufReader::new(decode_maybe_zstd(bytes)?);
     let mut lines = reader.lines();
 
-    let header = match lines.next() {
-        Some(line) => line?,
-        None => bail!("Empty binary index, no header row"),
+    let mut first = true;
+    let mut found_version = None;
+    let header = loop {
+        let line = match lines.next() {
+            Some(line) => line?,
+            None => bail!("Empty binary index, no header row"),
+        };
+        if !line.starts_with('#') {
+            break line;
+        }
+        if first {
+            found_version = crate::repos::format_version::FormatVersion::from_comment(&line);
+        }
+        first = false;
     };
+    crate::repos::format_version::check(found_version, "binary index")?;
     let columns: HashMap<&str, usize> = header
         .trim_end_matches(['\r', '\n'])
         .split('\t')
@@ -677,8 +706,12 @@ pub fn parse_binaries_tsv(bytes: &[u8]) -> Result<Vec<BinaryRow>, Box<dyn Error>
             None => bail!("Binary index has no '{}' column", name),
         }
     }
-    let [_i_package, i_version, i_platform, i_arch, i_r_version, i_sha256, i_url] = required;
+    let [_i_package, i_version, i_platform, i_r_version, i_source_id, i_url] = required;
     let i_linkingto = columns.get("linkingto").copied();
+    let i_sha256 = columns.get("sha256").copied();
+    let i_built = columns.get("built").copied();
+    let i_yanked = columns.get("yanked").copied();
+    let i_yanked_reason = columns.get("yanked_reason").copied();
     let min_fields = required.iter().max().map(|m| m + 1).unwrap_or(0);
 
     let mut rows = vec![];
@@ -701,18 +734,26 @@ pub fn parse_binaries_tsv(bytes: &[u8]) -> Result<Vec<BinaryRow>, Box<dyn Error>
         }
         // `linkingto` is the last column and is empty for most rows, so tolerate
         // its absence even though P3M does send the trailing tab today.
-        let linkingto = i_linkingto
-            .and_then(|i| fields.get(i))
-            .map(|f| parse_linkingto(f))
+        // An optional column: absent, empty and `NA` all mean missing.
+        let opt = |i: Option<usize>| {
+            i.and_then(|i| fields.get(i))
+                .filter(|f| !f.is_empty() && **f != "NA")
+                .map(|f| f.to_string())
+        };
+        let linkingto = opt(i_linkingto)
+            .map(|f| parse_linkingto(&f))
             .unwrap_or_default();
         rows.push(BinaryRow {
             version: fields[i_version].to_string(),
             platform: fields[i_platform].to_string(),
-            arch: fields[i_arch].to_string(),
             r_version: fields[i_r_version].to_string(),
-            sha256: fields[i_sha256].to_string(),
+            source_id: fields[i_source_id].to_string(),
             url: fields[i_url].to_string(),
             linkingto,
+            sha256: opt(i_sha256),
+            built: opt(i_built),
+            yanked: opt(i_yanked),
+            yanked_reason: opt(i_yanked_reason),
         });
     }
 
@@ -771,7 +812,7 @@ impl<'a> BinaryRowRef<'a> {
     /// Position of this row in the whole index.
     ///
     /// This is the identity of a build: rows that share
-    /// `(version, platform, arch, r_version)` differ only in their `linkingto`,
+    /// `(version, platform, r_version)` differ only in their `linkingto`,
     /// so there is nothing else to tell them apart by.
     pub fn row_index(&self) -> usize {
         self.row
@@ -781,15 +822,9 @@ impl<'a> BinaryRowRef<'a> {
         self.index.version(self.index.blob.row_version(self.row))
     }
 
-    /// `source`, `macos`, `windows`, or a Linux codename such as `jammy`.
+    /// `source`, or a platform string such as `aarch64-apple-darwin`.
     pub fn platform(&self) -> &'a str {
         self.index.blob.row_platform(self.row)
-    }
-
-    /// `*` for source rows, otherwise `x86_64` or `arm64` (note: `arm64`, not
-    /// the `aarch64` that `std::env::consts::ARCH` uses).
-    pub fn arch(&self) -> &'a str {
-        self.index.blob.row_arch(self.row)
     }
 
     /// `*` for source rows, otherwise a minor R version such as `4.5`.
@@ -797,10 +832,30 @@ impl<'a> BinaryRowRef<'a> {
         self.index.blob.row_r_version(self.row)
     }
 
-    /// Hash of the upstream CRAN source tarball, *not* a checksum for
+    /// The `Id` of the source version, *not* a checksum for
     /// [`BinaryRowRef::url`]. See the module docs.
-    pub fn sha256(&self) -> &'a str {
+    pub fn source_id(&self) -> &'a str {
+        self.index.blob.row_source_id(self.row)
+    }
+
+    /// SHA-256 checksum of the file at [`BinaryRowRef::url`], if known.
+    pub fn sha256(&self) -> Option<&'a str> {
         self.index.blob.row_sha256(self.row)
+    }
+
+    /// The `Built` field of a binary, if known.
+    pub fn built(&self) -> Option<&'a str> {
+        self.index.blob.row_built(self.row)
+    }
+
+    /// The time the build was yanked, if it was.
+    pub fn yanked(&self) -> Option<&'a str> {
+        self.index.blob.row_yanked(self.row)
+    }
+
+    /// Why the build was yanked, if it was.
+    pub fn yanked_reason(&self) -> Option<&'a str> {
+        self.index.blob.row_yanked_reason(self.row)
     }
 
     pub fn url(&self) -> &'a str {
@@ -822,10 +877,13 @@ impl<'a> BinaryRowRef<'a> {
         BinaryRow {
             version: self.version().original.to_string(),
             platform: self.platform().to_string(),
-            arch: self.arch().to_string(),
             r_version: self.r_version().to_string(),
-            sha256: self.sha256().to_string(),
+            source_id: self.source_id().to_string(),
             url: self.url().to_string(),
+            sha256: self.sha256().map(String::from),
+            built: self.built().map(String::from),
+            yanked: self.yanked().map(String::from),
+            yanked_reason: self.yanked_reason().map(String::from),
             linkingto: self
                 .linkingto()
                 .map(|l| LinkingToRef {
@@ -925,11 +983,10 @@ impl BinaryIndex {
         &self,
         version: &str,
         platform: &str,
-        arch: &str,
         r_version: &str,
     ) -> Vec<BinaryRowRef<'_>> {
         self.rows_for_version(version)
-            .filter(|r| r.platform() == platform && r.arch() == arch && r.r_version() == r_version)
+            .filter(|r| r.platform() == platform && r.r_version() == r_version)
             .collect()
     }
 
@@ -942,10 +999,9 @@ impl BinaryIndex {
         &self,
         version: &str,
         platform: &str,
-        arch: &str,
         r_version: &str,
     ) -> Option<BinaryRowRef<'_>> {
-        self.binary_rows(version, platform, arch, r_version).pop()
+        self.binary_rows(version, platform, r_version).pop()
     }
 
     /// Distinct platforms a version has artifacts for, in file order.
@@ -1217,25 +1273,42 @@ fn rig_distribution(distribution: &str) -> &str {
     }
 }
 
-/// The canonical rig platform string of a P3M target and arch.
+/// The canonical rig platform string of a P3M target and arch, the
+/// `platform` of its rows in the binary indices, see Tidyup 12.
+///
+/// `distro` is the target P3M builds the binaries on, see
+/// [`PpmStatus::building_distro`]: a distro that uses the binaries of another
+/// one has that one's platform, e.g. SLES 15.6 is `opensuse-15.6`, and
+/// CentOS 8 is `rhel-8`. The version is the major version for RHEL and
+/// Debian, and `major.minor` for Ubuntu and openSUSE.
 fn target_triple(distro: &PpmDistro, arch: &str) -> String {
     let arch = if arch == "arm64" { "aarch64" } else { arch };
     match distro.os.as_str() {
         "macos" => format!("{}-apple-darwin", arch),
         "windows" => format!("{}-w64-mingw32", arch),
-        _ if distro.platform() == MANYLINUX => format!("{}-unknown-linux-gnu", arch),
-        _ => format!(
-            "{}-unknown-linux-gnu-{}-{}",
-            arch,
-            rig_distribution(&distro.distribution),
-            distro.release
-        ),
+        _ if distro.platform() == MANYLINUX => {
+            format!("{}-unknown-linux-gnu-{}", arch, MANYLINUX)
+        }
+        _ => {
+            let name = match distro.distribution.as_str() {
+                "centos" => "rhel",
+                other => rig_distribution(other),
+            };
+            let release = distro.release.as_str();
+            let major = release.split('.').next().unwrap_or(release);
+            let version = match name {
+                "rhel" | "debian" => major.to_string(),
+                "opensuse" | "sles" if !release.contains('.') => format!("{}.0", release),
+                _ => release.to_string(),
+            };
+            format!("{}-unknown-linux-gnu-{}-{}", arch, name, version)
+        }
     }
 }
 
 /// Resolve a candidate target to a [`PpmTarget`], if it actually builds
 /// binaries for that arch.
-fn usable(distro: Option<&PpmDistro>, arch: &str) -> Option<PpmTarget> {
+fn usable(status: &PpmStatus, distro: Option<&PpmDistro>, arch: &str) -> Option<PpmTarget> {
     let distro = distro?;
     if !distro.binaries || !distro.arch.iter().any(|a| a == arch) {
         return None;
@@ -1243,7 +1316,7 @@ fn usable(distro: Option<&PpmDistro>, arch: &str) -> Option<PpmTarget> {
     Some(PpmTarget {
         platform: distro.platform().to_string(),
         arch: arch.to_string(),
-        triple: target_triple(distro, arch),
+        triple: target_triple(status.building_distro(distro), arch),
     })
 }
 
@@ -1282,6 +1355,19 @@ impl PpmStatus {
     /// CentOS 8 ambiguous.
     fn manylinux(&self) -> Option<&PpmDistro> {
         self.distros.iter().find(|d| d.platform() == MANYLINUX)
+    }
+
+    /// The target that builds the binaries `distro` uses: the one whose
+    /// name is its `binaryURL`, e.g. `opensuse156` for `sles156`, or `distro`
+    /// itself.
+    fn building_distro<'a>(&'a self, distro: &'a PpmDistro) -> &'a PpmDistro {
+        if distro.os != "linux" || distro.platform() == MANYLINUX {
+            return distro;
+        }
+        self.distros
+            .iter()
+            .find(|d| d.os == "linux" && d.name == distro.platform())
+            .unwrap_or(distro)
     }
 
     fn find_by_os(&self, os: &str) -> Option<&PpmDistro> {
@@ -1336,16 +1422,22 @@ impl PpmStatus {
         self.ppm_target(platform).map(|t| (t.platform, t.arch))
     }
 
+    /// The target of one P3M distro and arch, if it builds binaries for it.
+    #[cfg(test)]
+    fn ppm_target_of(&self, distro: &PpmDistro, arch: &str) -> Option<PpmTarget> {
+        usable(self, Some(distro), arch)
+    }
+
     /// Like [`PpmStatus::ppm_platform`], but also with the target's canonical
     /// rig platform string.
     pub fn ppm_target(&self, platform: &OsVersion) -> Option<PpmTarget> {
         let arch = ppm_arch(&platform.arch);
 
         if platform.os.starts_with("darwin") {
-            return usable(self.find_by_os("macos"), arch);
+            return usable(self, self.find_by_os("macos"), arch);
         }
         if platform.os == "mingw32" {
-            return usable(self.find_by_os("windows"), arch);
+            return usable(self, self.find_by_os("windows"), arch);
         }
         if !platform.os.starts_with("linux") {
             return None;
@@ -1354,7 +1446,7 @@ impl PpmStatus {
         // A specific target if there is one, else P3M's generic glibc build,
         // which also covers the case of a specific target that is x86_64-only.
         let specific = self.find_linux(platform.distro.as_deref(), platform.version.as_deref());
-        usable(specific, arch).or_else(|| usable(self.manylinux(), arch))
+        usable(self, specific, arch).or_else(|| usable(self, self.manylinux(), arch))
     }
 }
 
@@ -1381,64 +1473,86 @@ mod tests {
         let src = &rows[0];
         assert_eq!(src.version, "1.0.0");
         assert_eq!(src.platform, "source");
-        assert_eq!(src.arch, "*");
         assert_eq!(src.r_version, "*");
-        assert_eq!(src.sha256, "aaaa0000");
-        assert_eq!(
-            src.url,
-            "https://p3m.dev/cran/2025-01-01/src/contrib/testpkg_1.0.0.tar.gz"
-        );
-        // Source rows carry a trailing empty `linkingto`.
+        assert_eq!(src.source_id, "aaaa0000");
+        // URLs are kept as they are, see `store_index` for resolving them.
+        assert_eq!(src.url, "../2025-01-01/src/contrib/testpkg_1.0.0.tar.gz");
+        // `NA` and empty optional values are missing.
         assert!(src.linkingto.is_empty());
+        assert_eq!(src.sha256, None);
+        assert_eq!(src.built, None);
+        assert_eq!(src.yanked, None);
 
-        assert_eq!(rows[1].platform, "macos");
-        assert_eq!(rows[1].arch, "arm64");
+        assert_eq!(rows[1].platform, "aarch64-apple-darwin");
         assert_eq!(rows[1].r_version, "4.5");
+        assert_eq!(rows[1].sha256.as_deref(), Some("eeee0001"));
+        assert!(rows[1].built.as_deref().unwrap().starts_with("R 4.5.0;"));
+
+        assert_eq!(rows[2].yanked.as_deref(), Some("2025-02-01T00:00:00Z"));
+        assert_eq!(rows[2].yanked_reason.as_deref(), Some("Broken build"));
     }
 
     #[test]
     fn parses_zstd_fixture() {
         let rows = parse_binaries_tsv(&fixture("pak.tsv.zst")).unwrap();
-        assert_eq!(rows.len(), 2466);
+        assert_eq!(rows.len(), 2617);
+    }
+
+    /// Prepend the format version comment to a test index.
+    fn v1(tsv: &str) -> Vec<u8> {
+        format!("# Format-Version: 1.0\n{}", tsv).into_bytes()
     }
 
     #[test]
     fn tolerates_reordered_and_extra_columns() {
-        let tsv = "url\tsomething_new\tversion\tpackage\tplatform\tarch\tr_version\tsha256\tlinkingto\n\
-                   https://example.com/x.tgz\tignored\t1.0.0\tx\tmacos\tarm64\t4.5\tdeadbeef\tcli@3.6.6=aa11\n";
-        let rows = parse_binaries_tsv(tsv.as_bytes()).unwrap();
+        let tsv = "url\tsomething_new\tversion\tpackage\tplatform\tr_version\tsource-id\tlinkingto\n\
+                   https://example.com/x.tgz\tignored\t1.0.0\tx\taarch64-apple-darwin\t4.5\tdeadbeef\tcli@3.6.6=aa11\n";
+        let rows = parse_binaries_tsv(&v1(tsv)).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].url, "https://example.com/x.tgz");
         assert_eq!(rows[0].version, "1.0.0");
-        assert_eq!(rows[0].sha256, "deadbeef");
+        assert_eq!(rows[0].source_id, "deadbeef");
         assert_eq!(rows[0].linkingto.len(), 1);
     }
 
     #[test]
     fn missing_required_column_is_an_error() {
         // No `url` column.
-        let tsv = "package\tversion\tplatform\tarch\tr_version\tsha256\n\
-                   x\t1.0.0\tsource\t*\t*\tdeadbeef\n";
-        let err = parse_binaries_tsv(tsv.as_bytes()).unwrap_err();
+        let tsv = "package\tversion\tplatform\tr_version\tsource-id\n\
+                   x\t1.0.0\tsource\t*\tdeadbeef\n";
+        let err = parse_binaries_tsv(&v1(tsv)).unwrap_err();
         assert!(err.to_string().contains("url"), "got: {}", err);
     }
 
     #[test]
+    fn needs_a_known_format_version() {
+        let tsv = "package\tversion\tplatform\tr_version\tsource-id\turl\n\
+                   x\t1.0.0\tsource\t*\tdeadbeef\thttps://example.com/x.tar.gz\n";
+        // No version: the format before Tidyup 12.
+        assert!(parse_binaries_tsv(tsv.as_bytes()).is_err());
+        let major = format!("# Format-Version: 2.0\n{}", tsv);
+        assert!(parse_binaries_tsv(major.as_bytes()).is_err());
+        // A newer minor version, with more comment lines.
+        let minor = format!("# Format-Version: 1.3\n# more\n{}", tsv);
+        assert_eq!(parse_binaries_tsv(minor.as_bytes()).unwrap().len(), 1);
+    }
+
+    #[test]
     fn missing_linkingto_column_is_fine() {
-        let tsv = "package\tversion\tplatform\tarch\tr_version\tsha256\turl\n\
-                   x\t1.0.0\tsource\t*\t*\tdeadbeef\thttps://example.com/x.tar.gz\n";
-        let rows = parse_binaries_tsv(tsv.as_bytes()).unwrap();
+        let tsv = "package\tversion\tplatform\tr_version\tsource-id\turl\n\
+                   x\t1.0.0\tsource\t*\tdeadbeef\thttps://example.com/x.tar.gz\n";
+        let rows = parse_binaries_tsv(&v1(tsv)).unwrap();
         assert_eq!(rows.len(), 1);
         assert!(rows[0].linkingto.is_empty());
     }
 
     #[test]
     fn skips_short_rows_and_keeps_the_rest() {
-        let tsv = "package\tversion\tplatform\tarch\tr_version\tsha256\turl\tlinkingto\n\
-                   x\t1.0.0\tsource\t*\t*\tdeadbeef\thttps://example.com/a.tar.gz\t\n\
+        let tsv = "package\tversion\tplatform\tr_version\tsource-id\turl\tlinkingto\n\
+                   x\t1.0.0\tsource\t*\tdeadbeef\thttps://example.com/a.tar.gz\t\n\
                    x\t1.1.0\ttruncated\n\
-                   x\t1.2.0\tsource\t*\t*\tdeadbeef\thttps://example.com/c.tar.gz\t\n";
-        let rows = parse_binaries_tsv(tsv.as_bytes()).unwrap();
+                   x\t1.2.0\tsource\t*\tdeadbeef\thttps://example.com/c.tar.gz\t\n";
+        let rows = parse_binaries_tsv(&v1(tsv)).unwrap();
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].version, "1.0.0");
         assert_eq!(rows[1].version, "1.2.0");
@@ -1447,11 +1561,11 @@ mod tests {
     #[test]
     fn parses_single_entry_linkingto() {
         let idx = index("zip", "zip.tsv.zst");
-        let rows = idx.binary_rows("3.0.1", "macos", "arm64", "4.5");
+        let rows = idx.binary_rows("3.0.1", "aarch64-apple-darwin", "4.5");
         assert_eq!(rows.len(), 1);
         assert_eq!(
             rows[0].url(),
-            "https://p3m.dev/cran/2026-07-14/bin/macosx/big-sur-arm64/contrib/4.5/zip_3.0.1.tgz"
+            "../2026-07-14/bin/macosx/big-sur-arm64/contrib/4.5/zip_3.0.1.tgz"
         );
         assert_eq!(
             rows[0].linkingto().collect::<Vec<_>>(),
@@ -1466,7 +1580,7 @@ mod tests {
     #[test]
     fn parses_multi_entry_linkingto() {
         let idx = index("dplyr", "dplyr.tsv.zst");
-        let rows = idx.binary_rows("0.7.4", "xenial", "x86_64", "3.4");
+        let rows = idx.binary_rows("0.7.4", "x86_64-unknown-linux-gnu-ubuntu-16.04", "3.4");
         let lt: Vec<LinkingTo> = rows[0].linkingto().collect();
         assert_eq!(lt.len(), 4);
         let names: Vec<&str> = lt.iter().map(|l| l.package).collect();
@@ -1495,12 +1609,9 @@ mod tests {
         let idx = index("pak", "pak.tsv.zst");
         let src = idx.source_row("0.9.5").unwrap();
         assert!(src.is_source());
+        assert_eq!(src.url(), "../2026-04-27/src/contrib/pak_0.9.5.tar.gz");
         assert_eq!(
-            src.url(),
-            "https://p3m.dev/cran/2026-04-27/src/contrib/pak_0.9.5.tar.gz"
-        );
-        assert_eq!(
-            src.sha256(),
+            src.source_id(),
             "f5f8997ccfaab842b67c4b708dfb34963bb13c0830741101aae9c866c979139c"
         );
         assert_eq!(src.linkingto().count(), 0);
@@ -1511,12 +1622,12 @@ mod tests {
     #[test]
     fn finds_a_binary_row() {
         let idx = index("pak", "pak.tsv.zst");
-        let rows = idx.binary_rows("0.9.5", "macos", "arm64", "4.5");
+        let rows = idx.binary_rows("0.9.5", "aarch64-apple-darwin", "4.5");
         assert_eq!(rows.len(), 1);
         assert!(!rows[0].is_source());
         assert_eq!(
             rows[0].url(),
-            "https://p3m.dev/cran/2026-04-27/bin/macosx/big-sur-arm64/contrib/4.5/pak_0.9.5.tgz"
+            "../2026-04-27/bin/macosx/big-sur-arm64/contrib/4.5/pak_0.9.5.tgz"
         );
     }
 
@@ -1526,7 +1637,8 @@ mod tests {
     #[test]
     fn returns_every_linkingto_candidate() {
         let idx = index("dplyr", "dplyr.tsv.zst");
-        let rows = idx.binary_rows("0.7.4", "xenial", "x86_64", "3.4");
+        let xenial = "x86_64-unknown-linux-gnu-ubuntu-16.04";
+        let rows = idx.binary_rows("0.7.4", xenial, "3.4");
         assert_eq!(rows.len(), 7);
 
         // The candidates are distinguished by `linkingto`, not by anything else.
@@ -1549,9 +1661,7 @@ mod tests {
         assert!(fingerprints[6].contains(&("plogr", "0.2.0")));
 
         // `latest_binary_row` picks the last of them.
-        let latest = idx
-            .latest_binary_row("0.7.4", "xenial", "x86_64", "3.4")
-            .unwrap();
+        let latest = idx.latest_binary_row("0.7.4", xenial, "3.4").unwrap();
         assert_eq!(latest.url(), rows[6].url());
     }
 
@@ -1559,14 +1669,14 @@ mod tests {
     fn unknown_lookups_return_nothing() {
         let idx = index("pak", "pak.tsv.zst");
         assert!(idx
-            .binary_rows("0.9.5", "nosuchdistro", "x86_64", "4.5")
+            .binary_rows("0.9.5", "x86_64-unknown-linux-gnu-nosuchdistro-1", "4.5")
             .is_empty());
         assert!(idx
-            .binary_rows("99.0.0", "macos", "arm64", "4.5")
+            .binary_rows("99.0.0", "aarch64-apple-darwin", "4.5")
             .is_empty());
         assert!(idx.source_row("99.0.0").is_none());
         assert!(idx
-            .latest_binary_row("99.0.0", "macos", "arm64", "4.5")
+            .latest_binary_row("99.0.0", "aarch64-apple-darwin", "4.5")
             .is_none());
         assert!(idx.platforms_for("99.0.0").is_empty());
     }
@@ -1578,26 +1688,34 @@ mod tests {
         assert_eq!(idx.versions(), ["1.0.0", "1.1.0"]);
         assert_eq!(
             idx.platforms_for("1.0.0"),
-            vec!["source", "macos", "windows", "jammy"]
+            vec![
+                "source",
+                "aarch64-apple-darwin",
+                "x86_64-w64-mingw32",
+                "x86_64-unknown-linux-gnu-ubuntu-22.04"
+            ]
         );
         let pak = index("pak", "pak.tsv.zst");
-        assert_eq!(pak.versions().len(), 26);
+        assert_eq!(pak.versions().len(), 27);
     }
 
-    /// The index files are sorted as strings, so `0.10.0` and `0.11.1` sit
-    /// between `0.1.2.1` and `0.2.0`, and the file's last version is `0.9.5`.
-    /// The newest version has to be found numerically.
+    /// The index files may be in any order, e.g. sorted as strings, which
+    /// puts `0.10.0` and `0.11.1` between `0.1.2.1` and `0.2.0`. The newest
+    /// version has to be found numerically.
     #[test]
     fn orders_versions_numerically_not_as_strings() {
         let pak = index("pak", "pak.tsv.zst");
         let latest = pak.latest_version().unwrap();
-        assert_eq!(latest.original, "0.11.1");
-        assert_eq!(latest.components, [0, 11, 1]);
+        assert_eq!(latest.original, "0.11.2");
+        assert_eq!(latest.components, [0, 11, 2]);
         assert_eq!(pak.versions().first().map(|s| s.as_str()), Some("0.1.2"));
 
-        // The raw file really is in the misleading order.
-        let rows = parse_binaries_tsv(&fixture("pak.tsv.zst")).unwrap();
+        // A file sorted as strings gives the same order.
+        let mut rows = parse_binaries_tsv(&fixture("pak.tsv.zst")).unwrap();
+        rows.sort_by(|a, b| a.version.cmp(&b.version));
         assert_eq!(rows.last().unwrap().version, "0.9.5");
+        let sorted = BinaryIndex::open_blob(&blob::build("pak", &rows).unwrap()).unwrap();
+        assert_eq!(sorted.versions(), pak.versions());
 
         // The stored list really is ascending by `VersionRef`'s ordering.
         let all: Vec<VersionRef> = (0..pak.versions().len()).map(|i| pak.version(i)).collect();
@@ -1641,7 +1759,7 @@ mod tests {
     fn builds_the_index_url() {
         assert_eq!(
             binary_index_url("dplyr"),
-            "https://ppm.r-pkg.org/binaries/dplyr.tsv.zst"
+            "https://ppm.r-pkg.org/v1/binaries/dplyr.tsv.zst"
         );
     }
 
@@ -2029,34 +2147,30 @@ mod tests {
     }
 
     /// Every platform the mapping produces must be one the binary indices
-    /// actually use.
+    /// actually use, and every platform of the indices must be produced.
     #[test]
     fn produced_platforms_exist_in_a_real_index() {
         let dplyr = index("dplyr", "dplyr.tsv.zst");
-        let seen: Vec<&str> = dplyr
+        let mut seen: Vec<&str> = dplyr
             .versions()
             .iter()
             .flat_map(|v| dplyr.platforms_for(v))
+            .filter(|p| *p != "source")
             .collect();
-        for (distro, version) in [
-            ("ubuntu", "22.04"),
-            ("ubuntu", "24.04"),
-            ("debian", "12"),
-            ("rhel", "9.4"),
-            ("centos", "8"),
-            ("opensuse", "156"),
-            ("fedora", "42"),
-        ] {
-            let (platform, _) =
-                platform_of("x86_64", "linux", Some(distro), Some(version)).unwrap();
-            assert!(
-                seen.contains(&platform.as_str()),
-                "{} {} -> '{}', which no dplyr row uses",
-                distro,
-                version,
-                platform
-            );
-        }
+        seen.sort();
+        seen.dedup();
+        let s = status();
+        let mut produced: Vec<String> = s
+            .distros
+            .iter()
+            .filter(|d| d.binaries)
+            .flat_map(|d| d.arch.iter().map(|a| s.ppm_target_of(d, a)))
+            .flatten()
+            .map(|t| t.triple)
+            .collect();
+        produced.sort();
+        produced.dedup();
+        assert_eq!(produced, seen);
     }
 
     /// Every target P3M builds binaries for has a canonical platform string
@@ -2066,7 +2180,7 @@ mod tests {
         let s = status();
         for distro in s.distros.iter().filter(|d| d.binaries) {
             for arch in &distro.arch {
-                let triple = target_triple(distro, arch);
+                let triple = target_triple(s.building_distro(distro), arch);
                 let parsed = crate::platform::parse_platform_string(&triple).unwrap();
                 let target = s.ppm_target(&parsed).unwrap();
                 assert_eq!(
@@ -2105,16 +2219,29 @@ mod tests {
         );
         assert_eq!(
             triple("manylinux_2_28-arm64").unwrap(),
-            "aarch64-unknown-linux-gnu"
+            "aarch64-unknown-linux-gnu-manylinux_2_28"
         );
         // No arm64 build for jammy, so the generic one.
         assert_eq!(
             triple("aarch64-unknown-linux-gnu-ubuntu-22.04").unwrap(),
-            "aarch64-unknown-linux-gnu"
+            "aarch64-unknown-linux-gnu-manylinux_2_28"
         );
         assert_eq!(
             triple("x86_64-unknown-linux-gnu-fedora-42").unwrap(),
-            "x86_64-unknown-linux-gnu"
+            "x86_64-unknown-linux-gnu-manylinux_2_28"
+        );
+        // Distros that use the binaries of another one have its name.
+        assert_eq!(
+            triple("x86_64-unknown-linux-gnu-centos-8").unwrap(),
+            "x86_64-unknown-linux-gnu-rhel-8"
+        );
+        assert_eq!(
+            triple("x86_64-unknown-linux-gnu-sles-15.6").unwrap(),
+            "x86_64-unknown-linux-gnu-opensuse-15.6"
+        );
+        assert_eq!(
+            triple("x86_64-unknown-linux-gnu-opensuse-15.0").unwrap(),
+            "x86_64-unknown-linux-gnu-opensuse-15.0"
         );
     }
 }

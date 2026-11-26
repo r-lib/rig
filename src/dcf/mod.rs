@@ -426,10 +426,16 @@ pub struct Package {
     pub graphics_api_version: Option<String>,
     pub internals_id: Option<String>,
     pub filesize: Option<u64>,
-    // sha256 of the original (upstream CRAN) package file. P3M calls this
-    // `SHA256Original` in ALLPACKAGES, and its own rewritten tarball's hash
-    // `SHA256`, which we do not keep.
+    // the identity of the source tarball. For an extended metadata feed this
+    // is the `Id` field of ALLPACKAGES, for P3M the sha256 of the original
+    // (upstream CRAN) package file. The feed's `SHA256` field is the hash of
+    // P3M's own rewritten tarball, which we do not keep. For a plain CRAN-like
+    // repository it is the `SHA256` (or `MD5sum`) of the package file.
     pub sha256sum: Option<String>,
+    // the date the version first appeared in an extended metadata feed, as
+    // `YYYY-MM-DD`, the ALLPACKAGES `Snapshot` field. Unset for every other
+    // repo.
+    pub snapshot: Option<String>,
     // the date CRAN archived the package, as `YYYY-MM-DD`. Only the
     // ARCHIVEDPACKAGES feed has this field, every other repo leaves it unset.
     pub archived: Option<String>,
@@ -544,6 +550,7 @@ impl Package {
             internals_id: None,
             filesize: None,
             sha256sum: None,
+            snapshot: None,
             archived: None,
             repository: None,
             system_requirements: None,
@@ -578,7 +585,8 @@ impl Package {
         let graphics_api_version = pkg.get("GraphicsAPIVersion").map(|g| g.to_string());
         let internals_id = pkg.get("InternalsID").map(|i| i.to_string());
         let filesize = pkg.get("Filesize").and_then(|s| s.parse::<u64>().ok());
-        let sha256sum = pkg.get("SHA256Original").map(|s| s.to_string());
+        let sha256sum = pkg.get("Id").map(|s| s.to_string());
+        let snapshot = pkg.get("Snapshot").map(|s| s.trim().to_string());
         let archived = pkg.get("Archived").map(|a| a.to_string());
         let system_requirements = pkg
             .get("SystemRequirements")
@@ -601,6 +609,7 @@ impl Package {
             internals_id,
             filesize,
             sha256sum,
+            snapshot,
             archived,
             repository: None,
             system_requirements,

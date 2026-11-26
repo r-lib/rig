@@ -1,7 +1,8 @@
-package	version	platform	arch	r_version	sha256	url	linkingto
-testpkg	1.0.0	source	*	*	aaaa0000	https://p3m.dev/cran/2025-01-01/src/contrib/testpkg_1.0.0.tar.gz	
-testpkg	1.0.0	macos	arm64	4.5	aaaa0000	https://p3m.dev/cran/2025-01-01/bin/macosx/big-sur-arm64/contrib/4.5/testpkg_1.0.0.tgz	cli@3.6.6=cccc1111
-testpkg	1.0.0	windows	x86_64	4.5	aaaa0000	https://p3m.dev/cran/2025-01-01/bin/windows/contrib/4.5/testpkg_1.0.0.zip	cli@3.6.6=cccc1111
-testpkg	1.0.0	jammy	x86_64	4.5	aaaa0000	https://p3m.dev/cran/2025-01-01/bin/linux/jammy-x86_64/4.5/src/contrib/testpkg_1.0.0.tar.gz	cli@3.6.6=cccc1111
-testpkg	1.1.0	source	*	*	bbbb0000	https://p3m.dev/cran/2025-06-01/src/contrib/testpkg_1.1.0.tar.gz	
-testpkg	1.1.0	macos	arm64	4.5	bbbb0000	https://p3m.dev/cran/2025-06-01/bin/macosx/big-sur-arm64/contrib/4.5/testpkg_1.1.0.tgz	BH@1.87.0-1=dddd2222,cli@3.6.6=cccc1111
+# Format-Version: 1.0
+package	version	platform	r_version	source-id	url	sha256	built	linkingto	yanked	yanked_reason
+testpkg	1.0.0	source	*	aaaa0000	../2025-01-01/src/contrib/testpkg_1.0.0.tar.gz	NA	NA		NA	NA
+testpkg	1.0.0	aarch64-apple-darwin	4.5	aaaa0000	../2025-01-01/bin/macosx/big-sur-arm64/contrib/4.5/testpkg_1.0.0.tgz	eeee0001	R 4.5.0; aarch64-apple-darwin20; 2025-01-01 10:00:00 UTC; unix	cli@3.6.6=cccc1111	NA	NA
+testpkg	1.0.0	x86_64-w64-mingw32	4.5	aaaa0000	../2025-01-01/bin/windows/contrib/4.5/testpkg_1.0.0.zip	NA	NA	cli@3.6.6=cccc1111	2025-02-01T00:00:00Z	Broken build
+testpkg	1.0.0	x86_64-unknown-linux-gnu-ubuntu-22.04	4.5	aaaa0000	../2025-01-01/bin/linux/jammy-x86_64/4.5/src/contrib/testpkg_1.0.0.tar.gz	NA	NA	cli@3.6.6=cccc1111	NA	NA
+testpkg	1.1.0	source	*	bbbb0000	../2025-06-01/src/contrib/testpkg_1.1.0.tar.gz	NA	NA		NA	NA
+testpkg	1.1.0	aarch64-apple-darwin	4.5	bbbb0000	https://p3m.dev/cran/2025-06-01/bin/macosx/big-sur-arm64/contrib/4.5/testpkg_1.1.0.tgz	NA	NA	BH@1.87.0-1=dddd2222,cli@3.6.6=cccc1111	NA	NA

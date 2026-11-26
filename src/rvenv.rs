@@ -2644,10 +2644,15 @@ mod tests {
         let latest = format!("{}/cran/latest", ppm_url());
         assert_eq!(ppm_repo_url("aarch64-apple-darwin"), Some(latest.clone()));
         assert_eq!(ppm_repo_url("x86_64-w64-mingw32"), Some(latest));
-        assert_eq!(
-            ppm_repo_url("x86_64-unknown-linux-gnu"),
-            Some(format!("{}/cran/__linux__/{}/latest", ppm_url(), MANYLINUX))
-        );
+        for generic in [
+            "x86_64-unknown-linux-gnu-manylinux_2_28",
+            "x86_64-unknown-linux-gnu",
+        ] {
+            assert_eq!(
+                ppm_repo_url(generic),
+                Some(format!("{}/cran/__linux__/{}/latest", ppm_url(), MANYLINUX))
+            );
+        }
         assert_eq!(
             ppm_repo_url("jammy-x86_64"),
             Some(format!("{}/cran/__linux__/jammy/latest", ppm_url()))
