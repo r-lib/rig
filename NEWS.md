@@ -2,6 +2,14 @@
 
 ## New features
 
+* `rig proj lock` keeps package versions closer to the existing lock file.
+  A platform or R version new to the lock file now gets the versions of
+  the most similar target already in the lock file: the same OS and Linux
+  distro first, e.g. the closest Ubuntu release, then the closest R
+  version. Before, a new R version got the latest versions of everything.
+  If a locked version does not fit any more, rig picks the closest version
+  that does, instead of the latest.
+
 * New `rig audit` command: it checks the packages of a project's lock file
   and library, or of an R library, for known vulnerabilities and for
   versions that the repository blocks. `rig audit --fix` upgrades them to

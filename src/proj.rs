@@ -2661,23 +2661,25 @@ fn warn_unknown_upgrade_packages(
 /// git/GitHub/URL/local packages, which have their own sticky logic, and the
 /// packages in `skip`, the ones `--upgrade-package` names.
 ///
-/// A target the lock does not have yet, e.g. a new platform, uses another
-/// target for the same R version instead, so that it gets the same versions
-/// as the rest. Empty if there is no target for this R version either.
+/// A target the lock does not have yet, e.g. a new platform or a new R
+/// version, uses the most similar target of the lock instead, see
+/// [`similar_lock_target`], so that it gets versions close to the ones
+/// already locked. Empty only if the lock has no targets at all.
 fn lock_target_preferences(
     lock: &RprojLock,
     rver: &str,
     platform_key: &str,
     skip: &HashSet<String>,
 ) -> HashMap<String, RPackageVersion> {
-    let target = lock
-        .targets
-        .iter()
-        .find(|t| t.r_version == rver && t.platform == platform_key)
-        .or_else(|| lock.targets.iter().find(|t| t.r_version == rver));
-    let Some(target) = target else {
+    let Some(target) = similar_lock_target(lock, rver, platform_key) else {
         return HashMap::new();
     };
+    if target.r_version != rver || target.platform != platform_key {
+        debug!(
+            "Preferring the versions of R {} / {} for R {} / {}",
+            target.r_version, target.platform, rver, platform_key
+        );
+    }
     target
         .packages
         .iter()
@@ -2689,6 +2691,129 @@ fn lock_target_preferences(
                 .map(|v| (p.package.clone(), v))
         })
         .collect()
+}
+
+/// The target of `lock` most similar to `rver` / `platform_key`, to take the
+/// preferred package versions of a new target from. The same target, if the
+/// lock has it. Otherwise the one with the smallest [`target_distance`], the
+/// first one in the lock on a tie.
+fn similar_lock_target<'a>(
+    lock: &'a RprojLock,
+    rver: &str,
+    platform_key: &str,
+) -> Option<&'a RprojLockTarget> {
+    let new = TargetTraits::new(rver, platform_key);
+    lock.targets
+        .iter()
+        .min_by_key(|t| target_distance(&new, &TargetTraits::new(&t.r_version, &t.platform)))
+}
+
+/// What [`target_distance`] compares about a lock target.
+struct TargetTraits {
+    /// `darwin`, `mingw32`, `linux`, or `None` for `source` and platforms
+    /// that do not parse.
+    family: Option<String>,
+    /// The full OS, e.g. `linux-gnu` vs `linux-musl`.
+    os: Option<String>,
+    distro: Option<String>,
+    distro_version: Option<Vec<u64>>,
+    arch: Option<String>,
+    r_version: Option<Vec<u64>>,
+}
+
+impl TargetTraits {
+    fn new(rver: &str, platform_key: &str) -> Self {
+        let parsed = match platform_key {
+            "source" => None,
+            key => parse_platform_string(key).ok(),
+        };
+        let family = parsed.as_ref().map(|p| {
+            if p.os.starts_with("linux") {
+                "linux".to_string()
+            } else {
+                p.os.clone()
+            }
+        });
+        TargetTraits {
+            family,
+            os: parsed.as_ref().map(|p| p.os.clone()),
+            distro: parsed.as_ref().and_then(|p| p.distro.clone()),
+            distro_version: parsed
+                .as_ref()
+                .and_then(|p| p.version.as_deref())
+                .and_then(numeric_version),
+            arch: parsed.as_ref().map(|p| p.arch.clone()),
+            r_version: numeric_version(rver),
+        }
+    }
+}
+
+/// The numeric components of a version like `4.5.1` or `24.04`, `None` if it
+/// is not all numbers.
+fn numeric_version(v: &str) -> Option<Vec<u64>> {
+    v.split(['.', '-']).map(|c| c.parse::<u64>().ok()).collect()
+}
+
+/// How far version `old` is from `new`: the first component that differs and
+/// the size of the difference, so `4.4` is closer to `4.5` than `3.6` is.
+/// Ties go to the older version, since moving to a newer distro or R release
+/// is the common case. `(0, 0, false)` if they are equal, the largest
+/// distance if either one is unknown.
+fn version_distance(new: Option<&[u64]>, old: Option<&[u64]>) -> (usize, u64, bool) {
+    let (Some(new), Some(old)) = (new, old) else {
+        return (0, u64::MAX, true);
+    };
+    let len = new.len().max(old.len());
+    for i in 0..len {
+        let n = new.get(i).copied().unwrap_or(0);
+        let o = old.get(i).copied().unwrap_or(0);
+        if n != o {
+            // The earlier the components differ, the farther apart they are.
+            return (len - i, n.abs_diff(o), o > n);
+        }
+    }
+    (0, 0, false)
+}
+
+/// A sort key for how different a lock target (`old`) is from a new target
+/// (`new`), smaller is more similar. The platform counts first: the OS, and
+/// whether `old` has binaries at all, then, within the same OS, the libc and
+/// the Linux distribution, the distribution's release and the arch. The R
+/// version only comes after these, e.g. a new Ubuntu release takes its
+/// versions from an older Ubuntu release for the same R version, and a new
+/// R version from the same platform with the closest R version.
+#[allow(clippy::type_complexity)]
+fn target_distance(
+    new: &TargetTraits,
+    old: &TargetTraits,
+) -> (
+    bool,
+    bool,
+    (bool, bool, (usize, u64, bool), bool),
+    (usize, u64, bool),
+) {
+    // The details of another OS do not make it any closer.
+    let same_os = if new.family != old.family {
+        (true, true, (usize::MAX, u64::MAX, true), true)
+    } else {
+        let distro_distance = if new.distro_version.is_none() && old.distro_version.is_none() {
+            (0, 0, false)
+        } else {
+            version_distance(new.distro_version.as_deref(), old.distro_version.as_deref())
+        };
+        (
+            new.os != old.os,
+            new.distro != old.distro,
+            distro_distance,
+            new.arch != old.arch,
+        )
+    };
+    (
+        new.family != old.family,
+        old.family.is_none() && new.family.is_some(),
+        same_os,
+        version_distance(new.r_version.as_deref(), old.r_version.as_deref()),
+    )
 }
 
 /// One git/GitHub-sourced dependency, already fetched and turned into
@@ -8118,6 +8243,120 @@ mod tests {
             bioc_version: None,
             packages: vec![],
         }
+    }
+
+    /// The `(r_version, platform)` of the target [`similar_lock_target`]
+    /// picks from a lock of `targets`, for a new `rver` / `platform`.
+    fn similar(targets: &[(&str, &str)], rver: &str, platform: &str) -> Option<(String, String)> {
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
+            targets: targets.iter().map(|(r, p)| target(r, p)).collect(),
+        };
+        similar_lock_target(&lock, rver, platform)
+            .map(|t| (t.r_version.clone(), t.platform.clone()))
+    }
+
+    fn pair(r: &str, p: &str) -> Option<(String, String)> {
+        Some((r.to_string(), p.to_string()))
+    }
+
+    const U2204: &str = "x86_64-unknown-linux-gnu-ubuntu-22.04";
+    const U2404: &str = "x86_64-unknown-linux-gnu-ubuntu-24.04";
+    const U2604: &str = "x86_64-unknown-linux-gnu-ubuntu-26.04";
+    const U2404_ARM: &str = "aarch64-unknown-linux-gnu-ubuntu-24.04";
+    const D12: &str = "x86_64-unknown-linux-gnu-debian-12";
+    const MANYLINUX: &str = "x86_64-unknown-linux-gnu-manylinux_2_28";
+    const WIN: &str = "x86_64-w64-mingw32";
+    const MAC_ARM: &str = "aarch64-apple-darwin";
+    const MAC_X86: &str = "x86_64-apple-darwin";
+
+    #[test]
+    fn similar_lock_target_is_the_same_target_if_there_is_one() {
+        let lock = [("4.5", WIN), ("4.5", U2404), ("4.4", U2404)];
+        assert_eq!(similar(&lock, "4.4", U2404), pair("4.4", U2404));
+        assert_eq!(similar(&lock, "4.5", WIN), pair("4.5", WIN));
+    }
+
+    #[test]
+    fn similar_lock_target_prefers_the_closest_release_of_the_same_distro() {
+        let lock = [
+            ("4.5", WIN),
+            ("4.5", D12),
+            ("4.5", U2204),
+            ("4.5", U2404),
+            ("4.5", MANYLINUX),
+        ];
+        assert_eq!(similar(&lock, "4.5", U2604), pair("4.5", U2404));
+        // A tie goes to the older release.
+        let lock = [
+            ("4.5", "x86_64-unknown-linux-gnu-ubuntu-26.10"),
+            ("4.5", U2404),
+        ];
+        assert_eq!(
+            similar(&lock, "4.5", "x86_64-unknown-linux-gnu-ubuntu-25.04"),
+            pair("4.5", U2404)
+        );
+    }
+
+    #[test]
+    fn similar_lock_target_prefers_the_same_distro_on_another_arch() {
+        let lock = [("4.5", D12), ("4.5", WIN), ("4.5", U2404_ARM)];
+        assert_eq!(similar(&lock, "4.5", U2604), pair("4.5", U2404_ARM));
+    }
+
+    #[test]
+    fn similar_lock_target_prefers_the_same_os() {
+        let lock = [("4.5", U2404), ("4.5", WIN), ("4.5", MAC_X86)];
+        assert_eq!(similar(&lock, "4.5", MAC_ARM), pair("4.5", MAC_X86));
+        let lock = [("4.5", "source"), ("4.5", MAC_ARM), ("4.5", U2404)];
+        assert_eq!(similar(&lock, "4.5", U2604), pair("4.5", U2404));
+    }
+
+    #[test]
+    fn similar_lock_target_prefers_binaries_over_source() {
+        let lock = [("4.5", "source"), ("4.5", U2404)];
+        assert_eq!(similar(&lock, "4.5", WIN), pair("4.5", U2404));
+        // A source target matches a source target, though.
+        assert_eq!(similar(&lock, "4.4", "source"), pair("4.5", "source"));
+    }
+
+    #[test]
+    fn similar_lock_target_takes_the_closest_r_version() {
+        let lock = [("3.6", U2404), ("4.3", U2404), ("4.4", U2404), ("4.4", WIN)];
+        assert_eq!(similar(&lock, "4.5", U2404), pair("4.4", U2404));
+        // The platform counts first.
+        assert_eq!(similar(&lock, "4.5", MAC_ARM), pair("4.4", U2404));
+        assert_eq!(similar(&lock, "4.5", WIN), pair("4.4", WIN));
+        // A tie goes to the older R version.
+        let lock = [("4.6", U2404), ("4.4", U2404)];
+        assert_eq!(similar(&lock, "4.5", U2404), pair("4.4", U2404));
+        // Full versions, too.
+        let lock = [("4.4.3", U2404), ("4.5.1", U2404)];
+        assert_eq!(similar(&lock, "4.5.2", U2404), pair("4.5.1", U2404));
+    }
+
+    #[test]
+    fn similar_lock_target_of_an_empty_lock_is_none() {
+        assert_eq!(similar(&[], "4.5", U2404), None);
+    }
+
+    #[test]
+    fn lock_target_preferences_use_a_similar_target() {
+        let mut old = target("4.4", U2404);
+        old.packages = vec![locked_version("cli", "3.6.3", &[])];
+        let mut other = target("4.4", WIN);
+        other.packages = vec![locked_version("cli", "3.6.1", &[])];
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
+            targets: vec![other, old],
+        };
+        let prefs = lock_target_preferences(&lock, "4.5", U2604, &HashSet::new());
+        assert_eq!(
+            prefs.get("cli"),
+            Some(&RPackageVersion::from_str("3.6.3").unwrap())
+        );
     }
 
     /// A direct dependency requirement, e.g. for [`lock_target_satisfies`]

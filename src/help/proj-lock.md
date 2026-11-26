@@ -309,9 +309,20 @@ version has since been published, as well as to git/GitHub dependencies
 If `rproj.toml` changed, e.g. after `rig proj add`, rig solves the dependencies
 again, but it still keeps the versions `rproj.lock` pins, as long as they
 fit. So adding a package only changes the versions it needs changed, and
-does not upgrade the rest of the project. A platform or R version that is
-new to the lock file gets the same versions as the other platforms of the
-same R version, where possible.
+does not upgrade the rest of the project. If a pinned version does not fit
+any more, rig picks the closest version that does, the smallest newer one
+if there is one, instead of the latest.
+
+Adding a platform (`--add-platform`) or an R version (`--r-version`) keeps
+the targets already in the lock file as they are. The new target gets the
+versions of the most similar target of the lock file, where they fit: the
+same OS and Linux distro first, e.g. the closest Ubuntu release for a new
+Ubuntu release, then the closest R version. E.g. to move to a new Ubuntu
+release, keeping the versions of the current one:
+
+```sh
+rig proj lock --add-platform ubuntu-26.04
+```
 
 Use `rig proj lock --upgrade` to ignore the existing lock file and re-resolve
 every dependency instead, picking the latest version that still satisfies
