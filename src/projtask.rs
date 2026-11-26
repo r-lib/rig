@@ -12,7 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
-use log::{error, info, trace};
+use log::trace;
 
 use crate::common::*;
 use crate::output::OUTPUT;
@@ -90,8 +90,6 @@ fn task_root() -> Result<TaskRoot, Box<dyn Error>> {
                  current directory or above it",
                 RPROJ_MANIFEST_FILE
             );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
             bail!("{}", msg);
         }
     }
@@ -173,7 +171,6 @@ fn run_override(
         task, RPROJ_MANIFEST_FILE, task
     );
     OUTPUT.info(&msg);
-    info!("{}", msg);
     let env = task_env(root, args, false, dry_run)?;
     let rargs = vec!["-q".to_string(), "--slave".to_string()];
     let code = sc_run_project_script(env, rargs, &root.dir, &bin, task_args(args), false, dry_run)?;
@@ -362,8 +359,6 @@ pub fn sc_proj_test(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
             filter.len(),
             filter.join(" ")
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
     let filter = filter.first().map(|f| f.as_str());
@@ -374,14 +369,10 @@ pub fn sc_proj_test(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
              .R files in tests",
             root.dir.display()
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     };
     if framework != TestFramework::Testthat && filter.is_some() {
         let msg = "A test filter only works with testthat tests";
-        OUTPUT.error(msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -540,8 +531,6 @@ pub fn sc_proj_check(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
             "{} is not an R package, `rig proj check` only works for packages",
             root.dir.display()
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -585,14 +574,12 @@ pub fn sc_proj_check(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
 
     let msg = format!("Checking {} {} in {}", name, version, out_dir.display());
     OUTPUT.status(&msg);
-    info!("{}", msg);
 
     ignore_sigint();
     let code = run_r(&env, &build, false)?;
     if code != 0 {
         let msg = format!("`R CMD build` failed with exit status {}", code);
         OUTPUT.error(&msg);
-        error!("{}", msg);
         return Ok(code);
     }
     let code = run_r(&env, &check, false)?;
@@ -601,7 +588,6 @@ pub fn sc_proj_check(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         out_dir.join(format!("{}.Rcheck", name)).display()
     );
     OUTPUT.info(&msg);
-    info!("{}", msg);
     Ok(code)
 }
 
