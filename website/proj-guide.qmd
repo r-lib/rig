@@ -28,7 +28,10 @@ rig proj add dplyr cli  # add dependencies to rproj.toml (runs lock and sync)
 rig run                 # start R, configured for the project (runs lock and sync)
 ```
 
-`rig proj init` sets up a new project in the current directory. If you
+`rig proj init` sets up a new project in the current directory. If the
+directory already has R code, `rig proj init --scan` adds the packages that
+the code uses to `rproj.toml`, see [Finding the packages a project
+uses](#finding-the-packages-a-project-uses). If you
 already have a `DESCRIPTION` file or an `renv.lock` file, use [`rig proj
 import`](reference/proj.qmd#rig-proj-import) or [`rig proj renv
 import`](reference/proj.qmd#rig-proj-renv-import) instead, to start from
@@ -160,6 +163,43 @@ rig proj tree     # dependency tree, with --why <pkg> to invert it
 they never resolve, download or change anything. `rig proj status` is the
 one to reach for after pulling changes to `rproj.toml`/`rproj.lock`, to see
 whether `rig proj sync` needs to run again.
+
+## Finding the packages a project uses
+
+```sh
+rig proj scan              # list the packages the code uses
+rig proj scan --files      # ... with every file and line that uses them
+rig proj scan --check      # compare them with rproj.toml, exit 1 if one is missing
+rig proj scan --fix        # add the missing ones to rproj.toml
+rig proj init --scan       # create a project with the packages of existing code
+```
+
+[`rig proj scan`](reference/proj.qmd#rig-proj-scan) reads the project's R
+scripts and the R code in its R Markdown, Quarto and Sweave documents, and
+finds the packages the code loads, with `library()`, `pkg::fn()` and similar
+calls. It works like renv's implicit snapshots, which call
+`renv::dependencies()`, but rig never changes `rproj.toml` on its own: you
+decide when to run the scan, and `--fix` only adds packages. To also remove
+the packages the code does not use, add `--prune`.
+
+The scan does not run the code, so it cannot see a package that is loaded
+dynamically, e.g. with `library(name, character.only = TRUE)`; it warns
+about these. Packages used only in `tests/` and `vignettes/` are dev
+dependencies and go to the `dev` dependency group.
+
+`rig proj scan` skips the files that `.gitignore` and `.renvignore` files
+ignore. Use the `[tool.rig.scan]` table of `rproj.toml` to skip more files,
+or to leave out packages:
+
+```toml
+[tool.rig.scan]
+exclude = ["data-raw/**"]          # files to skip
+ignore-packages = ["mytestpkg"]    # packages to leave out
+```
+
+`rig proj scan --check` exits with status 1 if a package that the code uses
+is not in `rproj.toml`, so you can run it in CI to catch a forgotten
+`rig proj add`.
 
 ## Interoperating with DESCRIPTION and renv
 

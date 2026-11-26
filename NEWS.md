@@ -2,6 +2,13 @@
 
 ## New features
 
+* New `rig proj scan` command: it finds the R packages that a project's
+  code uses, in R scripts and in R Markdown, Quarto and Sweave documents.
+  `--check` compares them with the dependencies in `rproj.toml` and exits
+  with status 1 if one is missing, `--fix` adds the missing ones. `rig proj
+  init --scan` creates a project with the packages that the existing code
+  uses (#538).
+
 * New `rig audit` command: it checks the packages of a project's lock file
   and library, or of an R library, for known vulnerabilities and for
   versions that the repository blocks. `rig audit --fix` upgrades them to

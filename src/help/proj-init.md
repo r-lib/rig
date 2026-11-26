@@ -16,6 +16,21 @@ with a single R requirement, that you then fill in.
 Use [`rig proj import`](#rig-proj-import) instead to set up the same project from an existing
 `DESCRIPTION` file.
 
+## Existing code
+
+`--scan` sets up a project for a directory that already has R code: it scans
+the files for the packages they use, and adds them to the new `rproj.toml`,
+see [`rig proj scan`](#rig-proj-scan). Packages used only in tests and vignettes go to the `dev`
+dependency group, the others to `[dependencies]`.
+
+`--scan-exclude` skips the files that match a glob pattern, e.g.
+`--scan-exclude 'data-raw/**'`. It can be repeated. The patterns are saved in
+the `[tool.rig.scan]` table of `rproj.toml`, so later scans skip the same
+files.
+
+Without `--scan`, if the directory has R files, `rig proj init` reminds you
+that you can add their packages with `rig proj scan --fix`.
+
 ## Files
 
 `rig proj init` creates these, and nothing else. All of them are meant to be

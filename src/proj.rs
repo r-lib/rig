@@ -66,6 +66,10 @@ use crate::rvenv::{
     RVENV_CFG_FILE, RVENV_DIR, RVENV_SHIM_DIR,
 };
 use crate::rversion::OsVersion;
+use crate::scan_deps::{
+    check_manifest, scan_project, summarize, CheckReport, DepType, ScanConfig, ScanResult,
+    ScannedPackage,
+};
 use crate::script_meta::{script_lock_env, script_lock_path};
 use crate::solver::*;
 use crate::textfmt::{dcf_field_to_text, reflow};
@@ -106,6 +110,7 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
         Some(("add", s)) => sc_proj_add(s, args, mainargs),
         Some(("remove", s)) => sc_proj_remove(s, args, mainargs),
         Some(("deps", s)) => sc_proj_deps(s, args, mainargs),
+        Some(("scan", s)) => sc_proj_scan(s, args, mainargs),
         Some(("tree", s)) => sc_proj_tree(s, args, mainargs),
         Some(("lock", s)) => sc_proj_lock(s, args, mainargs),
         Some(("sync", s)) => sc_proj_sync(s, args, mainargs),
@@ -150,6 +155,28 @@ fn sc_proj_init(
     if let Some(n) = args.get_one::<usize>("prefer-binary") {
         manifest.set_prefer_binary(*n);
     }
+
+    // Scan before writing anything, so that an invalid --scan-exclude
+    // pattern does not leave a half-created project behind.
+    let scan_messages = if args.get_flag("scan") {
+        let exclude: Vec<String> = args
+            .get_many::<String>("scan-exclude")
+            .unwrap_or_default()
+            .cloned()
+            .collect();
+        if !exclude.is_empty() {
+            set_scan_exclude(&mut manifest, &exclude);
+        }
+        let config = ScanConfig::from_manifest(&manifest)?;
+        let result = scan_project(&root, &config.scan_options(Some(&manifest)))?;
+        report_scan_problems(&result);
+        let pkgs = summarize(&result.hits);
+        let report = check_manifest(&pkgs, &manifest);
+        Some(apply_scan_report(&mut manifest, None, &report, false)?)
+    } else {
+        None
+    };
+
     let manifest_path = root.join(RPROJ_MANIFEST_FILE);
     fs::write(&manifest_path, manifest.to_toml()?)?;
 
@@ -160,13 +187,71 @@ fn sc_proj_init(
         let name = path.strip_prefix(&root).unwrap_or(path).to_string_lossy();
         OUTPUT.success(&format!("Created {}", name));
     }
-    OUTPUT.info(&format!(
-        "Project set up for R {}. Next: add dependencies to {}, \
-         then run `rig proj lock` and `rig proj sync`.",
-        rver, RPROJ_MANIFEST_FILE
-    ));
+    match scan_messages {
+        Some(messages) => {
+            if messages.is_empty() {
+                OUTPUT.info("The scan found no packages to add.");
+            }
+            for msg in messages.iter() {
+                OUTPUT.success(msg);
+                info!("{}", msg);
+            }
+            OUTPUT.info(&format!(
+                "Project set up for R {}. Next: check the dependencies in {}, \
+                 then run `rig proj lock` and `rig proj sync`.",
+                rver, RPROJ_MANIFEST_FILE
+            ));
+        }
+        None => {
+            OUTPUT.info(&format!(
+                "Project set up for R {}. Next: add dependencies to {}, \
+                 then run `rig proj lock` and `rig proj sync`.",
+                rver, RPROJ_MANIFEST_FILE
+            ));
+            if has_r_files(&root) {
+                OUTPUT.info(
+                    "Found R files. Run `rig proj scan --fix` to add the packages \
+                     they use to the dependencies.",
+                );
+            }
+        }
+    }
 
     Ok(())
+}
+
+/// Whether `root` or its `R` subdirectory has R code, for the hint of
+/// `rig proj init` without `--scan`.
+fn has_r_files(root: &Path) -> bool {
+    [root.to_path_buf(), root.join("R")].iter().any(|dir| {
+        fs::read_dir(dir)
+            .map(|entries| {
+                entries.flatten().any(|e| {
+                    let name = e.file_name().to_string_lossy().to_lowercase();
+                    name.ends_with(".r") || name.ends_with(".rmd") || name.ends_with(".qmd")
+                })
+            })
+            .unwrap_or(false)
+    })
+}
+
+/// Set `exclude` in the `[tool.rig.scan]` table of a manifest.
+fn set_scan_exclude(manifest: &mut Rproj, exclude: &[String]) {
+    let rig = manifest.tool.entry("rig".to_string()).or_default();
+    let scan = rig
+        .entry("scan".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    if let Some(table) = scan.as_table_mut() {
+        table.insert(
+            "exclude".to_string(),
+            toml::Value::Array(
+                exclude
+                    .iter()
+                    .map(|e| toml::Value::String(e.clone()))
+                    .collect(),
+            ),
+        );
+    }
 }
 
 /// Fail if any of the project files we are about to write is already there,
@@ -1195,6 +1280,327 @@ fn sc_proj_remove(
     }
 
     proj_sync(&root, &ProjSyncOptions::default(), args)
+}
+
+/// Show where a package is used: the first file, and how many more.
+fn scan_files_label(pkg: &ScannedPackage) -> String {
+    match pkg.files.len() {
+        0 => String::new(),
+        1 => pkg.files[0].clone(),
+        n => format!("{} (+{} more)", pkg.files[0], n - 1),
+    }
+}
+
+/// Warn about the files and calls the scan could not handle.
+fn report_scan_problems(result: &ScanResult) {
+    for problem in result.problems.iter() {
+        let location = match problem.line {
+            Some(line) => format!("{}:{}: ", problem.path, line),
+            None if problem.path.is_empty() => String::new(),
+            None => format!("{}: ", problem.path),
+        };
+        let msg = format!("{}{}", location, problem.message);
+        OUTPUT.warn(&msg);
+        warn!("{}", msg);
+    }
+}
+
+/// Add the missing and misplaced packages of a scan to the manifest, and,
+/// if `prune`, remove the unused ones. Each edit is mirrored onto `doc`,
+/// the original document of the manifest, if there is one, see
+/// `sc_proj_add`. Returns the messages for the user.
+fn apply_scan_report(
+    manifest: &mut Rproj,
+    mut doc: Option<&mut DocumentMut>,
+    report: &CheckReport,
+    prune: bool,
+) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut messages = Vec::new();
+    let additions = report
+        .missing
+        .iter()
+        .map(|p| (p, p.dep_type == DepType::Dev))
+        .chain(report.misplaced.iter().map(|p| (p, false)));
+    for (pkg, dev) in additions {
+        let name = pkg.package.as_str();
+        manifest.add_dependency(name, "*", dev);
+        let (path, value): (&[&str], _) = if dev {
+            (
+                &["dependency-groups", "dev"],
+                manifest
+                    .dependency_groups
+                    .get("dev")
+                    .and_then(|g| g.dependencies.get(name)),
+            )
+        } else {
+            (&["dependencies"], manifest.dependencies.get(name))
+        };
+        let value = value.expect("just inserted by add_dependency above");
+        if let Some(doc) = doc.as_deref_mut() {
+            Rproj::doc_set_dependency(doc, path, name, value)?;
+        }
+        let table = if dev {
+            "[dependency-groups.dev]"
+        } else {
+            "[dependencies]"
+        };
+        messages.push(format!(
+            "Added {} to {} (used in {})",
+            name,
+            table,
+            scan_files_label(pkg)
+        ));
+    }
+    if prune {
+        for name in report.unused.iter() {
+            manifest.dependencies.remove(name);
+            if let Some(doc) = doc.as_deref_mut() {
+                Rproj::doc_remove_dependency(doc, name);
+            }
+            messages.push(format!("Removed {} from [dependencies] (not used)", name));
+        }
+    }
+    Ok(messages)
+}
+
+/// Find the packages that the project's code uses: `rig proj scan`.
+fn sc_proj_scan(
+    args: &ArgMatches,
+    projargs: &ArgMatches,
+    mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let json = args.get_flag("json") || projargs.get_flag("json") || mainargs.get_flag("json");
+    let check = args.get_flag("check");
+    let fix = args.get_flag("fix");
+
+    let root = match args.get_one::<String>("path") {
+        Some(path) => {
+            let path = PathBuf::from(path);
+            if !path.is_dir() {
+                let msg = format!("Not a directory: {}", path.display());
+                OUTPUT.error(&msg);
+                error!("{}", msg);
+                bail!(ReportedError(msg));
+            }
+            path
+        }
+        None => {
+            let cwd = std::env::current_dir()?;
+            find_project_root(&cwd).unwrap_or(cwd)
+        }
+    };
+
+    let manifest = if root.join(RPROJ_MANIFEST_FILE).exists() {
+        Some(proj_read_manifest(&root)?)
+    } else {
+        None
+    };
+    if (check || fix) && manifest.is_none() {
+        let msg = format!(
+            "No {} in {}, create a project from the files with `rig proj init --scan`",
+            RPROJ_MANIFEST_FILE,
+            root.display()
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        let error: Box<dyn Error> = Box::new(ReportedError(msg));
+        return if check {
+            Err(Box::new(ExitStatusError { status: 2, error }))
+        } else {
+            Err(error)
+        };
+    }
+
+    let result = (|| -> Result<_, Box<dyn Error>> {
+        let config = match &manifest {
+            Some(m) => ScanConfig::from_manifest(m)?,
+            None => ScanConfig::default(),
+        };
+        scan_project(&root, &config.scan_options(manifest.as_ref()))
+    })();
+    let result = match result {
+        Ok(r) => r,
+        Err(error) if check => return check_exit_status(Err(error)),
+        Err(error) => return Err(error),
+    };
+    let pkgs = summarize(&result.hits);
+
+    if !check && !fix {
+        if json {
+            let out = serde_json::json!({
+                "packages": pkgs,
+                "hits": result.hits,
+                "problems": result.problems,
+            });
+            println!("{}", serde_json::to_string_pretty(&out)?);
+            return Ok(());
+        }
+        report_scan_problems(&result);
+        print_scan(&pkgs, &result, args.get_flag("files"));
+        return Ok(());
+    }
+
+    let mut manifest = manifest.expect("checked above");
+    let report = check_manifest(&pkgs, &manifest);
+
+    if check {
+        let strict = args.get_flag("strict");
+        if json {
+            let out = serde_json::json!({
+                "missing": report.missing,
+                "misplaced": report.misplaced,
+                "unused": report.unused,
+                "problems": result.problems,
+            });
+            println!("{}", serde_json::to_string_pretty(&out)?);
+        } else {
+            report_scan_problems(&result);
+            print_scan_check(&report);
+        }
+        if report.is_clean(strict) {
+            return Ok(());
+        }
+        let msg = format!(
+            "The dependencies in {} do not match the scan",
+            RPROJ_MANIFEST_FILE
+        );
+        return Err(check_failed(msg));
+    }
+
+    // --fix
+    report_scan_problems(&result);
+    let prune = args.get_flag("prune");
+    let path = root.join(RPROJ_MANIFEST_FILE);
+    let original = fs::read_to_string(&path)?;
+    let mut doc: DocumentMut = original.parse()?;
+    let messages = apply_scan_report(&mut manifest, Some(&mut doc), &report, prune)?;
+
+    if !prune && !report.unused.is_empty() {
+        OUTPUT.info(&format!(
+            "Not used, but kept in [dependencies]: {}. Use --prune to remove them.",
+            report.unused.join(", ")
+        ));
+    }
+    if messages.is_empty() {
+        OUTPUT.info(&format!(
+            "{} is up to date with the scan",
+            RPROJ_MANIFEST_FILE
+        ));
+        return Ok(());
+    }
+
+    if args.get_flag("dry-run") {
+        for msg in messages.iter() {
+            OUTPUT.println(&format!("Would do: {}", msg));
+        }
+        return Ok(());
+    }
+
+    fs::write(&path, doc.to_string())?;
+    for msg in messages.iter() {
+        OUTPUT.success(msg);
+        info!("{}", msg);
+    }
+
+    if args.get_flag("no-lock") {
+        OUTPUT.info(&format!(
+            "Next: run `rig proj lock` to update {}.",
+            RPROJ_LOCK_FILE
+        ));
+        return Ok(());
+    }
+
+    if let Err(err) = proj_lock(&root, &ProjLockOptions::default(), args) {
+        fs::write(&path, original)?;
+        let msg = format!(
+            "Could not resolve the dependencies, {} unchanged",
+            RPROJ_MANIFEST_FILE
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        return Err(err);
+    }
+
+    if args.get_flag("no-sync") {
+        return Ok(());
+    }
+
+    proj_sync(&root, &ProjSyncOptions::default(), args)
+}
+
+/// The table of `rig proj scan`, and with `--files`, every use.
+fn print_scan(pkgs: &[ScannedPackage], result: &ScanResult, files: bool) {
+    if pkgs.is_empty() {
+        OUTPUT.info("The scan found no packages.");
+        return;
+    }
+    let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
+    tab.add_row(row!("Package", "Type", "Used in"));
+    tab.add_heading("-------------------------------------------------------");
+    for pkg in pkgs {
+        tab.add_row(row!(
+            &pkg.package,
+            pkg.dep_type.to_string(),
+            scan_files_label(pkg)
+        ));
+    }
+    print!("{}", tab);
+
+    if files {
+        for pkg in pkgs {
+            println!();
+            println!("{}", OUTPUT.heading(&pkg.package));
+            for hit in result.hits.iter().filter(|h| h.package == pkg.package) {
+                let code = if hit.code.is_empty() {
+                    "(implied by the file)"
+                } else {
+                    hit.code.as_str()
+                };
+                println!("  {}:{}:{}  {}", hit.path, hit.line, hit.column, code);
+            }
+        }
+    }
+}
+
+/// The report of `rig proj scan --check`.
+fn print_scan_check(report: &CheckReport) {
+    if report.missing.is_empty() && report.misplaced.is_empty() && report.unused.is_empty() {
+        OUTPUT.success(&format!(
+            "The dependencies in {} match the scan",
+            RPROJ_MANIFEST_FILE
+        ));
+        return;
+    }
+    if !report.missing.is_empty() {
+        OUTPUT.error(&format!("Used, but not in {}:", RPROJ_MANIFEST_FILE));
+        for pkg in report.missing.iter() {
+            OUTPUT.println(&format!(
+                "  {} ({}, used in {})",
+                pkg.package,
+                pkg.dep_type,
+                scan_files_label(pkg)
+            ));
+        }
+    }
+    if !report.misplaced.is_empty() {
+        OUTPUT.error("Used outside of dev code, but only a dev dependency:");
+        for pkg in report.misplaced.iter() {
+            OUTPUT.println(&format!(
+                "  {} (used in {})",
+                pkg.package,
+                scan_files_label(pkg)
+            ));
+        }
+    }
+    if !report.unused.is_empty() {
+        OUTPUT.warn("In [dependencies], but not used:");
+        for name in report.unused.iter() {
+            OUTPUT.println(&format!("  {}", name));
+        }
+    }
+    if !report.missing.is_empty() || !report.misplaced.is_empty() {
+        OUTPUT.info("Run `rig proj scan --fix` to add the missing dependencies.");
+    }
 }
 
 /// Read a `DESCRIPTION` file (or any single-paragraph DCF file) and return

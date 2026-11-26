@@ -24,6 +24,10 @@ the R packages the project depends on.
 - `rig proj add` and `rig proj remove` adds and removes dependencies to/from
   the project.
 
+- `rig proj scan` finds the packages that the project's code uses, and checks
+  or updates the dependencies in `rproj.toml`. `rig proj init --scan` creates a
+  project with the packages that the existing code uses.
+
 ## The 'tools' package library
 
 Projects treat the package library named `tools` specially. This library is
