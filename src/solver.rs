@@ -515,6 +515,14 @@ pub struct RPackageRegistry {
     // solver itself, only by the lockfile writer, which downloads source
     // packages from the mirror first.
     mirrors: HashMap<RepoId, String>,
+    // The configured repository of every feed of the solve that has one,
+    // see `MetadataFeed::name`. Only read by the lockfile writer, for the
+    // versions in `non_cran_sources`.
+    feed_names: HashMap<RepoId, String>,
+    // The versions of the CRAN feed that do not come from CRAN, according
+    // to their `PPMSource`, see `is_cran_source`. The lockfile records the
+    // feed's repository for them instead of CRAN.
+    non_cran_sources: RefCell<HashSet<(RPackageName, RPackageVersion)>>,
     // The r-universe repositories of the solve, see `with_r_universes`.
     r_universes: HashSet<RepoId>,
     // Where every artifact of an r-universe repository was built from, see
@@ -705,6 +713,13 @@ impl RPackageRegistry {
         self
     }
 
+    /// Record the names of the configured repositories of the feeds of the
+    /// solve, see [`Self::lock_repository`].
+    pub fn with_feed_names(mut self, names: HashMap<RepoId, String>) -> Self {
+        self.feed_names = names;
+        self
+    }
+
     /// Record the r-universe repositories of the solve, see
     /// [`Self::is_r_universe`].
     pub fn with_r_universes(mut self, repos: HashSet<RepoId>) -> Self {
@@ -757,6 +772,29 @@ impl RPackageRegistry {
             .borrow()
             .get(&(package.clone(), version.clone()))
             .cloned()
+    }
+
+    /// The repository of a resolved artifact, as the lock file records it:
+    /// `None` for CRAN, also for a non-repository artifact. A version of the
+    /// CRAN feed that does not come from CRAN, e.g. a GitHub package of a PPM
+    /// repository that also has CRAN, is recorded under the name of the
+    /// feed's repository.
+    pub fn lock_repository(
+        &self,
+        package: &RPackageName,
+        version: &RegistryPackageVersion,
+    ) -> Option<String> {
+        match self.artifact_repository(package, version)? {
+            RepoId::Cran => {
+                let key = (package.clone(), version.version.clone());
+                if self.non_cran_sources.borrow().contains(&key) {
+                    self.feed_names.get(&RepoId::Cran).cloned()
+                } else {
+                    None
+                }
+            }
+            repo => Some(repo.to_string()),
+        }
     }
 
     /// When a resolved artifact of a CRAN-like repository was built, if the
@@ -1043,6 +1081,11 @@ impl RPackageRegistry {
                             self.repositories
                                 .borrow_mut()
                                 .insert((pkg.clone(), src.clone()), repo.clone());
+                        }
+                        if !is_cran_source(package.ppm_source.as_deref()) {
+                            self.non_cran_sources
+                                .borrow_mut()
+                                .insert((pkg.clone(), package.version.clone()));
                         }
                         // The index's source row is authoritative when we have
                         // one; the source metadata's own `Id` is the

@@ -507,10 +507,11 @@ fn repo_versions(args: &ArgMatches, package: &str) -> Result<Vec<Package>, Box<d
     crate::solver::PackageVersionLoader::load_versions(&loader, package)
 }
 
-/// Whether `pkg` comes from CRAN's metadata feed, so P3M's manifests have
-/// its full DESCRIPTION.
+/// Whether `pkg` comes from CRAN's metadata feed, and from CRAN itself (see
+/// [`crate::dcf::is_cran_source`]), so P3M's manifests have its full
+/// DESCRIPTION.
 fn is_cran(pkg: &Package) -> bool {
-    pkg.repository == Some(RepoId::Cran)
+    pkg.repository == Some(RepoId::Cran) && crate::dcf::is_cran_source(pkg.ppm_source.as_deref())
 }
 
 /// The DESCRIPTION of a non-CRAN package version: the full one from the

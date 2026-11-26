@@ -40,7 +40,6 @@ use crate::pkgsource::lock::LockSource;
 use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::minor_r_version;
 use crate::repos::detect::RepoType;
-use crate::repos::feed::RepoId;
 use crate::rvenv::RPROJ_LOCK_FILE;
 use crate::solver::{RPackageRegistry, RegistrySolution};
 use crate::utils::is_r_package_name;
@@ -3533,9 +3532,7 @@ impl RprojLockTarget {
                 groups: vec![],
                 extra_groups: vec![],
                 is_project: false,
-                repository: repository
-                    .filter(|r| *r != RepoId::Cran)
-                    .map(|r| r.to_string()),
+                repository: registry.lock_repository(k, v),
                 system_requirements,
                 os_type: registry.os_type(k, &v.version),
             });

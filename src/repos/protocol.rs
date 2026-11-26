@@ -52,7 +52,9 @@ pub fn repos_for(
                 .as_deref()
                 .and_then(|m| MetadataFeed::from_metadata_url(m, None))
                 .unwrap_or_else(MetadataFeed::cran);
-            vec![PkgRepo::Extended(feed.with_mirror(&ppm_source_url(repo)))]
+            vec![PkgRepo::Extended(
+                feed.with_mirror(&ppm_source_url(repo)).with_name(name),
+            )]
         }
 
         RepoType::PpmBioc | RepoType::Bioc if repo.bioc_subrepo.is_none() => {
@@ -191,6 +193,8 @@ mod tests {
             feed.mirror.as_deref(),
             Some("http://localhost:4242/cran/latest")
         );
+        // The feed knows its repository, for the lock file.
+        assert_eq!(feed.name.as_deref(), Some("ppm"));
     }
 
     #[test]
@@ -371,8 +375,11 @@ mod tests {
             guessed: false,
         };
         let mut d = detected("https://p3m.dev", RepoType::Ppm);
+        let mut all = info("all", RepoType::PpmCran, false);
+        all.metadata = Some("https://p3m.dev/all".to_string());
         d.ppm_repos = vec![
-            info("all", RepoType::PpmOther, true),
+            info("hidden", RepoType::PpmOther, true),
+            all,
             info("bioconductor", RepoType::PpmBioc, false),
             info("cran", RepoType::PpmCran, false),
             info("internal", RepoType::PpmOther, false),
@@ -381,14 +388,25 @@ mod tests {
         assert_eq!(
             repos,
             vec![
+                // A repository with CRAN and other sources, with its own
+                // metadata.
+                PkgRepo::Extended(MetadataFeed::at(RepoId::Cran, "https://p3m.dev/all")),
                 PkgRepo::Extended(MetadataFeed::bioc("3.22")),
                 PkgRepo::Extended(MetadataFeed::cran()),
                 cranlike("p3m/internal", "https://p3m.dev/internal/latest"),
             ]
         );
         assert_eq!(
-            feed_mirror(&repos[1..2]).as_deref(),
+            feed_mirror(&repos[0..1]).as_deref(),
+            Some("https://p3m.dev/all/latest")
+        );
+        assert_eq!(
+            feed_mirror(&repos[2..3]).as_deref(),
             Some("https://p3m.dev/cran/latest")
         );
+        let PkgRepo::Extended(all) = &repos[0] else {
+            panic!("not a feed: {:?}", repos[0]);
+        };
+        assert_eq!(all.name.as_deref(), Some("p3m/all"));
     }
 }

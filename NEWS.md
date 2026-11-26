@@ -21,6 +21,15 @@
   package file, `rig proj sync` builds the package from git at the locked
   commit.
 
+## Posit Package Manager
+
+* A Posit Package Manager repository that has CRAN and other sources, e.g.
+  CRAN and GitHub, now replaces CRAN if it serves its own package metadata,
+  like a CRAN-only Package Manager repository does. rig reads the full
+  history of the repository, with its blocked versions and known
+  vulnerabilities. The lock file records the name of the repository for the
+  packages that do not come from CRAN.
+
 * `rig ppm` has new subcommands to query a Posit Package Manager instance:
   `repos`, `snapshots`, `sources`, `transactions` and `whoami`. The new
   `rig ppm pkg` group has the commands about packages: `list`, `info`,

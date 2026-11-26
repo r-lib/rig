@@ -22,8 +22,10 @@ pub const CACHE_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 /// Version 2 knows about the own extended metadata of PPM CRAN repositories.
 /// Version 3 has the format 1.x extended metadata URLs, e.g.
-/// `https://ppm.r-pkg.org/v1`.
-const CACHE_FILE: &str = "repo-types-3.json";
+/// `https://ppm.r-pkg.org/v1`. Version 4 knows that a PPM repository with
+/// CRAN and other sources, with its own extended metadata, is a CRAN
+/// repository.
+const CACHE_FILE: &str = "repo-types-4.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CacheEntry {

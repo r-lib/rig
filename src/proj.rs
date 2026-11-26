@@ -2044,6 +2044,10 @@ pub(crate) fn sc_proj_solve_deps(
         .iter()
         .filter_map(|f| f.mirror.clone().map(|m| (f.repo.clone(), m)))
         .collect();
+    let feed_names: HashMap<RepoId, String> = feeds
+        .iter()
+        .filter_map(|f| f.name.clone().map(|n| (f.repo.clone(), n)))
+        .collect();
     let r_universes: HashSet<RepoId> = cranlike
         .iter()
         .filter(|r| r.protocol == CranlikeProtocol::RUniverse)
@@ -2073,6 +2077,7 @@ pub(crate) fn sc_proj_solve_deps(
         .with_bioc_version(bioc_version)
         .with_repo_description(repos_description, pinned)
         .with_mirrors(mirrors)
+        .with_feed_names(feed_names)
         .with_r_universes(r_universes)
         .prefer_binary(prefer_binary)
         .with_preferences(pins.preferred.clone())
