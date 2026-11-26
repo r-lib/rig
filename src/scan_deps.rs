@@ -895,10 +895,8 @@ fn chunk_is_evaluated(options: &str, body: &str) -> bool {
         .next()
         .unwrap_or("")
         .trim();
-    if !label.contains('=') && label.ends_with("-display") {
-        return false;
-    }
-    true
+    // `*-display` chunks are shown, not run.
+    label.contains('=') || !label.ends_with("-display")
 }
 
 /// The YAML header of a document: its text and the byte range of the
