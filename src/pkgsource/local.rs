@@ -5,9 +5,9 @@
 //! only needs its `DESCRIPTION`, which is read out of the directory, or out of
 //! a temporary extraction of the archive. The install itself points rig's
 //! unpacker at a binary, and `R CMD INSTALL` at a tarball or zip, straight at
-//! the original path; a source directory is instead copied into a cache
-//! directory first (see `crate::install::stage_local_source`), so the build
-//! never writes compiled artifacts into the user's own checkout.
+//! the original path; a source directory is instead copied into the build's
+//! own temporary directory first (see `crate::install::stage_local_source`),
+//! so the build never writes compiled artifacts into the user's own checkout.
 
 use std::error::Error;
 use std::path::{Path, PathBuf};

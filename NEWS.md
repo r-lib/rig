@@ -161,6 +161,9 @@
 
 * `rig self update` now works on Windows on ARM.
 
+* A new `--sandbox` flag can be used to opt-in to building source packages
+  in a lightweight filesystem sandbox on Linux.
+
 # rig 0.11.1
 
 * New `rig proj sync --check` option to check that the project

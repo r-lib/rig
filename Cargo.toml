@@ -162,6 +162,8 @@ openssl-probe = "0.2.1"
 # system credential store via a pure-Rust Secret Service client (zbus), so the
 # static musl build works
 keyring = { version = "3.6", features = ["async-secret-service", "crypto-rust", "async-io"] }
+# sandboxing during source package installs
+landlock = "0.4.4"
 
 [build-dependencies]
 clap = { version = "4.3.8", features = ["cargo", "color"] }
