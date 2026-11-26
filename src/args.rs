@@ -1807,6 +1807,24 @@ pub fn rig_app() -> Command {
                         .num_args(1)
                         .required(false),
                 )
+                .arg(
+                    Arg::new("scan")
+                        .help("Add the packages that the files in the directory use as dependencies")
+                        .long("scan")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with("script"),
+                )
+                .arg(
+                    Arg::new("scan-exclude")
+                        .help("With --scan, skip files matching this glob pattern, e.g. 'data-raw/**'.\nIt is saved in rproj.toml. Can be repeated.")
+                        .long("scan-exclude")
+                        .value_name("GLOB")
+                        .num_args(1)
+                        .action(clap::ArgAction::Append)
+                        .required(false)
+                        .requires("scan"),
+                )
                 .arg(init_prefer_binary_arg()),
         )
         .subcommand(
@@ -2001,6 +2019,89 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .args(proj_repos_args()),
+        )
+        .subcommand(
+            Command::new("scan")
+                .about(ABOUT_PROJ_SCAN)
+                .long_about(HELP_PROJ_SCAN)
+                .display_order(0)
+                .arg(
+                    Arg::new("path")
+                        .help("Project directory to scan (default: the current project)")
+                        .value_name("PATH")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("files")
+                        .help("Show every use of every package, with file and line")
+                        .long("files")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("check")
+                        .help("Compare the used packages with the dependencies in rproj.toml,\nexit with status 1 if a used package is not declared")
+                        .long("check")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with("fix"),
+                )
+                .arg(
+                    Arg::new("strict")
+                        .help("With --check, also fail if a dependency is not used")
+                        .long("strict")
+                        .num_args(0)
+                        .required(false)
+                        .requires("check"),
+                )
+                .arg(
+                    Arg::new("fix")
+                        .help("Add the used packages that are not declared to rproj.toml")
+                        .long("fix")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("prune")
+                        .help("With --fix, also remove the dependencies that are not used")
+                        .long("prune")
+                        .num_args(0)
+                        .required(false)
+                        .requires("fix"),
+                )
+                .arg(
+                    Arg::new("dry-run")
+                        .help("With --fix, only show what would change")
+                        .long("dry-run")
+                        .num_args(0)
+                        .required(false)
+                        .requires("fix"),
+                )
+                .arg(
+                    Arg::new("no-lock")
+                        .help("With --fix, only update rproj.toml, do not update rproj.lock")
+                        .long("no-lock")
+                        .num_args(0)
+                        .required(false)
+                        .requires("fix"),
+                )
+                .arg(
+                    Arg::new("no-sync")
+                        .help("With --fix, do not install the added packages")
+                        .long("no-sync")
+                        .num_args(0)
+                        .required(false)
+                        .requires("fix")
+                        .conflicts_with("no-lock"),
+                ),
         )
         .subcommand(
             Command::new("tree")

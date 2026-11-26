@@ -47,6 +47,7 @@ mod rproj;
 mod run;
 mod rvenv;
 mod rversion;
+mod scan_deps;
 mod script_meta;
 mod solver;
 mod stdout_redirect;
