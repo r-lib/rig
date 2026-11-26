@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use clap::ArgMatches;
-use log::{error, info, trace, warn};
+use log::trace;
 use regex::Regex;
 
 use crate::args::is_r_script_file;
@@ -130,13 +130,11 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
         if cmdargs[0].contains("::") {
             if app_type.is_some() {
                 OUTPUT.warn("'--app-type' argument ignored for package scripts");
-                warn!("'--app-type' argument ignored for package scripts");
             }
             sc_run_package_script(env, rargs, cmdargs, rscript, dry_run)
         } else if let Some((root, bin)) = project_bin(args, &cmdargs[0])? {
             if app_type.is_some() {
                 OUTPUT.warn("'--app-type' argument ignored for project scripts");
-                warn!("'--app-type' argument ignored for project scripts");
             }
             sc_run_project_script(
                 env,
@@ -153,9 +151,7 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
             // them, so name them instead of complaining about a directory.
             if is_bin_name(&cmdargs[0]) && !Path::new(&cmdargs[0]).exists() {
                 if let Some(msg) = unknown_bin_error(args, &cmdargs[0])? {
-                    OUTPUT.error(&msg);
-                    error!("{}", msg);
-                    bail!("{}", msg);
+                    bail!(msg);
                 }
             }
             sc_run_app(env, rargs, cmdargs, app_type, dry_run)
@@ -345,8 +341,6 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
              (or `rig run --no-project`)",
             root.display()
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
     // `.Renviron`/`.rvenvlib` are only needed to start R directly (terminal,
@@ -361,12 +355,10 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
             // A dry run prints a command, it does not install anything.
             let msg = format!("Would run `rig proj sync` first, because {}", why);
             OUTPUT.info(&msg);
-            info!("{}", msg);
         }
         Some(why) => {
             let msg = format!("Syncing the project in {}, because {}", root.display(), why);
             OUTPUT.info(&msg);
-            info!("{}", msg);
             // stdout belongs to what `rig run` runs, not to the sync.
             let _stdout_guard = StdoutToStderr::new();
             proj_sync(&root, &ProjSyncOptions::default(), args)?;
@@ -379,8 +371,6 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
             "No R wrapper at {} after syncing the project, run `rig proj sync`",
             wrapper.display()
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -497,8 +487,6 @@ fn sc_run_project_script(
             bin.path,
             root.join(crate::rproj::RPROJ_MANIFEST_FILE).display()
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -518,8 +506,6 @@ fn sc_run_list(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
             let msg = "`rig run --list` lists the scripts of a project, but \
                        the current directory is not inside one"
                 .to_string();
-            OUTPUT.error(&msg);
-            error!("{}", msg);
             bail!("{}", msg);
         }
         Some(root) => root,
@@ -580,7 +566,6 @@ fn ignore_sigint() {
             "Could not set up signal handler for SIGINT (CTRL+C): {}",
             e
         ));
-        warn!("Could not set up signal handler for SIGINT (CTRL+C): {}", e);
     }
 }
 
@@ -769,9 +754,7 @@ fn sc_run_cmd(env: RunEnv, cmdargs: Vec<String>, dry_run: bool) -> Result<i32, B
     let (ropts, cmdargs) = split_r_cmd_args(cmdargs);
 
     if cmdargs.is_empty() {
-        OUTPUT.error("'--cmd' needs an R CMD command, e.g. `rig run --cmd check .`");
-        error!("'--cmd' needs an R CMD command");
-        bail!("'--cmd' needs an R CMD command");
+        bail!("'--cmd' needs an R CMD command, e.g. `rig run --cmd check .`");
     }
 
     let mut args2: Vec<String> = ropts;
@@ -813,18 +796,11 @@ fn sc_run_app(
     let proj = app[0].to_string();
     let projpath = std::path::Path::new(&proj);
     if !projpath.exists() {
-        OUTPUT.error(&format!("R project directory at '{}' does not exist", proj));
-        error!("R project directory at '{}' does not exist", proj);
         bail!("R project directory at '{}' does not exist", proj);
     }
     let files: Vec<String> = match std::fs::read_dir(&proj) {
         Ok(x) => x.map(utf8_file_name).collect(),
         Err(e) => {
-            OUTPUT.error(&format!(
-                "Could no access files in R project at '{}': {}",
-                proj, e
-            ));
-            error!("Could no access files in R project at '{}': {}", proj, e);
             bail!("Could no access files in R project at '{}': {}", &proj, &e);
         }
     };
@@ -853,8 +829,6 @@ fn sc_run_app(
         "rmd-shiny" | "rmd-static" => "rmarkdown::run('".to_string() + &primary_doc + "')",
         "static" => "utils::browseURL('".to_string() + &primary_doc + "')",
         &_ => {
-            OUTPUT.error(&format!("Unknown app type: {}", app_type));
-            error!("Unknown app type: {}", app_type);
             bail!("Unknown app type: {}", app_type)
         }
     };
@@ -903,16 +877,8 @@ fn detect_primary_doc(
             .filter(|x| re_idx.is_match(x))
             .collect::<Vec<_>>();
         if idxs.is_empty() {
-            OUTPUT.error(&format!(
-                "Could not find a primary document (index.html, index.Rmd, or index.qmd) in project at '{}'.",
-                project
-            ));
-            error!(
-                "Could not find a primary document (index.html, index.Rmd, or index.qmd) in project at '{}'.",
-                project
-            );
             bail!(
-                "Could not find the primary document in project at {}",
+                "Could not find a primary document (index.html, index.Rmd, or index.qmd) in project at '{}'.",
                 project
             );
         } else {
@@ -996,12 +962,6 @@ fn is_shiny_rmd(project: &str, file: &str) -> Result<bool, Box<dyn Error>> {
         Ok(None) => return Ok(false),
         Ok(Some(m)) => m,
         Err(e) => {
-            OUTPUT.error(&format!(
-                "Cannot read YAML header from {}: {}",
-                file.display(),
-                e
-            ));
-            error!("Cannot read YAML header from {}: {}", file.display(), e);
             bail!("Cannot read YAML header from {}: {}", file.display(), e);
         }
     };
@@ -1070,16 +1030,6 @@ fn read_yaml_header_string(file: &PathBuf) -> Result<Option<String>, Box<dyn Err
         let line = match line.unwrap() {
             Ok(l) => l,
             Err(e) => {
-                OUTPUT.error(&format!(
-                    "Failed to read YAML header from file at {}: {}",
-                    file.display(),
-                    e
-                ));
-                error!(
-                    "Failed to read YAML header from file at {}: {}",
-                    file.display(),
-                    e
-                );
                 bail!(
                     "Failed to read YAML header from file at {}: {}",
                     file.display(),
@@ -1113,16 +1063,6 @@ fn read_yaml_header_string(file: &PathBuf) -> Result<Option<String>, Box<dyn Err
         let line = match line.unwrap() {
             Ok(l) => l,
             Err(e) => {
-                OUTPUT.error(&format!(
-                    "Failed to read YAML header from file at {}: {}",
-                    file.display(),
-                    e
-                ));
-                error!(
-                    "Failed to read YAML header from file at {}: {}",
-                    file.display(),
-                    e
-                );
                 bail!(
                     "Failed to read YAML header from file at {}: {}",
                     file.display(),
@@ -1187,11 +1127,6 @@ fn sc_run_package_script(
     }
 
     if script.is_none() {
-        OUTPUT.error(&format!(
-            "Could not find script '{}' in package '{}'.",
-            fun, pkg
-        ));
-        error!("Could not find script '{}' in package '{}'.", fun, pkg);
         bail!("Could not find script '{}' in package '{}'.", fun, pkg);
     }
     let script = script.unwrap();
@@ -1223,11 +1158,10 @@ fn sc_run_package_script(
     ignore_sigint();
     let status = env.command().args(allargs).status()?;
 
-    let code = status.code();
-    match code {
-        None => std::process::exit(-1),
-        Some(code) => std::process::exit(code),
-    };
+    match status.code() {
+        Some(code) => Ok(code),
+        None => Ok(-1),
+    }
 }
 
 #[cfg(test)]

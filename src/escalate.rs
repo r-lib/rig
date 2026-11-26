@@ -1,15 +1,13 @@
 use std::error::Error;
 
-use log::*;
+#[cfg(target_os = "windows")]
+use log::debug;
 
 #[cfg(target_os = "windows")]
 use std::path::{Path, PathBuf};
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use sudo::with_env;
-
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use crate::output::OUTPUT;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
@@ -79,17 +77,12 @@ pub fn is_elevated_now() -> bool {
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn get_home() -> Result<String, Box<dyn Error>> {
-    let home = match std::env::var("HOME") {
+    match std::env::var("HOME") {
         Ok(x) => Ok(x),
         Err(_) => {
-            OUTPUT.error(
-                "The HOME environment variable is not set. Please set it to your home directory.",
-            );
-            error!("The HOME environment variable is not set.");
-            bail!("The HOME environment variables is not set. rig needs the HOME env var set");
+            bail!("The HOME environment variable is not set. Please set it to your home directory.")
         }
-    };
-    home
+    }
 }
 
 // Locate gsudo.exe on the PATH, so admin mode still works when rig itself was
@@ -140,9 +133,7 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
             task,
             instdir.display()
         );
-        crate::output::OUTPUT.error(&msg);
-        error!("{}", msg);
-        bail!("{}", msg);
+        bail!(msg);
     };
 
     debug!("gsudo: {:?}", gsudo);
@@ -156,10 +147,23 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
                 gsudo.display(),
                 err
             );
-            crate::output::OUTPUT.error(&msg);
-            error!("{}", msg);
-            bail!("{}", msg);
+            bail!(msg);
         }
     };
-    std::process::exit(code.code().unwrap_or(1));
+    if code.success() {
+        // The elevated child did all the work, so this process must stop
+        // now. Returning `Ok` would make the caller go on and do the same
+        // work again without elevation, and returning an error would make
+        // the callers (and `--json`) report a failure. So exit here, but
+        // clean up first, like `main` does.
+        debug!("Elevated rig finished, exiting.");
+        crate::cache::cleanup_ephemeral_cache_dir();
+        std::process::exit(0);
+    }
+    // The elevated child has already shown its error, return its exit status
+    // only.
+    Err(Box::new(crate::output::ExitStatusError {
+        status: code.code().unwrap_or(1),
+        error: Box::new(crate::output::ReportedError(String::new())),
+    }))
 }

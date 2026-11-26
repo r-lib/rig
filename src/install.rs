@@ -7,13 +7,12 @@ use std::process::Stdio;
 use std::sync::Arc;
 
 use futures::stream::{FuturesUnordered, StreamExt};
-use indicatif::{ProgressBar, ProgressStyle};
-use log::{debug, error, info};
+use log::debug;
 use tokio::fs::create_dir_all;
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
-use crate::output::OUTPUT;
+use crate::output::{find_error, ReportedError, OUTPUT};
 
 /// The `DESCRIPTION` field recording which artifact an installed package came
 /// from: the sha256 of the upstream CRAN source tarball of its version.
@@ -120,8 +119,7 @@ where
             pkg.name
         );
         OUTPUT.error(&msg);
-        error!("{}", msg);
-        return Err(Box::new(Reported(msg)));
+        return Err(Box::new(ReportedError(msg)));
     }
 
     let archive = if pkg.binary {
@@ -152,7 +150,7 @@ where
                     Some(ref print) => print(&msg),
                     None => OUTPUT.success(&msg),
                 }
-                info!(
+                debug!(
                     "Installed built package {} {} from {} into {}",
                     pkg.name,
                     pkg.version,
@@ -175,28 +173,19 @@ where
     // `R CMD INSTALL` failures are shown with the path of their log, but an
     // error before or after it (e.g. a library we cannot write to) would only
     // be logged, so show that here.
+    // Show it right away, because the other packages are still installing,
+    // and return it as already shown.
     r_cmd_install(pkg, library_path, r_binary, print_fn)
         .await
-        .inspect_err(|err| {
-            if !err.is::<Reported>() {
-                let msg = format!("Failed to install {}: {}", pkg.name, err);
-                OUTPUT.error(&msg);
-                error!("{}", msg);
+        .map_err(|err| {
+            if find_error::<ReportedError>(err.as_ref()).is_some() {
+                return err;
             }
+            let msg = format!("Failed to install {}: {}", pkg.name, err);
+            OUTPUT.error(&msg);
+            Box::new(ReportedError(msg)) as Box<dyn Error>
         })
 }
-
-/// An install error that was already shown to the user.
-#[derive(Debug)]
-struct Reported(String);
-
-impl std::fmt::Display for Reported {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl Error for Reported {}
 
 /// Install a built package into the library, without starting R.
 ///
@@ -485,7 +474,7 @@ fn remove_stale_temp_libraries(library_path: &Path) {
         }
         let path = entry.path();
         match std::fs::remove_dir_all(&path) {
-            Ok(()) => info!("Removed stale temporary library {}", path.display()),
+            Ok(()) => debug!("Removed stale temporary library {}", path.display()),
             Err(err) => debug!("Cannot remove {}: {}", path.display(), err),
         }
     }
@@ -925,7 +914,7 @@ where
 {
     let package_name: &str = &pkg.name;
     let package_path: &Path = &pkg.file_path;
-    info!(
+    debug!(
         "Installing package {} from {} to {}",
         package_name,
         package_path.display(),
@@ -1013,8 +1002,7 @@ where
                 err
             );
             OUTPUT.error(&msg);
-            error!("{}", msg);
-            Reported(msg)
+            ReportedError(msg)
         })?;
         staged
     } else {
@@ -1063,7 +1051,7 @@ where
             OUTPUT.success(&msg);
         }
 
-        info!(
+        debug!(
             "Successfully installed package {} to {} (log: {})",
             package_name,
             library_path.display(),
@@ -1105,14 +1093,14 @@ where
             ));
         }
 
-        error!(
+        debug!(
             "Installation failed for {} from {}: exit code {}",
             package_name,
             package_path.display(),
             status.code().unwrap_or(-1)
         );
 
-        Err(Box::new(Reported(format!(
+        Err(Box::new(ReportedError(format!(
             "Installation failed for {}",
             package_name
         ))))
@@ -1262,7 +1250,7 @@ where
 
     OUTPUT.status(&format!("Installing {} packages.", package_count));
 
-    info!(
+    debug!(
         "Installing {} packages in dependency order with max_concurrent={}",
         package_count, max_concurrent
     );
@@ -1429,11 +1417,6 @@ where
                         },
                         pkg_name
                     ));
-                    info!(
-                        "Skipping {} because {} failed",
-                        blocked.join(", "),
-                        pkg_name
-                    );
                     for name in blocked {
                         skipped_map.insert(name, pkg_name.clone());
                     }
@@ -1487,8 +1470,6 @@ where
             remaining.join(", ")
         );
 
-        error!("{}: {:?}", err_msg, remaining);
-
         return Err(err_msg.into());
     }
 
@@ -1499,7 +1480,7 @@ where
         skipped_names.sort();
         let err_msg = failure_summary(&failed_names, &skipped_names, final_installed);
 
-        error!(
+        debug!(
             "Installation completed: {} succeeded, {} failed, {} skipped",
             final_installed, final_failed, final_skipped
         );
@@ -1511,8 +1492,6 @@ where
         "Installed all {} packages successfully",
         final_installed
     ));
-
-    info!("Successfully installed all {} packages", final_installed);
 
     Ok(())
 }
@@ -1531,15 +1510,7 @@ pub fn install_packages(
 ) -> Result<usize, Box<dyn Error>> {
     let total = packages.len();
 
-    let install_pb = ProgressBar::new(total as u64);
-    install_pb.set_style(
-        ProgressStyle::default_bar()
-            .template("{msg} [{bar:40.green/blue}] {pos}/{len} packages")
-            .unwrap()
-            .progress_chars("=>-"),
-    );
-    install_pb.set_message("Installing");
-    OUTPUT.set_progress_bar(Some(install_pb.clone()));
+    let install_pb = OUTPUT.progress(total as u64, "Installing");
 
     let installed_count = Cell::new(0);
 
@@ -1566,8 +1537,7 @@ pub fn install_packages(
         }),
     ));
 
-    install_pb.finish_and_clear();
-    OUTPUT.set_progress_bar(None);
+    install_pb.finish();
     result?;
 
     Ok(installed_count.get())

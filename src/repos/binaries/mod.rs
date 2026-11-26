@@ -70,7 +70,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use futures::stream::StreamExt;
-use log::*;
+use log::debug;
 use serde::{Deserialize, Serialize};
 use zstd::stream::read::Decoder as ZstdDecoder;
 
@@ -79,6 +79,7 @@ use crate::download::{
     download_optional_if_newer_, fetch_optional_if_modified, fetch_optional_if_modified_,
     ConditionalFetch,
 };
+use crate::output::OUTPUT;
 use crate::repos::feed::{MetadataFeed, RepoId};
 
 /// How long a cached index or status document is used without asking the
@@ -377,7 +378,7 @@ pub fn load_binary_index_in(
     }
 
     if cached.is_some() && file_age(&etag_path).is_some_and(|age| age < ttl) {
-        info!(
+        debug!(
             "Binary index of '{}' is up to date, skipping download",
             package
         );
@@ -758,7 +759,10 @@ pub fn parse_binaries_tsv(bytes: &[u8]) -> Result<Vec<BinaryRow>, Box<dyn Error>
     }
 
     if skipped > 0 {
-        warn!("Skipped {} malformed rows in binary index", skipped);
+        OUTPUT.warn(&format!(
+            "Skipped {} malformed rows in binary index",
+            skipped
+        ));
     }
 
     Ok(rows)

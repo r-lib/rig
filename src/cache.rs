@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use directories::ProjectDirs;
-use log::*;
+use log::debug;
 
 use crate::output::OUTPUT;
 
@@ -55,10 +55,10 @@ pub fn no_cache() -> bool {
         match parse_bool(&val) {
             Some(val) => val,
             None => {
-                warn!(
+                OUTPUT.warn(&format!(
                     "Invalid RIG_NO_CACHE value: '{}', expected 'true' or 'false', ignoring it",
                     val
-                );
+                ));
                 false
             }
         }
@@ -66,7 +66,7 @@ pub fn no_cache() -> bool {
         match crate::config::get_global_config_bool("no-cache") {
             Ok(val) => val.unwrap_or(false),
             Err(err) => {
-                warn!("{}, ignoring it", err);
+                OUTPUT.warn(&format!("{}, ignoring it", err));
                 false
             }
         }
@@ -533,20 +533,10 @@ pub fn ensure_download_dir() -> Result<PathBuf, Box<dyn Error>> {
 
 fn create_dir(dir: &PathBuf) -> Result<(), Box<dyn Error>> {
     if let Err(err) = std::fs::create_dir_all(dir) {
-        OUTPUT.error(&format!(
-            "Cannot create download directory {}: {}",
-            dir.display(),
-            err
-        ));
-        error!(
-            "Cannot create download directory {}: {}",
-            dir.display(),
-            err
-        );
         bail!(
             "Cannot create download directory {}: {}",
             dir.display(),
-            err.to_string()
+            err
         );
     }
     Ok(())
@@ -561,20 +551,10 @@ fn create_download_dir_checked(dir: &PathBuf) -> Result<(), Box<dyn Error>> {
     let mut builder = std::fs::DirBuilder::new();
     builder.recursive(true).mode(0o700);
     if let Err(err) = builder.create(dir) {
-        OUTPUT.error(&format!(
-            "Cannot create download directory {}: {}",
-            dir.display(),
-            err
-        ));
-        error!(
-            "Cannot create download directory {}: {}",
-            dir.display(),
-            err
-        );
         bail!(
             "Cannot create download directory {}: {}",
             dir.display(),
-            err.to_string()
+            err
         );
     }
 
@@ -604,8 +584,6 @@ fn create_download_dir_checked(dir: &PathBuf) -> Result<(), Box<dyn Error>> {
             dir.display(),
             why
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 

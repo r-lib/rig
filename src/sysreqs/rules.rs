@@ -14,7 +14,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use flate2::read::GzDecoder;
-use log::{debug, info};
+use log::debug;
 use regex::Regex;
 use serde::Deserialize;
 
@@ -148,7 +148,7 @@ impl RuleDb {
             Ok(None) => {}
             Err(e) => debug!("Cannot use cached system requirements rules: {}", e),
         }
-        info!("Using the system requirements rules embedded in rig");
+        debug!("Using the system requirements rules embedded in rig");
         RuleDb::embedded()
     }
 }
@@ -194,7 +194,7 @@ fn cached_rules() -> Result<Option<String>, Box<dyn Error>> {
                     let _ = std::fs::remove_file(&etag_path);
                 }
             }
-            info!("Downloaded system requirements rules from {}", url);
+            debug!("Downloaded system requirements rules from {}", url);
             Ok(Some(text))
         }
         Ok(ConditionalFetch::NotModified) => {

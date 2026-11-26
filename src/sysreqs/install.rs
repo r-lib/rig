@@ -4,7 +4,7 @@
 use std::error::Error;
 use std::ffi::OsString;
 
-use log::{debug, info};
+use log::debug;
 
 use crate::run::run;
 
@@ -119,7 +119,7 @@ impl Step {
 pub fn run_steps(steps: &[Step], privilege: Privilege) -> Result<(), Box<dyn Error>> {
     for step in steps {
         let (program, args) = step.command(privilege);
-        info!("Running {}", step.display(false));
+        debug!("Running {}", step.display(false));
         debug!("{:?} {:?}", program, args);
         run(program, args, "system requirements")
             .map_err(|e| format!("`{}` failed: {}", step.display(false), e))?;

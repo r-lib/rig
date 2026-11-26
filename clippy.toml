@@ -1,0 +1,7 @@
+# User messages go through `OUTPUT` (src/output.rs), which also writes them to
+# the log file. Use `debug!`/`trace!` for diagnostics.
+disallowed-macros = [
+    { path = "log::info", reason = "use OUTPUT.info/status/success for user messages, or debug! for diagnostics" },
+    { path = "log::warn", reason = "use OUTPUT.warn, so the user sees it, or debug! for diagnostics" },
+    { path = "log::error", reason = "return the error, or use OUTPUT.error/OUTPUT.warn if execution continues" },
+]

@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
-use log::{error, info, warn};
+use log::debug;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 
@@ -69,7 +69,6 @@ fn sc_renv_export(
 
     let (registry, solution) = sc_proj_solve_project_deps(&rver, &pkg_deps, target, None, true)?;
     OUTPUT.success("Solved dependencies");
-    info!("Solved dependencies");
 
     let lockfile = REnvLockfile::from_solution(&registry, &solution);
     fs::write(
@@ -77,7 +76,6 @@ fn sc_renv_export(
         serde_json::to_string_pretty(&lockfile)?,
     )?;
     OUTPUT.success("Written renv lockfile to renv.lock");
-    info!("Written renv lockfile to renv.lock");
     Ok(())
 }
 
@@ -109,8 +107,6 @@ fn sc_renv_import(
              remove it first.",
             RPROJ_MANIFEST_FILE
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
         bail!("{}", msg);
     }
 
@@ -121,12 +117,8 @@ fn sc_renv_import(
     }
 
     OUTPUT.status(&format!("Reading dependencies from {}", input));
-    info!("Reading dependencies from {}", input);
-    let contents = fs::read_to_string(input).map_err(|e| {
-        OUTPUT.error(&format!("Cannot read {}: {}", input, e));
-        error!("Cannot read {}: {}", input, e);
-        e
-    })?;
+    let contents =
+        fs::read_to_string(input).map_err(|e| format!("Cannot read {}: {}", input, e))?;
     let lockfile: REnvLockfile = serde_json::from_str(&contents)?;
     let dep_count = lockfile.Packages.len();
 
@@ -147,7 +139,6 @@ fn sc_renv_import(
                 "{} does not exist, creating a new one",
                 RPROJ_MANIFEST_FILE
             ));
-            info!("{} does not exist, creating a new one", RPROJ_MANIFEST_FILE);
             Rproj::minimal(&default_name())
         }
     } else {
@@ -158,7 +149,8 @@ fn sc_renv_import(
     let ref_kind = |url: &str, name: &str| match remote_ref_kind(url, name) {
         Ok(kind) => Some(kind),
         Err(e) => {
-            info!("Cannot tell if {} is a branch or a tag: {}", name, e);
+            // Hidden here: `import_warnings` reports the unknown refs together.
+            debug!("Cannot tell if {} is a branch or a tag: {}", name, e);
             None
         }
     };
@@ -177,7 +169,6 @@ fn sc_renv_import(
 
     for msg in import_warnings(&report, input) {
         OUTPUT.warn(&msg);
-        warn!("{}", msg);
     }
 
     // The project is for the R version of `renv.lock`, unless the user asks
@@ -206,7 +197,6 @@ fn sc_renv_import(
         minor, dep_count, input, RPROJ_MANIFEST_FILE
     );
     OUTPUT.success(&msg);
-    info!("{}", msg);
 
     // A full import sets up a whole project, not just its manifest, so it
     // creates the same `.rvenv` layout as `rig proj init`.
@@ -226,7 +216,6 @@ fn sc_renv_import(
                 input, RPROJ_MANIFEST_FILE
             );
             OUTPUT.info(&msg);
-            info!("{}", msg);
             return Err(e);
         }
         "`rig proj sync`"
@@ -295,8 +284,6 @@ pub fn match_r_version(ver: &str) -> Result<OKInstalledVersion, Box<dyn Error>> 
     let ver = match crate::resolve::parse_plain_version(ver) {
         Some(v) => v,
         None => {
-            OUTPUT.error(&format!("Invalid R version in renv.lock file: {:?}", ver));
-            error!("Invalid R version in renv.lock file: {:?}", ver);
             bail!("Invalid R version in renv.lock file: {:?}", ver);
         }
     };
@@ -1323,10 +1310,10 @@ fn apply_lockfile(
             .find(|r| r.name.eq_ignore_ascii_case(&entry.name));
         match existing {
             Some(old) if old.url != entry.url => {
-                warn!(
+                OUTPUT.warn(&format!(
                     "Repository {} of the lock file differs from the one in {}, keeping the latter",
                     entry.name, RPROJ_MANIFEST_FILE
-                );
+                ));
             }
             Some(_) => {}
             None if repositories || !entry.is_builtin() => manifest.repository.push(entry),

@@ -53,9 +53,7 @@ pub fn sc_pkg_tree(
     let why = args.get_one::<String>("why").map(|s| s.as_str());
     let json = args.get_flag("json") || pkgargs.get_flag("json") || mainargs.get_flag("json");
 
-    let source = parse_pkg_source(&package).inspect_err(|err| {
-        OUTPUT.error(&err.to_string());
-    })?;
+    let source = parse_pkg_source(&package)?;
     let repos = pkg_repos_for(args)?;
     let tree = match source {
         PkgSource::Remote(r) => remote_root_tree(&package, &r, &repos, dev, no_base)?,
@@ -63,15 +61,11 @@ pub fn sc_pkg_tree(
         PkgSource::Local(l) => local_root_tree(&l, &repos, dev, no_base)?,
         PkgSource::Cran => {
             let loader = DbSourcePackageLoader::new_for_repos(&repos)?;
-            dep_tree(&loader, &package, &ver, dev, no_base).inspect_err(|err| {
-                OUTPUT.error(&err.to_string());
-            })?
+            dep_tree(&loader, &package, &ver, dev, no_base)?
         }
     };
     let tree = match why {
-        Some(target) => invert_tree(&tree, target, dev, no_base).inspect_err(|err| {
-            OUTPUT.error(&err.to_string());
-        })?,
+        Some(target) => invert_tree(&tree, target, dev, no_base)?,
         None => tree,
     };
 
@@ -112,9 +106,7 @@ pub(crate) fn proj_tree(
         no_base,
     );
     let tree = match why {
-        Some(target) => invert_tree(&tree, target, dev, no_base).inspect_err(|err| {
-            OUTPUT.error(&err.to_string());
-        })?,
+        Some(target) => invert_tree(&tree, target, dev, no_base)?,
         None => tree,
     };
 

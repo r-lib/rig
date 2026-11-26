@@ -14,7 +14,6 @@
 use std::error::Error;
 
 use clap::ArgMatches;
-use log::info;
 use regex::Regex;
 
 use crate::install::unpack_package;
@@ -258,7 +257,6 @@ pub fn sc_self_update(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), B
     )?;
 
     OUTPUT.success(&format!("rig updated: {} -> {}", current, latest));
-    info!("rig self update: {} -> {}", current, latest);
 
     Ok(())
 }

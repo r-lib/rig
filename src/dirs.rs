@@ -23,11 +23,9 @@ use std::error::Error;
 use std::path::PathBuf;
 
 use clap::ArgMatches;
-use log::error;
 use tabular::{row, Table};
 
 use crate::cache::{get_data_dir, get_download_dir, get_logs_dir, real_cache_dir};
-use crate::output::OUTPUT;
 use crate::utils::{get_binary_dir, get_mode, get_proj_library_root};
 
 #[cfg(target_os = "linux")]
@@ -207,8 +205,6 @@ pub fn sc_system_dirs(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Bo
     // machine-readable form of all of them at once.
     if let Some(sel) = selected_dir(args) {
         if json {
-            OUTPUT.error(&format!("--{} cannot be used with --json", sel));
-            error!("the argument '--{}' cannot be used with '--json'", sel);
             bail!("the argument '--{}' cannot be used with '--json'", sel);
         }
         match sel {
