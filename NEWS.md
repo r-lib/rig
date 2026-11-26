@@ -106,6 +106,9 @@
   library is not writeable. Before, this error was only in the debug
   output (#504).
 
+* rig now reports R package installation failures better, in particular
+  it shows the full output in non-interactive contexts (#535).
+
 * `rig pkg install` and `rig proj lock` now choose binary packages for
   the architecture of the R version, not rig's own. Before, an x86_64
   build of rig on aarch64 Windows installed x86_64 binaries into the
