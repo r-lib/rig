@@ -194,7 +194,6 @@ fn sc_proj_init(
             }
             for msg in messages.iter() {
                 OUTPUT.success(msg);
-                info!("{}", msg);
             }
             OUTPUT.info(&format!(
                 "Project set up for R {}. Next: check the dependencies in {}, \
@@ -1301,7 +1300,6 @@ fn report_scan_problems(result: &ScanResult) {
         };
         let msg = format!("{}{}", location, problem.message);
         OUTPUT.warn(&msg);
-        warn!("{}", msg);
     }
 }
 
@@ -1377,10 +1375,7 @@ fn sc_proj_scan(
         Some(path) => {
             let path = PathBuf::from(path);
             if !path.is_dir() {
-                let msg = format!("Not a directory: {}", path.display());
-                OUTPUT.error(&msg);
-                error!("{}", msg);
-                bail!(ReportedError(msg));
+                bail!("Not a directory: {}", path.display());
             }
             path
         }
@@ -1401,9 +1396,7 @@ fn sc_proj_scan(
             RPROJ_MANIFEST_FILE,
             root.display()
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
-        let error: Box<dyn Error> = Box::new(ReportedError(msg));
+        let error: Box<dyn Error> = msg.into();
         return if check {
             Err(Box::new(ExitStatusError { status: 2, error }))
         } else {
@@ -1499,7 +1492,6 @@ fn sc_proj_scan(
     fs::write(&path, doc.to_string())?;
     for msg in messages.iter() {
         OUTPUT.success(msg);
-        info!("{}", msg);
     }
 
     if args.get_flag("no-lock") {
@@ -1516,9 +1508,7 @@ fn sc_proj_scan(
             "Could not resolve the dependencies, {} unchanged",
             RPROJ_MANIFEST_FILE
         );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
-        return Err(err);
+        return Err(err).context(msg);
     }
 
     if args.get_flag("no-sync") {
@@ -1571,32 +1561,37 @@ fn print_scan_check(report: &CheckReport) {
         ));
         return;
     }
+    // One message per kind of problem, with the packages in it, so that
+    // e.g. a GitHub Actions annotation lists them as well.
     if !report.missing.is_empty() {
-        OUTPUT.error(&format!("Used, but not in {}:", RPROJ_MANIFEST_FILE));
+        let mut msg = format!("Used, but not in {}:", RPROJ_MANIFEST_FILE);
         for pkg in report.missing.iter() {
-            OUTPUT.println(&format!(
-                "  {} ({}, used in {})",
+            msg.push_str(&format!(
+                "\n  {} ({}, used in {})",
                 pkg.package,
                 pkg.dep_type,
                 scan_files_label(pkg)
             ));
         }
+        OUTPUT.error(&msg);
     }
     if !report.misplaced.is_empty() {
-        OUTPUT.error("Used outside of dev code, but only a dev dependency:");
+        let mut msg = "Used outside of dev code, but only a dev dependency:".to_string();
         for pkg in report.misplaced.iter() {
-            OUTPUT.println(&format!(
-                "  {} (used in {})",
+            msg.push_str(&format!(
+                "\n  {} (used in {})",
                 pkg.package,
                 scan_files_label(pkg)
             ));
         }
+        OUTPUT.error(&msg);
     }
     if !report.unused.is_empty() {
-        OUTPUT.warn("In [dependencies], but not used:");
+        let mut msg = "In [dependencies], but not used:".to_string();
         for name in report.unused.iter() {
-            OUTPUT.println(&format!("  {}", name));
+            msg.push_str(&format!("\n  {}", name));
         }
+        OUTPUT.warn(&msg);
     }
     if !report.missing.is_empty() || !report.misplaced.is_empty() {
         OUTPUT.info("Run `rig proj scan --fix` to add the missing dependencies.");
