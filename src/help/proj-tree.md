@@ -29,10 +29,10 @@ A package that several others need is expanded only once, under its first
 occurrence; later occurrences are marked `(*)`, meaning "its dependencies are
 above". `--dev` adds every dependency group and optional-dependency extra
 together, in their own `[Suggests]` and `[Enhances]` sections -- unlike [`rig
-proj sync`](#rig-proj-sync), which selects each group and extra separately
-with `--group`/`--extra`, this is an all-or-nothing view of the manifest.
-`--no-base` leaves out R and the base packages. Among the hard dependencies,
-`Imports` is not marked, `[D]` is a `Depends`, `[L]` a `LinkingTo`, `[DL]` both.
+proj sync`](#rig-proj-sync), which selects each group and extra separately with
+`--group`/`--extra`, this is an all-or-nothing view of the manifest. `--no-base`
+leaves out R and the base packages. Among the hard dependencies, `Imports` is
+not marked, `[D]` is a `Depends`, `[L]` a `LinkingTo`, `[DL]` both.
 
 `--why <package>` (alias `--explain`) inverts the tree, so that the named
 package is the root and the tree grows towards the packages that need it,

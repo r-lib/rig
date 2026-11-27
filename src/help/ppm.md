@@ -3,10 +3,9 @@ Query Posit Package Manager (experimental)
 ## Description
 
 Query a Posit Package Manager instance: its status, the platforms and R
-versions it builds for, its repositories, snapshots and sources.
-[`rig ppm pkg`](#rig-ppm-pkg) has the commands about packages: listing,
-searching, versions, builds, vulnerabilities and download counts, and
-publishing a package.
+versions it builds for, its repositories, snapshots and sources. [`rig ppm
+pkg`](#rig-ppm-pkg) has the commands about packages: listing, searching, versions, builds,
+vulnerabilities and download counts, and publishing a package.
 
 ## PPM server
 
@@ -24,13 +23,12 @@ this order:
 
 1. The `PACKAGEMANAGER_TOKEN` environment variable, for
    `PACKAGEMANAGER_ADDRESS`.
-2. A single sign-on token from [`rig auth login`](auth.qmd#rig-auth-login),
-   or from pak.
+2. A single sign-on token from [`rig auth login`](auth.qmd#rig-auth-login), or from pak.
 3. An identity token in the file `PACKAGEMANAGER_IDENTITY_TOKEN_FILE`, for
    `PACKAGEMANAGER_ADDRESS`, e.g. on CI.
 
-[`rig ppm whoami`](#rig-ppm-whoami) shows which token rig uses. See the
-[authentication guide](../auth.qmd) for details.
+[`rig ppm whoami`](#rig-ppm-whoami) shows which token rig uses. See the [authentication guide](../auth.qmd) for
+details.
 
 For now `rig ppm pkg builds` ignores `PACKAGEMANAGER_ADDRESS` and reads a
 package build index derived from the public instance.

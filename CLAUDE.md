@@ -55,9 +55,15 @@ in `-h` and the parent command's subcommand list) and everything from the
 `--help`). The dev-only `xtask` crate renders both parts to colored ANSI and
 writes `ABOUT_*` / `HELP_*` `&str` constants to the committed
 `src/help-generated.in`, which `src/args.rs` includes and passes to
-`.about(...)` / `.long_about(...)`. Edit the Markdown, then regenerate with
-`make help` (`cargo xtask gen-help`); never hand-edit `src/help-generated.in`.
-CI runs `cargo xtask gen-help --check` to catch stale output. The same Markdown
+`.about(...)` / `.long_about(...)`. Edit the Markdown, then run `make help`,
+which first rewraps the prose (`cargo xtask fmt-help`) and then regenerates
+the constants (`cargo xtask gen-help`); never hand-edit
+`src/help-generated.in`. The renderer keeps the source line breaks, so
+`fmt-help` fills paragraphs and list items to 75 visible columns (backticks,
+link brackets and targets, and emphasis markers do not count; list
+indentation does), and leaves headings, code blocks and tables alone. CI runs
+`cargo xtask fmt-help --check` and `cargo xtask gen-help --check` to catch
+unwrapped files and stale output. The same Markdown
 files are consumed by `website/gen-cli-reference.sh` for the web reference.
 
 You may use **Markdown links** in help files, e.g. to point at a guide page or

@@ -16,10 +16,10 @@ not enabled.
 For each repository rig prints:
 
 * `type`: the type of the repository, e.g. `cran` for a CRAN mirror or
-  `r-universe` for an r-universe, see [`rig repos add`](#rig-repos-add). For
-  a repository that rig knows from its configuration this is the type stored
-  there. For other repositories rig finds out the type from the server, and
-  remembers it for a week.
+  `r-universe` for an r-universe, see [`rig repos add`](#rig-repos-add). For a repository that
+  rig knows from its configuration this is the type stored there. For other
+  repositories rig finds out the type from the server, and remembers it for
+  a week.
 
 * `ping`: how long the repository took to answer a request for the package
   index. rig asks for the very index R would use on this machine, for the
@@ -32,10 +32,10 @@ For each repository rig prints:
   Anything else is the HTTP status code the server returned, or why it
   returned nothing at all, e.g. `timeout` or `cannot connect`.
 
-* `platforms`: the package types the R installation's `repositories` file declares
-  for the repository: `source`, `win` (Windows binaries) and `mac` (macOS
-  binaries). These are declarations, not measurements; the `status` column is
-  what says whether the index for *this* platform is really there.
+* `platforms`: the package types the R installation's `repositories` file
+  declares for the repository: `source`, `win` (Windows binaries) and `mac`
+  (macOS binaries). These are declarations, not measurements; the `status`
+  column is what says whether the index for *this* platform is really there.
 
 * `updated`: the `Last-Modified` date of the package index, i.e. how fresh the
   repository's view of the packages is.
@@ -44,10 +44,10 @@ For each repository rig prints:
   resolved. Use `--raw` to print the URLs unresolved; rig still resolves them
   internally, since an unresolved URL cannot be checked.
 
-A repository whose `platforms` column ends in `*` serves prebuilt **Linux binaries** as
-source packages. Linux binaries have no package type of their own in R, so
-a Posit Package Manager repository offers them from a distribution-specific
-URL instead, and rig recognizes those URLs.
+A repository whose `platforms` column ends in `*` serves prebuilt **Linux
+binaries** as source packages. Linux binaries have no package type of their
+own in R, so a Posit Package Manager repository offers them from a
+distribution-specific URL instead, and rig recognizes those URLs.
 
 The repositories are checked in parallel, so the command takes about as
 long as the slowest repository, not as long as all of them together. An

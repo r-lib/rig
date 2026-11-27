@@ -336,11 +336,12 @@ README.md: README.qmd website/_partials/intro.md website/_partials/feedback.md w
 fonts-asset:
 	./tools/make-fonts-asset.sh
 
-# Regenerate src/help-generated.in (the colored ANSI short `about` and long
-# `--help` strings) from the Markdown sources in src/help/*.md. Each file's lead
-# paragraph is the short summary, the rest is the long help. Run after editing
-# any of those files.
+# Rewrap the prose in src/help/*.md to 75 visible columns, then regenerate
+# src/help-generated.in (the colored ANSI short `about` and long `--help`
+# strings) from them. Each file's lead paragraph is the short summary, the rest
+# is the long help. Run after editing any of those files.
 help:
+	cargo xtask fmt-help
 	cargo xtask gen-help
 
 # Regenerate the committed DESCRIPTION and Meta/package.rds in

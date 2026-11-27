@@ -4,10 +4,10 @@ Enable R package repositories for an R version
 
 Enable one or more package repositories for R versions. This works both for
 the repositories built into rig, e.g. `Bioconductor` or `RHUB`, and for the
-ones you added with [`rig repos add`](#rig-repos-add). See [`rig repos available`](#rig-repos-available) for the
-list. It also works for the repositories that come with R itself, e.g.
-`CRANextra` or `R-Forge`, see [`rig repos list --all`](#rig-repos-list). Repository names are
-matched case insensitively.
+ones you added with [`rig repos add`](#rig-repos-add). See [`rig repos available`](#rig-repos-available) for the list. It
+also works for the repositories that come with R itself, e.g. `CRANextra` or
+`R-Forge`, see [`rig repos list --all`](#rig-repos-list). Repository names are matched case
+insensitively.
 
 By default rig enables the repositories for the default R version. Use
 `--r-version` (possibly more than once) to pick other R versions, or

@@ -3,12 +3,11 @@ Publish a package to Package Manager
 ## Description
 
 Upload a package to a local source of a Package Manager instance. This
-needs a token with the `sources:write` scope, see the [authentication
-guide](../auth.qmd).
+needs a token with the `sources:write` scope, see the [authentication guide](../auth.qmd).
 
-The package is a source package file (`.tar.gz`), or a package directory,
-the current directory by default. A directory is built with `R CMD build`,
-with the default R version.
+The package is a source package file (`.tar.gz`), or a package directory, the
+current directory by default. A directory is built with `R CMD build`, with
+the default R version.
 
 To upload a binary package, add `--binary` and `--distro`, the platform the
 binary was built for, e.g. `jammy`.

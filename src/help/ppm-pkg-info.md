@@ -7,18 +7,17 @@ dependencies, system requirements, size, known vulnerabilities and archived
 versions.
 
 Without `--repo`, rig tries the R and Bioconductor repositories of the
-instance in the order [`rig ppm repos`](#rig-ppm-repos) lists them, and
-shows the package from the first one that has it. Hidden repositories are
-skipped. The output shows the repository used.
+instance in the order [`rig ppm repos`](#rig-ppm-repos) lists them, and shows the package from
+the first one that has it. Hidden repositories are skipped. The output
+shows the repository used.
 
-For a Bioconductor repository rig uses the newest Bioconductor version, select
-another one with `--bioc-version`.
+For a Bioconductor repository rig uses the newest Bioconductor version,
+select another one with `--bioc-version`.
 
-`--json` prints the full record Package Manager sends, except for the
-`links` and `readme_data` fields, which are very large.
+`--json` prints the full record Package Manager sends, except for the `links`
+and `readme_data` fields, which are very large.
 
-See [`rig ppm pkg history`](#rig-ppm-pkg-history) for the versions of the package in
-past snapshots.
+See [`rig ppm pkg history`](#rig-ppm-pkg-history) for the versions of the package in past snapshots.
 
 ## Examples
 

@@ -78,6 +78,7 @@ jobs:
         cargo clippy --all-targets -- -D warnings
         cargo test
         cargo test -p xtask
+        cargo xtask fmt-help --check
         cargo xtask gen-help --check
         cargo xtask gen-rvenv-shim --check
 

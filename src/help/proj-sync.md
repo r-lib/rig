@@ -11,19 +11,19 @@ project has no `rproj.lock` yet, rig runs [`rig proj lock`](#rig-proj-lock) with
 options first. Pass `--frozen` to fail instead, without touching `rproj.toml`
 at all: every package `rproj.lock` lists already carries its own download
 URL, and the lock file also records the repositories it was solved with, so
-nothing but the lock file is needed to install from it. The one exception is
-the project's own package, see below.
+nothing but the lock file is needed to install from it. The one exception
+is the project's own package, see below.
 
 If `rproj.lock` exists, `rig proj sync` installs from it, even if `rproj.toml`
 changed since. Pass `--locked` to fail instead if `rproj.lock` is missing or
-out of date, see "Checking the lock file" in [`rig proj lock`](#rig-proj-lock). This is
-useful in CI. `--locked` reads `rproj.toml`, so it does not work with `--frozen`.
+out of date, see "Checking the lock file" in [`rig proj lock`](#rig-proj-lock). This is useful
+in CI. `--locked` reads `rproj.toml`, so it does not work with `--frozen`.
 
-A package of an r-universe repository is downloaded from r-universe, and rig
-checks its sha256. If the file is gone, or r-universe built the package again
-since the lock, rig builds the package from git, at the commit `rproj.lock`
-records, see "Repositories" in [`rig proj lock`](#rig-proj-lock). This needs `git`, and the
-tools to build the package from source.
+A package of an r-universe repository is downloaded from r-universe, and
+rig checks its sha256. If the file is gone, or r-universe built the package
+again since the lock, rig builds the package from git, at the commit
+`rproj.lock` records, see "Repositories" in [`rig proj lock`](#rig-proj-lock). This needs `git`,
+and the tools to build the package from source.
 
 `--with-repos` (`--index`) and `--without-repos` (`--no-index`) lock again first,
 with the project's repositories changed, see "Repositories" in [`rig proj
@@ -64,10 +64,11 @@ Pass `--check` to check that the project environment is in sync with
 `--dry-run`, and then exits with status 1 if sync would install, update or
 remove a package, refresh `.rvenv`, or create `rproj.lock`. It exits with
 status 0 if the environment is in sync, and with status 2 on any other
-error, e.g. if there is no project in the current directory. Unlike [`rig proj status`](#rig-proj-status), it looks at the
-packages that are actually in the project library, so it also notices
-packages that were installed or removed by hand. This is useful in CI, or
-to check that a project's installation is still intact:
+error, e.g. if there is no project in the current directory. Unlike [`rig
+proj status`](#rig-proj-status), it looks at the packages that are actually in the project
+library, so it also notices packages that were installed or removed by
+hand. This is useful in CI, or to check that a project's installation is
+still intact:
 
 ```sh
 rig proj sync --frozen --check
@@ -140,10 +141,10 @@ R rig installs the packages with. It has to be that very version: another
 patch release of the same minor version would run the packages, but it is
 not the R the project was solved for, so rig does not quietly use it.
 
-If that R version is not installed, rig installs it first, the way [`rig
-add`](add.qmd) would. Pass `--no-install-r` to fail instead, e.g. in CI. rig
-never rewrites `rproj.lock` to an R version that is already installed. Run
-[`rig proj lock`](#rig-proj-lock) to change the R version a project is locked for.
+If that R version is not installed, rig installs it first, the way [`rig add`](add.qmd)
+would. Pass `--no-install-r` to fail instead, e.g. in CI. rig never rewrites
+`rproj.lock` to an R version that is already installed. Run [`rig proj lock`](#rig-proj-lock) to
+change the R version a project is locked for.
 
 ## Several targets in one lock file
 
@@ -187,8 +188,9 @@ lives, by default or centralized), and the rest is rewritten on every sync:
   environment that was built for a different R.
 - `.rvenv/etc/repositories`, which the wrappers point `R_REPOSITORIES` at. The
   repositories `rproj.lock` was solved with, in the same order: Posit Package
-  Manager's CRAN for the lock file's target first, unless `cran` was off, then
-  the `[[repository]]` entries, and the Bioconductor release of the target.
+  Manager's CRAN for the lock file's target first, unless `cran` was off,
+  then the `[[repository]]` entries, and the Bioconductor release of the
+  target.
 
 After a successful sync rig records the lock file it installed from in
 `.synced`, inside the project library (`.rvenv/lib` by default, or the
@@ -198,7 +200,7 @@ warns in every R session while the project library does not match
 
 ## Workspaces
 
-In a workspace (see [`rig proj lock`](#rig-proj-lock) ) every member shares one `rproj.lock`
-and one package library, both at the workspace root. `rig proj sync` from a
+In a workspace (see [`rig proj lock`](#rig-proj-lock) ) every member shares one `rproj.lock` and
+one package library, both at the workspace root. `rig proj sync` from a
 member directory therefore syncs the whole workspace, and installs the
 union of every member's dependencies into the root's `.rvenv/lib`.

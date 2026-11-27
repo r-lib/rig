@@ -105,8 +105,8 @@ with a block always uses its own environment, even inside a project.
 `--r-version` selects the R version, which must fit the `R` requirement.
 
 `rig proj init --script script.R` adds a block with an `R` requirement to a
-script (or creates the script), and `rig proj add --script script.R
-<package>` and `rig proj remove --script script.R <package>` edit its
+script (or creates the script), and `rig proj add --script
+script.R <package>` and `rig proj remove --script script.R <package>` edit its
 `[dependencies]`, so you do not have to write the block by hand.
 
 Like a project's lock file, the environment keeps the package versions it
@@ -130,9 +130,8 @@ rig proj lock --script script.R
 ```
 
 By default it covers this machine and the other common platforms, like [`rig
-proj lock`](proj.qmd#rig-proj-lock), so the script and its lock file work on
-other machines, too. It takes the same options, e.g. `--r-version`,
-`--platform` and `--exclude-newer`.
+proj lock`](proj.qmd#rig-proj-lock), so the script and its lock file work on other machines, too. It
+takes the same options, e.g. `--r-version`, `--platform` and `--exclude-newer`.
 
 When `script.R.lock` exists, `rig run script.R` installs the R version and the
 package versions it names. If you change the block, and the lock file does
@@ -189,5 +188,6 @@ repositories too, not just its version.
 
 `--rscript` works with `-e`/`-f`, scripts, project scripts, apps and `--activate`,
 but not with `--cmd` (`R CMD` only exists as part of the `R` front-end) or
-`--shell` (which never runs the R binary at all). Command line arguments after
-the script are passed on to it, e.g. `rig run --rscript script.R --input data.csv`.
+`--shell` (which never runs the R binary at all). Command line arguments
+after the script are passed on to it, e.g. `rig run --rscript script.R
+--input data.csv`.

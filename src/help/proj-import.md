@@ -34,12 +34,12 @@ to merge dependencies into an existing file instead.
 
 `Authors@R` is parsed into `[project].authors`, one entry per `person()` call, in
 order; this is a best-effort parser for common `person()` usage (`given`,
-`family`, `middle`, `email`, `role`, and an `ORCID`/`ROR` `comment`), not a
-full R parser, so unusual calls are skipped with a warning. Arguments are
-matched to `person()`'s signature, by name or by position, like R does, and
-`first` and `last` are stored as `given` and `family`. If `Authors@R` is
-absent, the simpler `Maintainer: Name <email>` field is used instead, as a
-single author with role `cre`; the last word of the name is the family name.
+`family`, `middle`, `email`, `role`, and an `ORCID`/`ROR` `comment`), not a full R
+parser, so unusual calls are skipped with a warning. Arguments are matched
+to `person()`'s signature, by name or by position, like R does, and `first` and
+`last` are stored as `given` and `family`. If `Authors@R` is absent, the simpler
+`Maintainer: Name <email>` field is used instead, as a single author with
+role `cre`; the last word of the name is the family name.
 
 `Config/Needs/<name>` depepdencies are parsed specially, an entry that is not
 a plain package name (with an optional version requirement) is kept
@@ -58,8 +58,8 @@ using a package conditionally if it's `Suggests`-listed), so it also ends up
 in `[dependency-groups.dev]`, same as any other `Suggests` entry.
 
 A full import records the order of the `DESCRIPTION` fields in
-`description-field-order` in the `[tool.rig]` table, and [`rig proj
-export`](#rig-proj-export) writes the fields in this order.
+`description-field-order` in the `[tool.rig]` table, and [`rig proj export`](#rig-proj-export) writes
+the fields in this order.
 
 ## Files
 
@@ -67,20 +67,19 @@ A full import sets up a whole project, not just its manifest, so it creates
 the same files as [`rig proj init`](#rig-proj-init) .
 
 A full import also adds rig's project files (`rproj.toml`, `rproj.lock`,
-`.rvenv`, `.rvenvlib`, `.Renviron` and `.Renviron.rig`) to `.Rbuildignore`, so
-they are left out of the package tarball. It creates `.Rbuildignore` if needed,
+`.rvenv`, `.rvenvlib`, `.Renviron` and `.Renviron.rig`) to `.Rbuildignore`, so they
+are left out of the package tarball. It creates `.Rbuildignore` if needed,
 and only adds the patterns that are not in it yet.
 
-Unlike [`rig proj init`](#rig-proj-init), a full import also adds
-`rproj.lock` to rig's block in `.gitignore`, so it is not committed. A
-package is checked against many versions of its dependencies, so it should
-not commit a lock file. After cloning the package, run [`rig proj
-sync`](#rig-proj-sync), which creates `rproj.lock` first if there is none.
-[`rig run`](run.qmd) syncs the project itself if needed, so it works in a
+Unlike [`rig proj init`](#rig-proj-init), a full import also adds `rproj.lock` to rig's block in
+`.gitignore`, so it is not committed. A package is checked against many
+versions of its dependencies, so it should not commit a lock file. After
+cloning the package, run [`rig proj sync`](#rig-proj-sync), which creates `rproj.lock` first if
+there is none. [`rig run`](run.qmd) syncs the project itself if needed, so it works in a
 fresh clone right away.
 
-A full import also rewrites `DESCRIPTION` from the new `rproj.toml`, like
-`rig proj export --force` would, so the two files start out in sync. Use
+A full import also rewrites `DESCRIPTION` from the new `rproj.toml`, like `rig
+proj export --force` would, so the two files start out in sync. Use
 `--keep-description` to leave `DESCRIPTION` unchanged. `--dependencies` never
 rewrites `DESCRIPTION`.
 
@@ -92,6 +91,5 @@ version, or the current R release if there is no default.
 
 `--prefer-binary` writes `prefer-binary = true` (`--prefer-binary=5`:
 `prefer-binary = 5`) into the manifest's `[tool.rig]` table, like for [`rig proj
-init`](#rig-proj-init). With `--dependencies` it is set in the existing
-manifest, too, and `--prefer-binary=0` writes `prefer-binary = false`, to turn
-it off.
+init`](#rig-proj-init). With `--dependencies` it is set in the existing manifest, too, and
+`--prefer-binary=0` writes `prefer-binary = false`, to turn it off.

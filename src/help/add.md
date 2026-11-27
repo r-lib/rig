@@ -7,22 +7,21 @@ already installed R versions, except on macOS in [admin mode](../admin-vs-user-m
 versions of the same minor overwrite each other.
 
 On macOS and Windows rig uses the R builds at <https://cran.r-project.org>.
-On Linux rig uses the Posit R builds from
-<https://github.com/rstudio/r-builds>.
+On Linux rig uses the Posit R builds
+from <https://github.com/rstudio/r-builds>.
 
 On Linux, in user mode rig always installs a portable build, selected for
 your C library (glibc or musl): `manylinux_2_34` for glibc 2.34 or newer,
-`manylinux_2_28` for glibc 2.28 to 2.33, and `musllinux_1_2` for musl. In
-admin mode rig installs a
-distro-specific build by default, but you can install a portable build
-instead with `--platform linux-portable` (or a specific portable platform,
-e.g. `--platform linux-manylinux-2.28` or `--platform linux-manylinux-2.34`;
-`manylinux_2_28` and `manylinux-2_28` work, too). If there is no distro-specific build
-for your platform, rig falls back to a portable build automatically.
-Admin-mode portable builds are installed into `/opt/R/<version>`, just like
-distro-specific builds. The portable builds are newer and less tested than
-the distro-specific ones, so please report problems at
-<https://github.com/r-lib/rig/issues>.
+`manylinux_2_28` for glibc 2.28 to 2.33, and `musllinux_1_2` for musl. In admin
+mode rig installs a distro-specific build by default, but you can install a
+portable build instead with `--platform linux-portable` (or a specific
+portable platform, e.g. `--platform linux-manylinux-2.28` or `--platform
+linux-manylinux-2.34`; `manylinux_2_28` and `manylinux-2_28` work, too). If
+there is no distro-specific build for your platform, rig falls back to a
+portable build automatically. Admin-mode portable builds are installed into
+`/opt/R/<version>`, just like distro-specific builds. The portable builds are
+newer and less tested than the distro-specific ones, so please report
+problems at <https://github.com/r-lib/rig/issues>.
 
 The portable builds bundle the fontconfig library, but no fontconfig
 configuration and no fonts, so on a minimal system R cannot render text at
@@ -59,21 +58,20 @@ at the same time. Adding one of them will automatically remove the other.
 In user mode there is no such restriction.
 
 If no default R version is set yet, `rig add` makes the new version the
-default, as `rig default` would. In user mode that creates the `R` and
-`Rscript` quick links, and registers the version with RStudio and Positron:
-on macOS rig installs a LaunchAgent that sets `RSTUDIO_WHICH_R` at login.
-In admin mode it creates the `R` and `Rscript` quick links in
-`/usr/local/bin` (`C:\Program Files\R\bin` on Windows), updates the
-`Current` link of the R framework on macOS, and records the default R
-version in the registry on Windows. Use `--no-default` to leave the default
-alone and only install R, e.g. when another tool runs rig and manages the R
-versions itself.
+default, as `rig default` would. In user mode that creates the `R` and `Rscript`
+quick links, and registers the version with RStudio and Positron: on macOS
+rig installs a LaunchAgent that sets `RSTUDIO_WHICH_R` at login. In admin
+mode it creates the `R` and `Rscript` quick links in `/usr/local/bin` (`C:\Program
+Files\R\bin` on Windows), updates the `Current` link of the R framework on
+macOS, and records the default R version in the registry on Windows. Use
+`--no-default` to leave the default alone and only install R, e.g. when
+another tool runs rig and manages the R versions itself.
 
 In user mode rig also puts its quick-link directory (`~/.local/bin`,
 `%USERPROFILE%\.local\bin` on Windows) on the PATH when it is missing: it
 adds a line to the shell startup files on macOS and Linux, and prepends the
-directory to the user PATH in the registry on Windows. `--without-path`
-skips that as well.
+directory to the user PATH in the registry on Windows. `--without-path` skips
+that as well.
 
 If the requested version is already installed, `rig add` does nothing (other
 than making sure any implied alias, e.g. `release`, still points at it)

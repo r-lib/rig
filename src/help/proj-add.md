@@ -27,8 +27,7 @@ above.
 ## Bioconductor packages
 
 Bioconductor packages are added the same way as CRAN packages, e.g. `rig
-proj add limma`, see "Bioconductor packages" in [`rig proj
-lock`](#rig-proj-lock).
+proj add limma`, see "Bioconductor packages" in [`rig proj lock`](#rig-proj-lock).
 
 ## Packages from other repositories
 

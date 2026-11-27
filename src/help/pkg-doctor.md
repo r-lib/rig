@@ -5,8 +5,8 @@ Find problems with the packages in a library
 Check the packages installed in an R package library, and report the ones
 that may not work: missing dependencies, dependencies that are too old, and
 packages compiled against another version of a `LinkingTo` dependency than
-the one installed now. This command does not start R. It does not check
-for known vulnerabilities, use [`rig pkg audit`](#rig-pkg-audit) for that.
+the one installed now. This command does not start R. It does not check for
+known vulnerabilities, use [`rig pkg audit`](#rig-pkg-audit) for that.
 
 Example output:
 ```
@@ -29,10 +29,10 @@ Give package names to report on those packages only. They are still checked
 against the whole library.
 
 After the table rig prints the commands that fix the problems it can fix:
-[`rig pkg install`](#rig-pkg-install) for missing and too old dependencies and for packages
-that need a reinstall, and the commands that remove leftover lock
-directories and broken packages. The `r-version` and `name` problems need to be
-fixed by hand.
+[`rig pkg install`](#rig-pkg-install) for missing and too old dependencies and for packages that
+need a reinstall, and the commands that remove leftover lock directories
+and broken packages. The `r-version` and `name` problems need to be fixed by
+hand.
 
 rig exits with a non-zero status if it finds an error. Warnings alone do
 not change the exit status. Use `--json` for machine readable output: an
@@ -92,9 +92,9 @@ packages always count as installed.
 ## System requirements
 
 On Linux rig matches the `SystemRequirements` field of each package against
-the [r-system-requirements](https://github.com/r-hub/r-system-requirements) rules for your distribution, the same way [`rig
-pkg install`](#rig-pkg-install) does, and reports the OS packages that are
-not installed. After the table it prints the command that installs them.
+the [r-system-requirements](https://github.com/r-hub/r-system-requirements) rules for your distribution, the same way [`rig pkg
+install`](#rig-pkg-install) does, and reports the OS packages that are not installed. After the
+table it prints the command that installs them.
 
 This is a warning, not an error. The rules name the development packages,
 e.g. `libcurl4-openssl-dev`, which a package needs to compile from source. An

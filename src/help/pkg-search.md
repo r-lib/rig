@@ -3,11 +3,11 @@ Search for CRAN packages
 ## Description
 
 Search CRAN packages by name, title, description, author and maintainer.
-The search runs on the web service of the pkgsearch R package,
-<https://search.r-pkg.org>, so it gives the same results as
+The search runs on the web service of the pkgsearch R
+package, <https://search.r-pkg.org>, so it gives the same results as
 `pkgsearch::pkg_search()`, and it needs network access. It always searches
-CRAN, not the repositories configured with [`rig repos`](repos.qmd). This command does
-not start R.
+CRAN, not the repositories configured with [`rig repos`](repos.qmd). This command does not
+start R.
 
 Packages that match all search terms, or the whole phrase, rank higher, and
 packages with more reverse dependencies rank higher, too.

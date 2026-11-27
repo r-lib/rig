@@ -2,8 +2,8 @@ Remove saved credentials
 
 ## Description
 
-The argument is a URL, or the name of a configured repository, as for
-[`rig auth login`](#rig-auth-login).
+The argument is a URL, or the name of a configured repository, as for [`rig
+auth login`](#rig-auth-login).
 
 Without `--username`, remove the PPM SSO token of a Posit Package Manager
 instance from the token file. The URL is the base URL of the instance, by

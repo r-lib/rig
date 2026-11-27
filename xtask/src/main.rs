@@ -3,6 +3,9 @@
 //! Tasks:
 //!   gen-help                  Regenerate src/help-generated.in from src/help/*.md
 //!   gen-help --check          Verify src/help-generated.in is up to date (CI guard)
+//!   fmt-help                  Rewrap the prose in src/help/*.md to 75 visible
+//!                             columns (see `fmt_help.rs`)
+//!   fmt-help --check          Verify src/help/*.md are wrapped (CI guard)
 //!   gen-rvenv-shim            Rebuild the committed shim R packages in
 //!                             src/data/rvenv-shim from src/data/rvenv-pkg
 //!   gen-rvenv-shim --check    Verify they match the source (CI guard)
@@ -20,6 +23,7 @@
 //! This crate is never part of the `rig` binary; it only runs when invoked
 //! explicitly via `cargo xtask`.
 
+mod fmt_help;
 mod render;
 mod rvenv_shim;
 mod sysreqs_rules;
@@ -139,6 +143,10 @@ fn main() -> ExitCode {
             let check = args[1..].iter().any(|a| a == "--check");
             gen_help(check)
         }
+        Some("fmt-help") => {
+            let check = args[1..].iter().any(|a| a == "--check");
+            fmt_help::fmt_help(&help_dir(), check)
+        }
         Some("gen-rvenv-shim") => {
             let check = args[1..].iter().any(|a| a == "--check");
             rvenv_shim::gen_rvenv_shim(&workspace_root(), check)
@@ -153,6 +161,7 @@ fn main() -> ExitCode {
         other => {
             eprintln!(
                 "unknown task: {}\n\nUsage:\n  cargo xtask gen-help [--check]\n  \
+                 cargo xtask fmt-help [--check]\n  \
                  cargo xtask gen-rvenv-shim [--check]\n  \
                  cargo xtask gen-sysreqs-rules <dir>",
                 other.unwrap_or("(none)")

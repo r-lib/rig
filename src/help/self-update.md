@@ -20,8 +20,8 @@ looking for the latest one.
 
 Use `--nightly` to update to the latest nightly build. Nightly builds are
 made every day from the development version of rig. They are not signed and
-are less tested than releases, so they are mainly for trying out new features
-and fixes before a release. `rig self update --nightly` updates whenever the
-nightly build differs from the running rig. To go back to releases, run
-`rig self update` (without `--nightly`) after the next release: a nightly
-build is always older than the release that follows it.
+are less tested than releases, so they are mainly for trying out new
+features and fixes before a release. `rig self update --nightly` updates
+whenever the nightly build differs from the running rig. To go back to
+releases, run `rig self update` (without `--nightly`) after the next release: a
+nightly build is always older than the release that follows it.

@@ -12,9 +12,8 @@ Hidden repositories are left out, add `--all` to list them as well, with a
 `Bioconductor` or `Python`.
 
 The `auth` column is only filled in by Package Manager versions that report
-it. To use a repository that needs a token, log in with [`rig auth
-login`](auth.qmd#rig-auth-login) or set `PACKAGEMANAGER_TOKEN`, see the
-[authentication guide](../auth.qmd).
+it. To use a repository that needs a token, log in with [`rig auth login`](auth.qmd#rig-auth-login) or
+set `PACKAGEMANAGER_TOKEN`, see the [authentication guide](../auth.qmd).
 
 ## Examples
 

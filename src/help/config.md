@@ -67,34 +67,33 @@ configuration file takes precedence over rig's built-in default.
   `$XDG_CACHE_HOME/rig`), `~/Library/Caches/com.gaborcsardi.rig` on macOS and
   `%LOCALAPPDATA%\gaborcsardi\rig\cache` on Windows. On Linux and Windows the
   rig log files are also written into a `logs` directory inside it, even if
-  `no-cache` / `--no-cache` is in effect. The log file gets the debug
-  messages of every run. To see them on the screen, use `-v`, or set the
-  `RIG_LOG` environment variable to a filter, e.g. `RIG_LOG=rig=debug`.
+  `no-cache` / `--no-cache` is in effect. The log file gets the debug messages
+  of every run. To see them on the screen, use `-v`, or set the `RIG_LOG`
+  environment variable to a filter, e.g. `RIG_LOG=rig=debug`.
 
 - `concurrent-downloads` (`RIG_CONCURRENT_DOWNLOADS`): the maximum number of
   downloads rig performs at the same time, e.g. when downloading package
   files for a project. Defaults to `50`.
 
 - `concurrent-installs` (`RIG_CONCURRENT_INSTALLS`): the maximum number of
-  packages [`rig proj sync`](proj.qmd#rig-proj-sync) installs at the same time, unless overridden
-  with its own `--max-concurrent` flag. Defaults to the number of CPU cores.
+  packages [`rig proj sync`](proj.qmd#rig-proj-sync) installs at the same time, unless overridden with
+  its own `--max-concurrent` flag. Defaults to the number of CPU cores.
 
-- `prefer-binary` (`RIG_PREFER_BINARY`): the default for `--prefer-binary` in
-  [`rig pkg install`](pkg.qmd#rig-pkg-install) and the [`rig proj`](proj.qmd) commands: `true` looks back through
-  the three newest versions of a package for one with a binary build, a
-  number gives how many versions to look back through, and `false` or `0` turns
-  it off. The command line flag and `prefer-binary` in a project's `rproj.toml`
-  take precedence. Defaults to `false`.
+- `prefer-binary` (`RIG_PREFER_BINARY`): the default for `--prefer-binary` in [`rig
+  pkg install`](pkg.qmd#rig-pkg-install) and the [`rig proj`](proj.qmd) commands: `true` looks back through the three
+  newest versions of a package for one with a binary build, a number gives
+  how many versions to look back through, and `false` or `0` turns it off. The
+  command line flag and `prefer-binary` in a project's `rproj.toml` take
+  precedence. Defaults to `false`.
 
-- `exclude-newer` (`RIG_EXCLUDE_NEWER`): the default for `--exclude-newer` in
-  [`rig pkg install`](pkg.qmd#rig-pkg-install) and the [`rig proj`](proj.qmd) commands: a date, e.g. `2025-06-01`,
-  or a span back from today, e.g. `7 days`. Package versions published after
-  it are ignored. The command line flag and `exclude-newer` in a project's
+- `exclude-newer` (`RIG_EXCLUDE_NEWER`): the default for `--exclude-newer` in [`rig
+  pkg install`](pkg.qmd#rig-pkg-install) and the [`rig proj`](proj.qmd) commands: a date, e.g. `2025-06-01`, or a span
+  back from today, e.g. `7 days`. Package versions published after it are
+  ignored. The command line flag and `exclude-newer` in a project's
   `rproj.toml` take precedence. Not set by default.
 
-- `sysreqs` (`RIG_SYSREQS`): Linux only. What [`rig pkg install`](pkg.qmd#rig-pkg-install) and [`rig proj
-  sync`](proj.qmd#rig-proj-sync) do with the OS packages that the R packages
-  need, see their help:
+- `sysreqs` (`RIG_SYSREQS`): Linux only. What [`rig pkg install`](pkg.qmd#rig-pkg-install) and [`rig proj sync`](proj.qmd#rig-proj-sync)
+  do with the OS packages that the R packages need, see their help:
   - `auto`, the default: install them on the Linux distributions that the
     system requirements rules know, and quietly skip them on others.
   - `true`: the same, but also warn on other distributions.
@@ -114,8 +113,8 @@ configuration file takes precedence over rig's built-in default.
   (`apt-get update`, `zypper refresh`, `apk update`) before installing OS
   packages. Defaults to `true`.
 
-- `sysreqs-rules-url` (`RIG_SYSREQS_RULES_URL`): where rig downloads the
-  [system requirements rules](https://github.com/r-hub/r-system-requirements) from, a gzipped tarball of the repository. rig
+- `sysreqs-rules-url` (`RIG_SYSREQS_RULES_URL`): where rig downloads the [system
+  requirements rules](https://github.com/r-hub/r-system-requirements) from, a gzipped tarball of the repository. rig
   downloads them at most once a day, and uses the copy built into rig if it
   cannot download them.
 

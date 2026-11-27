@@ -11,15 +11,15 @@ looks up credentials:
 1. A password in the URL. This is only allowed for URLs given on the
    command line, with `--with-repos`, and rig does not store it.
 2. The `RIG_REPO_<NAME>_USERNAME` and `RIG_REPO_<NAME>_PASSWORD` environment
-   variables, for the repository called `<NAME>`: the name you gave to
-   [`rig repos add`](repos.qmd#rig-repos-add), in `--with-repos <name>=<url>`, or in `[[repository]]` in
+   variables, for the repository called `<NAME>`: the name you gave to [`rig
+   repos add`](repos.qmd#rig-repos-add), in `--with-repos <name>=<url>`, or in `[[repository]]` in
    `rproj.toml`. [`rig auth status`](#rig-auth-status) shows it in the `name` column. `<NAME>` is in
    upper case, with every character that is not a letter or a digit
    replaced by `_`.
 3. A PPM token: from the `PACKAGEMANAGER_TOKEN` environment variable (for
-   `PACKAGEMANAGER_ADDRESS`), a single sign-on (SSO) token from
-   [`rig auth login`](#rig-auth-login) or from pak, or an identity token.
-   rig sends PPM tokens to the PPM API as bearer tokens.
+   `PACKAGEMANAGER_ADDRESS`), a single sign-on (SSO) token from [`rig auth
+   login`](#rig-auth-login) or from pak, or an identity token. rig sends PPM tokens to the PPM
+   API as bearer tokens.
 4. A netrc file.
 5. The system credential store (macOS Keychain, Windows Credential Manager,
    Secret Service on Linux), only for URLs that include a username.

@@ -15,8 +15,8 @@ which is which. `--all` applies to `--json` as well.
 
 * `platform`: the name this target goes by in a package's build index, so
   this is the value to match against the `platform` column of [`rig ppm pkg
-  builds`](ppm.qmd#rig-ppm-pkg-builds) . Several entries can share one: CentOS 7
-  and RHEL 7 both use the `centos7` binaries.
+  builds`](ppm.qmd#rig-ppm-pkg-builds) . Several entries can share one: CentOS 7 and RHEL 7 both use the
+  `centos7` binaries.
 
 * `distribution`, `release`: the distribution PPM *builds* the target on, which
   is not always the one it serves. The `rhel9` target is built on Rocky

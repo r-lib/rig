@@ -7,15 +7,15 @@ repositories of the instance, or of the repository given as an argument:
 when they were synced, and how many packages were added, updated, archived
 and removed.
 
-The changes of all sources are shown together, newest first, with the source in the `source` column. Select
-a single source with `--source`, by name or id, see [`rig ppm
-sources`](#rig-ppm-sources). The newest 20 changes are shown, use `--limit`
+The changes of all sources are shown together, newest first, with the
+source in the `source` column. Select a single source with `--source`, by name
+or id, see [`rig ppm sources`](#rig-ppm-sources). The newest 20 changes are shown, use `--limit`
 for more.
 
 A Bioconductor repository has a separate log for each Bioconductor version.
 rig shows the newest version by default, select another one with
-`--bioc-version`. The `bioc_version` column shows the version, it is empty
-for other sources.
+`--bioc-version`. The `bioc_version` column shows the version, it is empty for
+other sources.
 
 ## Examples
 

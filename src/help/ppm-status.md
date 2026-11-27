@@ -10,8 +10,8 @@ Bioconductor releases and macOS build flavors it serves.
 
 The report shows an initial block and then four tables:
 
-* **R versions**: the minor R versions binaries are built for. Same list as
-  [`rig ppm r-versions`](ppm.qmd#rig-ppm-r-versions) .
+* **R versions**: the minor R versions binaries are built for. Same list as [`rig
+  ppm r-versions`](ppm.qmd#rig-ppm-r-versions) .
 
 * **Build targets**: the platforms, as reported, retired ones included. Same
   table as [`rig ppm platforms --all`](ppm.qmd#rig-ppm-platforms) , which documents the columns.
@@ -32,8 +32,8 @@ HTTP query.
 ## Which server
 
 `https://packagemanager.posit.co` by default, or the instance
-`PACKAGEMANAGER_ADDRESS` names. The report's first line shows the URL actually
-used.
+`PACKAGEMANAGER_ADDRESS` names. The report's first line shows the URL
+actually used.
 
 ## Examples
 

@@ -21,12 +21,11 @@ the one listed first wins.
 `--with-repos` (or `--index`) and `--without-repos` (or `--no-index`) change the
 repositories for this command only, the setup of the R version stays the
 same. Both take a comma-separated list and can be repeated. `--with-repos`
-adds repositories, by name, like [`rig repos enable`](repos.qmd#rig-repos-enable), by URL, or as
-`name=URL`, e.g. `--index=rlib=https://r-lib.r-universe.dev`. A repository
-given by URL comes before the others.
-`--without-repos=<names>` leaves out repositories, and `--without-repos`
-without names leaves out all configured repositories, so only the ones in
-`--with-repos` are used, e.g. `--no-index
+adds repositories, by name, like [`rig repos enable`](repos.qmd#rig-repos-enable), by URL, or as `name=URL`,
+e.g. `--index=rlib=https://r-lib.r-universe.dev`. A repository given by URL
+comes before the others. `--without-repos=<names>` leaves out repositories,
+and `--without-repos` without names leaves out all configured repositories,
+so only the ones in `--with-repos` are used, e.g. `--no-index
 --index=https://r-lib.r-universe.dev`. URLs cannot contain commas.
 
 How rig reads a repository depends on its type. The repositories built into
@@ -35,24 +34,24 @@ add it, and rig finds out the type of any other repository from the server,
 and remembers it for a week.
 
 For CRAN, a CRAN mirror, P3M, and Bioconductor's software repository rig
-reads their full package history, from <https://ppm.r-pkg.org/v1> and
-<https://ppm-bioc.r-pkg.org/v1>, so older and archived versions are available,
-too. The CRAN package history also has the known vulnerabilities of each
-version. A source package of CRAN is downloaded from the CRAN mirror first, if
-there is one. Any other repository, e.g. an r-universe, a P3M snapshot, or
-your own CRAN-like repository, is read from its `PACKAGES` files, so only its
-current packages are available. `rig repos add --no-extend` makes rig read a
-CRAN mirror from its `PACKAGES` files, too.
+reads their full package history, from <https://ppm.r-pkg.org/v1>
+and <https://ppm-bioc.r-pkg.org/v1>, so older and archived versions are
+available, too. The CRAN package history also has the known vulnerabilities
+of each version. A source package of CRAN is downloaded from the CRAN
+mirror first, if there is one. Any other repository, e.g. an r-universe, a
+P3M snapshot, or your own CRAN-like repository, is read from its `PACKAGES`
+files, so only its current packages are available. `rig repos add
+--no-extend` makes rig read a CRAN mirror from its `PACKAGES` files, too.
 
 A CRAN repository of Posit Package Manager may serve its own full package
 history. Then rig reads that instead of <https://ppm.r-pkg.org/v1>. It also
-says which versions the repository blocks, and their known
-vulnerabilities. rig never installs a blocked version, and it warns about a
-version with known vulnerabilities. See [`rig audit`](audit.qmd).
+says which versions the repository blocks, and their known vulnerabilities.
+rig never installs a blocked version, and it warns about a version with
+known vulnerabilities. See [`rig audit`](audit.qmd).
 
-For a package of an r-universe, rig also looks up the git commit it was built
-from. If r-universe replaced the package file since rig read its `PACKAGES`
-file, rig builds the package from git, at that commit.
+For a package of an r-universe, rig also looks up the git commit it was
+built from. If r-universe replaced the package file since rig read its
+`PACKAGES` file, rig builds the package from git, at that commit.
 
 A CRAN-like repository has binary packages for macOS and Windows, if it has
 `PACKAGES` files for them in the standard place, e.g.
@@ -64,8 +63,7 @@ rig installs Bioconductor packages if the Bioconductor repositories are
 enabled for the R version, see [`rig repos enable`](repos.qmd#rig-repos-enable), from the Bioconductor
 release of the R version, e.g. Bioconductor 3.23 for R 4.6. Then `rig pkg
 install limma` works like `rig pkg install dplyr`. `R_BIOC_VERSION` selects
-another Bioconductor release. See "Bioconductor packages" in [`rig proj
-lock`](proj.qmd#rig-proj-lock).
+another Bioconductor release. See "Bioconductor packages" in [`rig proj lock`](proj.qmd#rig-proj-lock).
 
 ## Git, GitHub, GitLab and URL sources
 
@@ -141,8 +139,8 @@ looks like.
 ## Installing only the dependencies
 
 `--no-install-self` installs the dependencies of the local packages (paths)
-named on the command line, but not the local packages themselves, e.g. to set
-up a library for working on a package from its source directory:
+named on the command line, but not the local packages themselves, e.g. to
+set up a library for working on a package from its source directory:
 
 ```
 rig pkg install --no-install-self --dev .
@@ -180,8 +178,8 @@ installation fails.
 
 `--platform` installs for a platform other than this machine's, e.g.
 `--platform x86_64-unknown-linux-gnu-ubuntu-24.04` (see [`rig system
-detect-platform`](system.qmd#rig-system-detect-platform) for the platform
-strings rig takes), and `--platform source` installs source packages only.
+detect-platform`](system.qmd#rig-system-detect-platform) for the platform strings rig takes), and `--platform source`
+installs source packages only.
 
 `--prefer-binary` trades a newer version for an older one that has a binary
 build, which is useful when compiling is expensive; it takes the number of
@@ -261,9 +259,9 @@ i.e. the library that [`rig library default`](library.qmd) reports, and the one 
 packages into.
 
 `--library` (`-l`) selects another library. It takes either the name of a
-library of the R version, as [`rig library list`](library.qmd) prints them, or the path of
-a library directory. A library name is tried first, so prefix a relative
-path with `./` (or use an absolute path) if it happens to share a name with a
+library of the R version, as [`rig library list`](library.qmd) prints them, or the path of a
+library directory. A library name is tried first, so prefix a relative path
+with `./` (or use an absolute path) if it happens to share a name with a
 library:
 
 ```

@@ -2,8 +2,8 @@ Remove a custom R package repository
 
 ## Description
 
-Remove one or more repositories that you added with [`rig repos add`](#rig-repos-add). rig
-also removes them from every R version that uses them.
+Remove one or more repositories that you added with [`rig repos add`](#rig-repos-add). rig also
+removes them from every R version that uses them.
 
 The repositories that are built into rig cannot be removed, use [`rig repos
 disable`](#rig-repos-disable) to stop using them.

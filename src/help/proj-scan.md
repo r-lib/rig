@@ -15,10 +15,10 @@ rig proj scan --fix
 
 The scan is static: rig reads the code, it does not run it. It finds calls
 like `library(pkg)`, `require(pkg)`, `requireNamespace("pkg")` and `pkg::fn()`. It
-cannot know about a package that is loaded dynamically, e.g.
-`library(name, character.only = TRUE)` where `name` is a variable; it reports
-these instead of guessing. So treat the result as a good first draft, not
-as the final word.
+cannot know about a package that is loaded dynamically, e.g. `library(name,
+character.only = TRUE)` where `name` is a variable; it reports these instead
+of guessing. So treat the result as a good first draft, not as the final
+word.
 
 `rig proj scan` scans the current project, the nearest directory at or above
 the current one that has an `rproj.toml` file. Give a directory to scan
@@ -34,10 +34,10 @@ what a project would need before running `rig proj init --scan`.
   `Rscript` `#!` line.
 - R Markdown (`.Rmd`), Quarto (`.qmd`) and Sweave (`.Rnw`) documents: the R code
   chunks and inline R code. Chunks with `eval = FALSE` (or `#| eval: false`)
-  are skipped. Packages named in the YAML header, e.g.
-  `output: bookdown::html_document2`, are included. An R Markdown document
-  needs rmarkdown, a Shiny document needs shiny, and a Python chunk in a
-  knitr document needs reticulate.
+  are skipped. Packages named in the YAML header, e.g. `output:
+  bookdown::html_document2`, are included. An R Markdown document needs
+  rmarkdown, a Shiny document needs shiny, and a Python chunk in a knitr
+  document needs reticulate.
 - A few special files: `_bookdown.yml` (bookdown), `_pkgdown.yml` (pkgdown),
   `.lintr` (lintr), an `.Rproj` file that uses devtools (devtools and
   roxygen2), and an `rsconnect` directory (rsconnect).

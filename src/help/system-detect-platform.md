@@ -20,9 +20,9 @@ This is the form `rproj.lock` uses, and that rig prints in messages. Commands
 that take a platform, e.g. `rig proj lock --platform` or the `RIG_PLATFORM`
 environment variable, also take shorter forms: `macos`, `windows`, `linux`,
 `macos-arm64`, `ubuntu-24.04`, `linux-ubuntu-24.04`, and P3M platform names like
-`jammy-x86_64`. `arm64` and `amd64` work as arch names, too. The portable
-glibc R builds are `linux-manylinux-2.28` and `linux-manylinux-2.34`, also
-spelled as `manylinux_2_28`, `manylinux-2_28`, etc.
+`jammy-x86_64`. `arm64` and `amd64` work as arch names, too. The portable glibc R
+builds are `linux-manylinux-2.28` and `linux-manylinux-2.34`, also spelled as
+`manylinux_2_28`, `manylinux-2_28`, etc.
 
 Set `RIG_PLATFORM` to make rig act as if it ran on another platform, e.g.:
 
