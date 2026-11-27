@@ -84,7 +84,7 @@ const MAGIC: [u8; 4] = *b"RBI\0";
 
 /// Bumped whenever the layout changes. It is part of the file *name*, so an
 /// old blob is never read at all rather than being read and rejected.
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;
 
 /// magic, format version, body length, flags.
 const PREAMBLE_BYTES: usize = 16;

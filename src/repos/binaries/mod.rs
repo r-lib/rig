@@ -175,6 +175,17 @@ pub fn binary_index_url_in(feed: &MetadataFeed, package: &str) -> String {
     format!("{}/{}.tsv.zst", feed.binaries_url, package)
 }
 
+/// The full download URL of `url`, from the binary index of `package` in
+/// `feed`, see [`resolve_download_url`]. The package files of a P3M feed
+/// come from its configured repository, see [`MetadataFeed::files`].
+pub fn resolve_index_url(feed: &MetadataFeed, package: &str, url: &str) -> String {
+    resolve_download_url(
+        &binary_index_url_in(feed, package),
+        url,
+        feed.files.as_deref(),
+    )
+}
+
 /// The cache directory of `feed`'s binary indices: CRAN's are in
 /// `<cache>/metadata/binaries`, a Bioconductor release's in a subdirectory
 /// of it, e.g. `bioc-3.22`, because the same package name may have an index
@@ -449,13 +460,10 @@ fn store_index(
     tsv: &[u8],
     etag: Option<String>,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
-    let mut rows = parse_binaries_tsv(tsv)?;
-    // The blob holds full URLs, relative ones are relative to the index,
-    // e.g. `../2026-11-21+.../src/contrib/cli_3.6.6.tar.gz` from PPM.
-    let index_url = binary_index_url_in(feed, package);
-    for row in rows.iter_mut() {
-        row.url = resolve_download_url(&index_url, &row.url);
-    }
+    // The blob keeps the URLs as they are in the index, relative ones are
+    // relative to the index, e.g. `../2026-11-21+.../src/contrib/cli_3.6.6.tar.gz`
+    // from PPM. They are resolved when read, see [`resolve_index_url`].
+    let rows = parse_binaries_tsv(tsv)?;
     let built = blob::build(package, &rows)?;
     debug!(
         "Built binary index blob for '{}' ({} rows, {} bytes)",
@@ -1505,11 +1513,15 @@ mod tests {
         let index = binary_index_url_in(&feed, "cli");
         assert_eq!(index, "http://localhost:4242/all/binaries/cli.tsv.zst");
         assert_eq!(
-            resolve_download_url(&index, "../2026-11-21+abc/src/contrib/cli_3.6.6.tar.gz"),
+            resolve_download_url(
+                &index,
+                "../2026-11-21+abc/src/contrib/cli_3.6.6.tar.gz",
+                None
+            ),
             "http://localhost:4242/all/2026-11-21+abc/src/contrib/cli_3.6.6.tar.gz"
         );
         assert_eq!(
-            resolve_download_url(&index, "https://p3m.dev/cran/x.tgz"),
+            resolve_download_url(&index, "https://p3m.dev/cran/x.tgz", None),
             "https://p3m.dev/cran/x.tgz"
         );
     }

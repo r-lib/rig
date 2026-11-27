@@ -90,6 +90,9 @@ type = "cran"
   vulnerabilities of each version. A source package of CRAN is downloaded from
   the mirror first, and from Posit Package Manager if the mirror does not
   have it. A binary package is always downloaded from Posit Package Manager.
+  For a CRAN or Bioconductor repository of your own Package Manager instance,
+  older versions and binary packages come from that repository, for a mirror
+  or the public Package Manager they come from `p3m.dev`.
   `extend = false` turns this off, and rig only reads the `PACKAGES` files of
   the repository. A CRAN repository of Posit Package Manager may serve its
   own full package history, and then rig reads that instead of

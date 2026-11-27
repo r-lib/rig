@@ -52,6 +52,7 @@ pub fn repos_for(
                 .as_deref()
                 .and_then(|m| MetadataFeed::from_metadata_url(m, None))
                 .unwrap_or_else(MetadataFeed::cran);
+            let feed = with_ppm_files(feed, repo);
             vec![PkgRepo::Extended(
                 feed.with_mirror(&ppm_source_url(repo)).with_name(name),
             )]
@@ -67,7 +68,12 @@ pub fn repos_for(
                 return vec![];
             };
             if extend {
-                return vec![PkgRepo::Extended(MetadataFeed::bioc(version))];
+                let feed = MetadataFeed::bioc(version);
+                let feed = match repo.repo_type {
+                    RepoType::PpmBioc => with_ppm_files(feed, repo),
+                    _ => feed,
+                };
+                return vec![PkgRepo::Extended(feed)];
             }
             let base = if base.is_empty() {
                 format!("{}/packages/{}", url, version)
@@ -120,6 +126,22 @@ pub fn repos_for(
         | RepoType::PpmSnapshot
         | RepoType::CranLike => cranlike(),
     }
+}
+
+/// `feed`, with its package files downloaded from the PPM repository
+/// `repo`, if `feed` is a P3M feed and `repo` is on a private Package
+/// Manager instance. The P3M feeds have the paths of `p3m.dev/cran` and
+/// `p3m.dev/bioconductor`, and a full CRAN or Bioconductor repository of
+/// Package Manager serves the same paths. For the public instance the files
+/// come from `p3m.dev`, see [`MetadataFeed::files`].
+fn with_ppm_files(feed: MetadataFeed, repo: &DetectedRepo) -> MetadataFeed {
+    let (Some(base), Some(name)) = (&repo.ppm_base, &repo.ppm_repo) else {
+        return feed;
+    };
+    if !feed.is_p3m_feed() || crate::repos::binaries::ppm_is_public(base) {
+        return feed;
+    }
+    feed.with_files(&format!("{}/{}", base.trim_end_matches('/'), name))
 }
 
 /// The URL of the source packages of a PPM repository: without the
@@ -229,6 +251,60 @@ mod tests {
                 "https://p3m.dev/cran/__linux__/jammy/latest"
             )]
         );
+    }
+
+    fn feed_files(repos: &[PkgRepo]) -> Option<String> {
+        match repos {
+            [PkgRepo::Extended(f)] => f.files.clone(),
+            _ => panic!("not one feed: {:?}", repos),
+        }
+    }
+
+    /// The package files of the P3M feeds come from the configured
+    /// repository if it is on a private Package Manager instance, and from
+    /// `p3m.dev` otherwise.
+    #[test]
+    fn test_p3m_feed_files() {
+        let ppm = |base: &str, repo: &str, rtype: RepoType| {
+            let mut d = detected(&format!("{}/{}/latest", base, repo), rtype);
+            d.ppm_base = Some(base.to_string());
+            d.ppm_repo = Some(repo.to_string());
+            d.snapshot = Some("latest".to_string());
+            d
+        };
+
+        let d = ppm("https://ppm.acme.com", "cran-mirror", RepoType::PpmCran);
+        let repos = repos_for("acme", &d, true, None);
+        assert_eq!(repos, vec![PkgRepo::Extended(MetadataFeed::cran())]);
+        assert_eq!(
+            feed_files(&repos).as_deref(),
+            Some("https://ppm.acme.com/cran-mirror")
+        );
+
+        let d = ppm("https://ppm.acme.com", "bioc", RepoType::PpmBioc);
+        let repos = repos_for("acme", &d, true, Some("3.22"));
+        assert_eq!(repos, vec![PkgRepo::Extended(MetadataFeed::bioc("3.22"))]);
+        assert_eq!(
+            feed_files(&repos).as_deref(),
+            Some("https://ppm.acme.com/bioc")
+        );
+
+        // Public Package Manager, CRAN and Bioconductor mirrors: p3m.dev.
+        let d = ppm("https://p3m.dev", "cran", RepoType::PpmCran);
+        assert_eq!(feed_files(&repos_for("p3m", &d, true, None)), None);
+        let d = ppm("https://packagemanager.posit.co", "cran", RepoType::PpmCran);
+        assert_eq!(feed_files(&repos_for("p3m", &d, true, None)), None);
+        let d = ppm("https://p3m.dev", "bioconductor", RepoType::PpmBioc);
+        assert_eq!(feed_files(&repos_for("p3m", &d, true, Some("3.22"))), None);
+        let d = detected("https://cran.acme.com", RepoType::Cran);
+        assert_eq!(feed_files(&repos_for("acme", &d, true, None)), None);
+        let d = detected("https://bioconductor.org", RepoType::Bioc);
+        assert_eq!(feed_files(&repos_for("bioc", &d, true, Some("3.22"))), None);
+
+        // A repository with its own metadata is not a P3M feed.
+        let mut d = ppm("https://ppm.acme.com", "cran", RepoType::PpmCran);
+        d.metadata = Some("https://ppm.acme.com/cran".to_string());
+        assert_eq!(feed_files(&repos_for("acme", &d, true, None)), None);
     }
 
     #[test]

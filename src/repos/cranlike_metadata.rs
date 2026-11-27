@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
@@ -435,7 +434,8 @@ pub(crate) fn cranlike_index_rows(
         }
         out.push(CranlikeRow {
             version: RPackageVersion::from_str(&ver)?,
-            download_url,
+            // A plain CRAN-like repository, never a P3M feed.
+            download_url: download_url.map(|url| resolve_download_url(key, &url, None)),
             checksum,
             built: built_timestamp(built.as_deref()),
         });
@@ -467,6 +467,10 @@ pub struct DbSourcePackageLoader {
     /// repo ids of the indices to search, with the position of the
     /// repository they belong to in [`DbSourcePackageLoader::repos`].
     repo_ids: Vec<(i64, usize)>,
+    /// For each repository in [`DbSourcePackageLoader::repos`], the URL of
+    /// its index, that its download URLs are relative to, and the repository
+    /// of the package files of a P3M feed, see [`resolve_download_url`].
+    download_bases: Vec<(String, Option<String>)>,
     /// The repositories to search, in order: if several of them have the same
     /// version of a package, the first one wins.
     repos: Vec<RepoId>,
@@ -496,14 +500,22 @@ impl DbSourcePackageLoader {
         let repos = ensure_repos_fresh(repos)?;
         let conn = open_metadata_db()?;
         let mut repo_ids = vec![];
+        let mut download_bases = vec![];
         for (idx, repo) in repos.iter().enumerate() {
-            for id in source_repo_ids(&conn, &source_index_key(repo), "source")? {
+            let key = source_index_key(repo);
+            for id in source_repo_ids(&conn, &key, "source")? {
                 repo_ids.push((id, idx));
             }
+            let files = match repo {
+                PkgRepo::Extended(feed) => feed.files.clone(),
+                PkgRepo::Cranlike(_) => None,
+            };
+            download_bases.push((key, files));
         }
         Ok(DbSourcePackageLoader {
             conn,
             repo_ids,
+            download_bases,
             repos: repos.iter().map(|r| r.repo_id()).collect(),
             exclude_newer: None,
             filter: RepoFilter::default(),
@@ -526,6 +538,10 @@ impl DbSourcePackageLoader {
         DbSourcePackageLoader {
             conn,
             repo_ids,
+            download_bases: keys
+                .iter()
+                .map(|(key, _)| (key.to_string(), None))
+                .collect(),
             repos: keys.iter().map(|(_, repo)| repo.clone()).collect(),
             exclude_newer: None,
             filter: RepoFilter::default(),
@@ -741,7 +757,12 @@ impl PackageVersionLoader for DbSourcePackageLoader {
             let deps: PackageDependencies = serde_json::from_str(&row.deps_json)?;
             let mut pkg = Package::from_crandb(package.to_string(), version, deps.dependencies);
             pkg.sha256sum = row.sha256sum;
-            pkg.download_url = row.download_url;
+            pkg.download_url = match (row.download_url, self.download_bases.get(row.rank)) {
+                (Some(url), Some((index, files))) => {
+                    Some(resolve_download_url(index, &url, files.as_deref()))
+                }
+                (url, _) => url,
+            };
             pkg.built = row
                 .built
                 .and_then(|b| serde_json::from_str::<DCFBuilt>(&b).ok());
@@ -1214,28 +1235,6 @@ fn touch_repo_last_updated(
     Ok(())
 }
 
-/// `packages` of the ALLPACKAGES file at `allpackages_url`, with full
-/// download URLs. A `DownloadURL` may also be an absolute path or a path
-/// relative to the ALLPACKAGES file, see [`resolve_download_url`]. Only copies
-/// `packages` if some of them need it.
-fn resolve_download_urls<'a>(packages: &'a [Package], allpackages_url: &str) -> Cow<'a, [Package]> {
-    let full = |pkg: &Package| {
-        pkg.download_url
-            .as_deref()
-            .is_none_or(|url| url.is_empty() || reqwest::Url::parse(url).is_ok())
-    };
-    if packages.iter().all(full) {
-        return Cow::Borrowed(packages);
-    }
-    let mut packages = packages.to_vec();
-    for pkg in packages.iter_mut() {
-        if let Some(url) = &pkg.download_url {
-            pkg.download_url = Some(resolve_download_url(allpackages_url, url));
-        }
-    }
-    Cow::Owned(packages)
-}
-
 /// Parse `packages` and store them, dispatching to the feed's table.
 #[allow(clippy::too_many_arguments)]
 fn store_packages(
@@ -1252,7 +1251,7 @@ fn store_packages(
 ) -> Result<(), Box<dyn Error>> {
     match feed {
         Feed::Cranlike => save_packages_to_db(
-            &resolve_download_urls(packages, repo_url_key),
+            packages,
             repo_db,
             repo_url_key,
             r_version,
@@ -2272,7 +2271,9 @@ fn repo_db_file(dcf_path: &Path) -> Result<PathBuf, Box<dyn Error>> {
     let parent = dcf_path
         .parent()
         .ok_or("Cannot determine parent directory for database file")?;
-    let db_path = parent.join("packages.db");
+    // The version is bumped when the stored data changes, e.g. version 2
+    // keeps the download URLs as they are in the metadata.
+    let db_path = parent.join("packages-v2.db");
     Ok(db_path)
 }
 
@@ -2529,39 +2530,68 @@ DownloadURL: 2019-12-11/src/contrib/cli_2.0.1.tar.gz
         .unwrap();
     }
 
+    /// The cache keeps the download URLs as they are in the metadata, and
+    /// the loader resolves them against the index, and the files of the P3M
+    /// feeds against the configured repository that serves them.
     #[test]
-    fn allpackages_download_urls_are_resolved() {
-        let url = "https://example.com/cran/ALLPACKAGES.zst";
-        let full = parse_dcf_bytes(
-            b"Package: a\nVersion: 1.0\nDownloadURL: https://p3m.dev/cran/a_1.0.tar.gz\n\n\
-              Package: b\nVersion: 1.0\n",
-        )
-        .unwrap();
-        assert!(matches!(
-            resolve_download_urls(&full, url),
-            Cow::Borrowed(_)
-        ));
+    fn loader_resolves_download_urls() {
+        let url = "https://ppm.r-pkg.org/v1/ALLPACKAGES.zst";
+        let mut db = std::env::temp_dir();
+        db.push(format!("rig-test-download-urls-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&db);
+        ensure_db_schema(&db).unwrap();
+        store_feed(
+            &db,
+            url,
+            "\
+Package: a
+Version: 1.0
+DownloadURL: https://example.com/cran/a_1.0.tar.gz
 
-        let mixed = parse_dcf_bytes(
-            b"Package: a\nVersion: 1.0\nDownloadURL: https://p3m.dev/cran/a_1.0.tar.gz\n\n\
-              Package: b\nVersion: 1.0\nDownloadURL: src/contrib/b_1.0.tar.gz\n\n\
-              Package: c\nVersion: 1.0\nDownloadURL: /other/c_1.0.tar.gz\n\n\
-              Package: d\nVersion: 1.0\n",
-        )
-        .unwrap();
-        let urls: Vec<Option<String>> = resolve_download_urls(&mixed, url)
-            .iter()
-            .map(|p| p.download_url.clone())
-            .collect();
+Package: a
+Version: 2.0
+DownloadURL: 2026-04-10/src/contrib/a_2.0.tar.gz
+
+Package: a
+Version: 3.0
+DownloadURL: /other/a_3.0.tar.gz
+
+Package: a
+Version: 4.0
+",
+        );
+        let stored: Vec<Option<String>> = open_db(&db)
+            .unwrap()
+            .prepare("SELECT download_url FROM packages ORDER BY version")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            stored[1].as_deref(),
+            Some("2026-04-10/src/contrib/a_2.0.tar.gz")
+        );
+
+        let mut loader =
+            DbSourcePackageLoader::from_conn(open_db(&db).unwrap(), &[(url, RepoId::Cran)]);
+        loader.download_bases[0].1 = Some("http://localhost:4242/cran-mirror".to_string());
+        let mut versions: Vec<Package> = loader.load_versions("a").unwrap();
+        versions.sort_by(|a, b| a.version.cmp(&b.version));
+        let urls: Vec<Option<String>> = versions.iter().map(|p| p.download_url.clone()).collect();
         assert_eq!(
             urls,
             vec![
-                Some("https://p3m.dev/cran/a_1.0.tar.gz".to_string()),
-                Some("https://example.com/cran/src/contrib/b_1.0.tar.gz".to_string()),
-                Some("https://example.com/other/c_1.0.tar.gz".to_string()),
+                Some("https://example.com/cran/a_1.0.tar.gz".to_string()),
+                Some(
+                    "http://localhost:4242/cran-mirror/2026-04-10/src/contrib/a_2.0.tar.gz"
+                        .to_string()
+                ),
+                Some("https://p3m.dev/other/a_3.0.tar.gz".to_string()),
                 None,
             ]
         );
+        let _ = std::fs::remove_file(&db);
     }
 
     #[test]

@@ -15,6 +15,7 @@ use crate::ppm::{print_table, use_color, want_json};
 use crate::repos::binaries::{
     binary_index_url, load_binary_index, validate_package_name, BinaryIndex,
 };
+use crate::repos::feed::resolve_download_url;
 
 /// One `pkg@version=id` entry of a build's `linkingto`.
 #[derive(Debug, serde::Serialize)]
@@ -38,7 +39,7 @@ struct BuildRow<'a> {
     /// use for verifying a download. See the `crate::repos::binaries` module
     /// docs.
     source_id: &'a str,
-    url: &'a str,
+    url: String,
     /// Checksum of the file at `url`, if the index has it.
     #[serde(skip_serializing_if = "Option::is_none")]
     sha256: Option<&'a str>,
@@ -130,7 +131,7 @@ fn build_rows<'a>(
                 platform: row.platform(),
                 r_version: row.r_version(),
                 source_id: row.source_id(),
-                url: row.url(),
+                url: resolve_download_url(&binary_index_url(package), row.url(), None),
                 sha256: row.sha256(),
                 yanked: row.yanked(),
                 linkingto: row
@@ -209,7 +210,7 @@ fn print_builds(rows: &[BuildRow], package: &str, version: Option<&str>, nversio
             row.platform,
             row.r_version,
             linkingto_cell(row),
-            row.url
+            &row.url
         ));
     }
     print_table(&tab);

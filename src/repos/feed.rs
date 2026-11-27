@@ -213,11 +213,16 @@ pub struct MetadataFeed {
     /// The name of the configured repository of the feed, if it is not one
     /// of the built-in feeds, see [`MetadataFeed::with_name`].
     pub name: Option<String>,
+    /// The repository that serves the package files of a P3M feed, at the
+    /// paths of the metadata, without a trailing `/`: the configured private
+    /// Package Manager repository of the feed. `None` for `p3m.dev`, see
+    /// [`resolve_download_url`] and [`MetadataFeed::with_files`].
+    pub files: Option<String>,
 }
 
-/// The mirror and the name are not part of a feed's identity: two feeds with
-/// the same metadata are the same repository, wherever their files are
-/// downloaded from.
+/// The mirror, the name and the files are not part of a feed's identity:
+/// two feeds with the same metadata are the same repository, wherever their
+/// files are downloaded from.
 impl PartialEq for MetadataFeed {
     fn eq(&self, other: &MetadataFeed) -> bool {
         self.repo == other.repo
@@ -253,6 +258,7 @@ impl MetadataFeed {
             .to_string(),
             mirror: None,
             name: None,
+            files: None,
         }
     }
 
@@ -273,6 +279,25 @@ impl MetadataFeed {
             name: Some(name.to_string()),
             ..self
         }
+    }
+
+    /// This feed, with the package files of a P3M feed downloaded from the
+    /// repository at `files`, see [`MetadataFeed::files`].
+    pub fn with_files(self, files: &str) -> MetadataFeed {
+        MetadataFeed {
+            files: Some(files.trim_end_matches('/').to_string()),
+            ..self
+        }
+    }
+
+    /// Whether this is one of the P3M feeds, at `https://ppm.r-pkg.org` or
+    /// `https://ppm-bioc.r-pkg.org`, whose package files are elsewhere, see
+    /// [`resolve_download_url`].
+    pub fn is_p3m_feed(&self) -> bool {
+        reqwest::Url::parse(&self.allpackages_url).is_ok_and(|url| {
+            url.scheme() == "https"
+                && matches!(url.host_str(), Some("ppm.r-pkg.org" | "ppm-bioc.r-pkg.org"))
+        })
     }
 
     /// The feed of Bioconductor release `version`, under
@@ -318,6 +343,7 @@ impl MetadataFeed {
             binaries_url: format!("{}/binaries", base),
             mirror: None,
             name: None,
+            files: None,
         }
     }
 
@@ -358,8 +384,8 @@ impl MetadataFeed {
     }
 }
 
-/// The host that serves the package files of the P3M feeds, see
-/// [`p3m_download_url`].
+/// The host that serves the package files of the P3M feeds, unless the
+/// configured repository of the feed does, see [`p3m_download_url`].
 const P3M_DOWNLOAD_URL: &str = "https://p3m.dev";
 
 /// The full URL of `url`, a `DownloadURL` from the metadata file at
@@ -368,14 +394,20 @@ const P3M_DOWNLOAD_URL: &str = "https://p3m.dev";
 /// relative to the file that contains it, as in RFC 3986. A `url` that cannot
 /// be resolved is kept as is.
 ///
-/// A path in the P3M feeds is resolved to the P3M server that serves the
-/// file, see [`p3m_download_url`].
-pub fn resolve_download_url(file_url: &str, url: &str) -> String {
+/// A path in the P3M feeds is resolved to the repository that serves the
+/// file: `files`, the configured repository of the feed, see
+/// [`MetadataFeed::files`], or `p3m.dev` if it is `None`. See
+/// [`p3m_download_url`].
+///
+/// The metadata caches keep `url` as it is in the metadata, and it is
+/// resolved when it is read, so that the URLs follow the configured
+/// repository.
+pub fn resolve_download_url(file_url: &str, url: &str, files: Option<&str>) -> String {
     if url.is_empty() || reqwest::Url::parse(url).is_ok() {
         return url.to_string();
     }
     match reqwest::Url::parse(file_url).and_then(|base| base.join(url)) {
-        Ok(full) => p3m_download_url(&full).unwrap_or_else(|| full.to_string()),
+        Ok(full) => p3m_download_url(&full, files).unwrap_or_else(|| full.to_string()),
         Err(_) => url.to_string(),
     }
 }
@@ -383,38 +415,44 @@ pub fn resolve_download_url(file_url: &str, url: &str) -> String {
 /// The download URL of a package file of the P3M feeds at
 /// `https://ppm.r-pkg.org` and `https://ppm-bioc.r-pkg.org`, from its URL
 /// resolved against the metadata. These hosts only serve the metadata, the
-/// files are on `p3m.dev`:
+/// files are in the repository `files`, or on `p3m.dev` if it is `None`:
 ///
-/// * `https://ppm.r-pkg.org/v1/<path>` is
+/// * `https://ppm.r-pkg.org/v1/<path>` is `<files>/<path>`, by default
 ///   `https://p3m.dev/cran/<path>`, e.g. `<path>` is
 ///   `2026-04-10/src/contrib/cli_3.6.6.tar.gz`.
 /// * `https://ppm-bioc.r-pkg.org/v1/<bioc-version>/<path>` is
-///   `https://p3m.dev/bioconductor/<path>`, e.g. `<path>` is
+///   `<files>/<path>`, by default `https://p3m.dev/bioconductor/<path>`,
+///   e.g. `<path>` is
 ///   `2025-04-17/packages/3.22/bioc/src/contrib/limma_3.65.0.tar.gz`.
 ///
 /// Any other path on these hosts is the same path on `p3m.dev`. `None` for
 /// other hosts.
-fn p3m_download_url(url: &reqwest::Url) -> Option<String> {
+fn p3m_download_url(url: &reqwest::Url, files: Option<&str>) -> Option<String> {
     if url.scheme() != "https" {
         return None;
     }
     let path = url.path();
-    let rest = match url.host_str()? {
+    let repo = |default: &str| {
+        files
+            .map(|f| f.trim_end_matches('/').to_string())
+            .unwrap_or_else(|| format!("{}/{}", P3M_DOWNLOAD_URL, default))
+    };
+    let full = match url.host_str()? {
         "ppm.r-pkg.org" => match path.strip_prefix("/v1/") {
-            Some(rest) => format!("/cran/{}", rest),
-            None => path.to_string(),
+            Some(rest) => format!("{}/{}", repo("cran"), rest),
+            None => format!("{}{}", P3M_DOWNLOAD_URL, path),
         },
         "ppm-bioc.r-pkg.org" => match path
             .strip_prefix("/v1/")
             .and_then(|rest| rest.split_once('/'))
         {
-            Some((_version, rest)) => format!("/bioconductor/{}", rest),
-            None => path.to_string(),
+            Some((_version, rest)) => format!("{}/{}", repo("bioconductor"), rest),
+            None => format!("{}{}", P3M_DOWNLOAD_URL, path),
         },
         _ => return None,
     };
     let query = url.query().map(|q| format!("?{}", q)).unwrap_or_default();
-    Some(format!("{}{}{}", P3M_DOWNLOAD_URL, rest, query))
+    Some(format!("{}{}", full, query))
 }
 
 /// Whether and which Bioconductor release a solve uses, besides CRAN.
@@ -509,7 +547,8 @@ mod tests {
         assert_eq!(
             resolve_download_url(
                 &feed.allpackages_url,
-                "2025-08-30/src/contrib/otel_0.2.0.tar.gz"
+                "2025-08-30/src/contrib/otel_0.2.0.tar.gz",
+                None
             ),
             "http://localhost:4242/cran/2025-08-30/src/contrib/otel_0.2.0.tar.gz"
         );
@@ -521,33 +560,35 @@ mod tests {
         assert_eq!(
             resolve_download_url(
                 &feed.allpackages_url,
-                "https://p3m.dev/cran/2020-01-01/src/contrib/a_1.0.tar.gz"
+                "https://p3m.dev/cran/2020-01-01/src/contrib/a_1.0.tar.gz",
+                None
             ),
             "https://p3m.dev/cran/2020-01-01/src/contrib/a_1.0.tar.gz"
         );
         assert_eq!(
-            resolve_download_url(&feed.allpackages_url, "src/contrib/a_1.0.tar.gz"),
+            resolve_download_url(&feed.allpackages_url, "src/contrib/a_1.0.tar.gz", None),
             "https://example.com/meta/src/contrib/a_1.0.tar.gz"
         );
         assert_eq!(
-            resolve_download_url(&feed.allpackages_url, "../cran/a_1.0.tar.gz"),
+            resolve_download_url(&feed.allpackages_url, "../cran/a_1.0.tar.gz", None),
             "https://example.com/cran/a_1.0.tar.gz"
         );
         assert_eq!(
             resolve_download_url(
                 &feed.allpackages_url,
-                "/cran/2020-01-01/src/contrib/a_1.0.tar.gz"
+                "/cran/2020-01-01/src/contrib/a_1.0.tar.gz",
+                None
             ),
             "https://example.com/cran/2020-01-01/src/contrib/a_1.0.tar.gz"
         );
-        assert_eq!(resolve_download_url(&feed.allpackages_url, ""), "");
+        assert_eq!(resolve_download_url(&feed.allpackages_url, "", None), "");
     }
 
     #[test]
     fn binary_index_urls_resolve_against_the_index() {
         let index = "https://example.com/meta/v1/binaries/cli.tsv.zst";
         assert_eq!(
-            resolve_download_url(index, "../2017-11-07/src/contrib/cli_1.0.0.tar.gz"),
+            resolve_download_url(index, "../2017-11-07/src/contrib/cli_1.0.0.tar.gz", None),
             "https://example.com/meta/v1/2017-11-07/src/contrib/cli_1.0.0.tar.gz"
         );
     }
@@ -559,14 +600,16 @@ mod tests {
         assert_eq!(
             resolve_download_url(
                 &cran.allpackages_url,
-                "2026-04-10/src/contrib/cli_3.6.6.tar.gz"
+                "2026-04-10/src/contrib/cli_3.6.6.tar.gz",
+                None
             ),
             "https://p3m.dev/cran/2026-04-10/src/contrib/cli_3.6.6.tar.gz"
         );
         assert_eq!(
             resolve_download_url(
                 &format!("{}/cli.tsv.zst", cran.binaries_url),
-                "../2026-04-27/bin/macosx/big-sur-arm64/contrib/4.5/pak_0.9.5.tgz"
+                "../2026-04-27/bin/macosx/big-sur-arm64/contrib/4.5/pak_0.9.5.tgz",
+                None
             ),
             "https://p3m.dev/cran/2026-04-27/bin/macosx/big-sur-arm64/contrib/4.5/pak_0.9.5.tgz"
         );
@@ -576,23 +619,54 @@ mod tests {
         );
         let path = "2025-04-17/packages/3.22/bioc/src/contrib/limma_3.65.0.tar.gz";
         let want = format!("https://p3m.dev/bioconductor/{}", path);
-        assert_eq!(resolve_download_url(&bioc.allpackages_url, path), want);
+        assert_eq!(
+            resolve_download_url(&bioc.allpackages_url, path, None),
+            want
+        );
         assert_eq!(
             resolve_download_url(
                 &format!("{}/limma.tsv.zst", bioc.binaries_url),
-                &format!("../{}", path)
+                &format!("../{}", path),
+                None
             ),
             want
         );
         // An absolute path keeps its path, on p3m.dev.
         assert_eq!(
-            resolve_download_url(&cran.allpackages_url, "/cran/2026-04-10/x.tar.gz"),
+            resolve_download_url(&cran.allpackages_url, "/cran/2026-04-10/x.tar.gz", None),
             "https://p3m.dev/cran/2026-04-10/x.tar.gz"
         );
         // Full URLs are kept as they are.
         assert_eq!(
-            resolve_download_url(&cran.allpackages_url, "https://ppm.r-pkg.org/v1/x.tar.gz"),
+            resolve_download_url(
+                &cran.allpackages_url,
+                "https://ppm.r-pkg.org/v1/x.tar.gz",
+                None
+            ),
             "https://ppm.r-pkg.org/v1/x.tar.gz"
+        );
+        // A private Package Manager repository serves the same paths.
+        let acme = Some("https://ppm.acme.com/cran");
+        assert_eq!(
+            resolve_download_url(
+                &cran.allpackages_url,
+                "2026-04-10/src/contrib/cli_3.6.6.tar.gz",
+                acme
+            ),
+            "https://ppm.acme.com/cran/2026-04-10/src/contrib/cli_3.6.6.tar.gz"
+        );
+        assert_eq!(
+            resolve_download_url(
+                &format!("{}/limma.tsv.zst", bioc.binaries_url),
+                &format!("../{}", path),
+                Some("https://ppm.acme.com/bioc-mirror/")
+            ),
+            format!("https://ppm.acme.com/bioc-mirror/{}", path)
+        );
+        // Full URLs are kept, whatever the repository.
+        assert_eq!(
+            resolve_download_url(&cran.allpackages_url, "https://example.com/x.tar.gz", acme),
+            "https://example.com/x.tar.gz"
         );
     }
 

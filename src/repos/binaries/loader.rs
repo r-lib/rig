@@ -15,7 +15,7 @@ use log::*;
 use crate::dcf::RPackageVersion;
 use crate::platform::platform_to_pkg_type;
 use crate::repos::binaries::{
-    load_binary_index_in, prefetch_binary_indices_in, BinaryIndex, PpmStatus,
+    load_binary_index_in, prefetch_binary_indices_in, resolve_index_url, BinaryIndex, PpmStatus,
 };
 use crate::repos::cranlike_metadata::{
     cranlike_index_rows, cranlike_key, ensure_cranlike_index, feed_package_names, minor_r_version,
@@ -129,6 +129,10 @@ impl BinaryIndexLoader for P3mBinaryLoader {
             let mut artifacts = artifacts_for_target(&cached.index, &self.target);
             for bin in &mut artifacts.binaries {
                 bin.repository = Some(feed.repo.clone());
+                bin.url = resolve_index_url(feed, package, &bin.url);
+            }
+            for url in artifacts.source_urls.values_mut() {
+                *url = resolve_index_url(feed, package, url);
             }
             out.merge(artifacts);
         }
