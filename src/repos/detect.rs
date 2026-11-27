@@ -544,11 +544,20 @@ pub struct PpmApi {
 }
 
 /// The type of a live (not snapshot) PPM R repository, from its sources, and
-/// whether it is a guess, because the sources are not known.
-fn ppm_repo_type(name: &str, is_bioc: bool, sources: Option<&Vec<i64>>) -> (RepoType, bool) {
+/// whether it is a guess, because the sources are not known. A repository
+/// with a CRAN source and other sources, e.g. GitHub, is a CRAN repository
+/// if it serves its own extended metadata (`own_metadata`): that has every
+/// package of the repository, and replaces CRAN's metadata.
+fn ppm_repo_type(
+    name: &str,
+    is_bioc: bool,
+    sources: Option<&Vec<i64>>,
+    own_metadata: bool,
+) -> (RepoType, bool) {
     match sources {
         // A Bioconductor repository has one source per Bioconductor release.
         Some(src) if all_of(src, PPM_SOURCE_CRAN) => (RepoType::PpmCran, false),
+        Some(src) if own_metadata && src.contains(&PPM_SOURCE_CRAN) => (RepoType::PpmCran, false),
         Some(src) if all_of(src, PPM_SOURCE_BIOC) => (RepoType::PpmBioc, false),
         Some(_) => (RepoType::PpmOther, false),
         None if is_bioc => (RepoType::PpmBioc, true),
@@ -564,7 +573,12 @@ fn ppm_repo_list(base: &str, repos: &[PpmRepo], api: &PpmApi) -> Vec<PpmRepoInfo
         .iter()
         .filter(|r| r.is_r())
         .map(|r| {
-            let (repo_type, guessed) = ppm_repo_type(&r.name, r.is_bioc(), api.sources.get(&r.id));
+            let (repo_type, guessed) = ppm_repo_type(
+                &r.name,
+                r.is_bioc(),
+                api.sources.get(&r.id),
+                api.own_metadata.contains(&r.name),
+            );
             let (extensible, metadata) = ppm_extension_of(base, &r.name, repo_type, api);
             PpmRepoInfo {
                 name: r.name.clone(),
@@ -652,7 +666,7 @@ fn classify_ppm(url: &str, api: &PpmApi) -> Result<DetectedRepo, Box<dyn Error>>
     }
 
     let sources = repo.and_then(|r| api.sources.get(&r.id));
-    let (rtype, guessed) = ppm_repo_type(name, is_bioc, sources);
+    let (rtype, guessed) = ppm_repo_type(name, is_bioc, sources, api.own_metadata.contains(name));
     let mut d = mk(rtype);
     if rtype == RepoType::PpmCran {
         (d.extensible, d.metadata) = ppm_extension_of(&base, name, rtype, api);
@@ -1154,10 +1168,19 @@ mod tests {
         assert!(d.extensible);
         assert_eq!(d.metadata.as_deref(), Some("https://p3m.dev/cran"));
 
-        // Only a CRAN repository uses its own metadata, for now.
-        let mut other = p3m_api(Some(vec![PPM_SOURCE_CRAN, 3]));
+        // A repository with CRAN and other sources, with its own metadata,
+        // is a CRAN repository, with that metadata.
+        let mut other = p3m_api(Some(vec![3, PPM_SOURCE_CRAN]));
         other.own_metadata.insert("all".to_string());
         let d = classify_ppm("https://p3m.dev/all/latest", &other).unwrap();
+        assert_eq!(d.repo_type, RepoType::PpmCran);
+        assert!(d.extensible);
+        assert_eq!(d.metadata.as_deref(), Some("https://p3m.dev/all"));
+
+        // But not without a CRAN source.
+        let mut git = p3m_api(Some(vec![3]));
+        git.own_metadata.insert("all".to_string());
+        let d = classify_ppm("https://p3m.dev/all/latest", &git).unwrap();
         assert_eq!(d.repo_type, RepoType::PpmOther);
         assert_eq!(d.metadata, None);
 
@@ -1235,6 +1258,7 @@ mod tests {
         ]);
         let d = classify_ppm("https://p3m.dev", &api).unwrap();
         assert_eq!(d.repo_type, RepoType::Ppm);
+        // Without its own metadata, a mixed repository stays `ppm-other`.
         assert!(!d.guessed);
         assert!(d.extensible);
         // `pypi` is left out.

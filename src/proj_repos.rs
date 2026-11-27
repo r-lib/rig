@@ -374,10 +374,20 @@ impl ProjRepos {
     /// is not.
     pub fn locked_repository_fits(&self, package: &str, locked: Option<&str>) -> bool {
         let is = |repo: &Repository| -> bool {
-            self.repo_ids(repo, Some(ANY_BIOC_VERSION))
+            self.repos_of(repo, Some(ANY_BIOC_VERSION))
                 .iter()
-                .any(|id| match id {
-                    RepoId::Cran => locked.is_none(),
+                .any(|r| match r.repo_id() {
+                    // A CRAN feed of a configured repository also has the
+                    // versions that do not come from CRAN, recorded under
+                    // the name of the repository, see
+                    // `RPackageRegistry::lock_repository`.
+                    RepoId::Cran => {
+                        let name = match r {
+                            PkgRepo::Extended(feed) => feed.name.as_deref(),
+                            PkgRepo::Cranlike(_) => None,
+                        };
+                        locked.is_none() || (name.is_some() && locked == name)
+                    }
                     RepoId::Bioc(_) => locked.is_some_and(|l| l.starts_with("bioc/")),
                     RepoId::Cranlike { name, .. } => locked == Some(name.as_str()),
                 })
@@ -528,6 +538,32 @@ mod tests {
             repos.lock_repositories()[0].repo_type,
             Some(RepoType::RUniverse)
         );
+    }
+
+    #[test]
+    fn a_mixed_ppm_repository_locks_its_non_cran_packages() {
+        let url = "http://localhost:4242/all/latest";
+        let mut repos = ProjRepos::new(&[Repository::at_url("ppm", url)], BTreeMap::new());
+        let mut d = describe(url, RepoType::PpmCran);
+        d.metadata = Some("http://localhost:4242/all".to_string());
+        repos.set_type("ppm", d);
+        let mut pins = BTreeMap::new();
+        pins.insert("cli".to_string(), "ppm".to_string());
+        repos.set_pins(pins);
+
+        // The feed of the repository replaces CRAN's, and has its name.
+        let pkg = repos.pkg_repos(None);
+        let PkgRepo::Extended(feed) = &pkg[0] else {
+            panic!("not a feed: {:?}", pkg[0]);
+        };
+        assert_eq!(feed.repo, RepoId::Cran);
+        assert_eq!(feed.name.as_deref(), Some("ppm"));
+
+        // A CRAN package of it has no repository in the lock file, a GitHub
+        // package has the name of the repository.
+        assert!(repos.locked_repository_fits("cli", None));
+        assert!(repos.locked_repository_fits("cli", Some("ppm")));
+        assert!(!repos.locked_repository_fits("cli", Some("acme")));
     }
 
     #[test]

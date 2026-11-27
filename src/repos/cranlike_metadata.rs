@@ -644,6 +644,7 @@ impl PackageVersionLoader for DbSourcePackageLoader {
             built: Option<String>,
             os_type: Option<String>,
             policy: Option<VersionPolicy>,
+            ppm_source: Option<String>,
             repo: RepoId,
             rank: usize,
         }
@@ -658,8 +659,8 @@ impl PackageVersionLoader for DbSourcePackageLoader {
         let mut hidden_blocked: Vec<(String, String)> = vec![];
         let mut stmt = self.conn.prepare_cached(
             "SELECT version, dependencies, sha256sum, repo_id, download_url, \
-             system_requirements, built, os_type, policy, snapshot FROM packages \
-             WHERE name = ?1",
+             system_requirements, built, os_type, policy, snapshot, ppm_source \
+             FROM packages WHERE name = ?1",
         )?;
         let rows = stmt.query_map(params![package], |row| {
             Ok((
@@ -673,6 +674,7 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                 row.get::<_, Option<String>>(7)?,
                 row.get::<_, Option<String>>(8)?,
                 row.get::<_, Option<String>>(9)?,
+                row.get::<_, Option<String>>(10)?,
             ))
         })?;
         for row in rows {
@@ -687,6 +689,7 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                 os_type,
                 policy,
                 snapshot,
+                ppm_source,
             ) = row?;
             let Some((rank, repo)) = self.repo_of(repo_id) else {
                 continue; // row from a repo we do not source from
@@ -725,6 +728,7 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                     built: built.filter(|_| repo.is_cranlike()),
                     os_type,
                     policy,
+                    ppm_source,
                     repo: repo.clone(),
                     rank,
                 },
@@ -746,6 +750,7 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                 .or_else(|| sysreqs_any.get(&ver).cloned());
             pkg.os_type = row.os_type;
             pkg.policy = row.policy;
+            pkg.ppm_source = row.ppm_source;
             pkg.repository = Some(row.repo);
             out.push(pkg);
         }
@@ -1887,6 +1892,7 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
             os_type: normalize_os_type(&os_type),
             // Only a repository's extended metadata has these.
             policy: None,
+            ppm_source: None,
         };
         packages.push(pkg);
     }
@@ -1952,6 +1958,7 @@ fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
             os_type TEXT,
             policy TEXT,
             snapshot TEXT,
+            ppm_source TEXT,
             FOREIGN KEY (repo_id) REFERENCES repos(id)
         )",
         [],
@@ -1959,12 +1966,18 @@ fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
 
     // Databases created before rig stored `SystemRequirements`, `OS_type`,
     // the repository policy fields (`Blocked`, `Vulnerabilities`, etc.,
-    // as JSON, see [`crate::repos::policy::VersionPolicy`]) or the
-    // ALLPACKAGES `Snapshot` field lack the column. Their rows have no value for it, so after adding it,
+    // as JSON, see [`crate::repos::policy::VersionPolicy`]), the
+    // ALLPACKAGES `Snapshot` field or `PPMSource` lack the column. Their rows have no value for it, so after adding it,
     // forget every repo's cache state: the next lookup then downloads and
     // parses each feed again, in full, instead of a trailing-only refresh
     // that would only fill in the new rows.
-    for column in ["system_requirements", "os_type", "policy", "snapshot"] {
+    for column in [
+        "system_requirements",
+        "os_type",
+        "policy",
+        "snapshot",
+        "ppm_source",
+    ] {
         match conn.execute(
             &format!("ALTER TABLE packages ADD COLUMN {} TEXT", column),
             [],
@@ -2124,9 +2137,9 @@ fn save_packages_to_db(
         "INSERT INTO packages
          (name, version, dependencies, download_url, file, path, built,
           license, platform, arch, graphics_api_version, internals_id, filesize,
-          sha256sum, repo_id, system_requirements, os_type, policy, snapshot)
+          sha256sum, repo_id, system_requirements, os_type, policy, snapshot, ppm_source)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18,
-                 ?19)",
+                 ?19, ?20)",
     )?;
 
     for pkg in packages {
@@ -2160,6 +2173,7 @@ fn save_packages_to_db(
             &pkg.os_type,
             policy_json,
             &pkg.snapshot,
+            &pkg.ppm_source,
         ])?;
     }
 
@@ -2548,6 +2562,49 @@ DownloadURL: 2019-12-11/src/contrib/cli_2.0.1.tar.gz
                 None,
             ]
         );
+    }
+
+    #[test]
+    fn loader_keeps_ppm_source() {
+        let url = "https://example.com/all/ALLPACKAGES.zst";
+        let mut db = std::env::temp_dir();
+        db.push(format!("rig-test-ppm-source-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&db);
+        ensure_db_schema(&db).unwrap();
+        store_feed(
+            &db,
+            url,
+            "\
+Package: cli
+Version: 3.6.6
+PPMSource: cran::cran
+
+Package: cli
+Version: 3.6.6.9000
+PPMSource: git::github
+
+Package: cli
+Version: 3.6.5
+",
+        );
+
+        let loader =
+            DbSourcePackageLoader::from_conn(open_db(&db).unwrap(), &[(url, RepoId::Cran)]);
+        let mut versions: Vec<Package> = loader.load_versions("cli").unwrap();
+        versions.sort_by(|a, b| a.version.cmp(&b.version));
+        let sources: Vec<(String, Option<String>)> = versions
+            .iter()
+            .map(|p| (p.version.to_string(), p.ppm_source.clone()))
+            .collect();
+        assert_eq!(
+            sources,
+            vec![
+                ("3.6.5".to_string(), None),
+                ("3.6.6".to_string(), Some("cran::cran".to_string())),
+                ("3.6.6.9000".to_string(), Some("git::github".to_string())),
+            ]
+        );
+        let _ = std::fs::remove_file(&db);
     }
 
     #[test]

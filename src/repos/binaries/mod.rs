@@ -80,7 +80,7 @@ use crate::download::{
     ConditionalFetch,
 };
 use crate::output::OUTPUT;
-use crate::repos::feed::{MetadataFeed, RepoId};
+use crate::repos::feed::{resolve_download_url, MetadataFeed, RepoId};
 
 /// How long a cached index or status document is used without asking the
 /// server, matching the default in `crate::download`.
@@ -178,18 +178,27 @@ pub fn binary_index_url_in(feed: &MetadataFeed, package: &str) -> String {
 /// The cache directory of `feed`'s binary indices: CRAN's are in
 /// `<cache>/metadata/binaries`, a Bioconductor release's in a subdirectory
 /// of it, e.g. `bioc-3.22`, because the same package name may have an index
-/// in both.
+/// in both. Another CRAN feed, e.g. the own metadata of a PPM repository,
+/// has a subdirectory of its own, because its indices differ from P3M's.
 fn binary_index_dir(feed: &MetadataFeed) -> Result<PathBuf, Box<dyn Error>> {
     let dir = get_cache_dir()?.join("metadata").join("binaries");
-    Ok(match &feed.repo {
-        RepoId::Cran => dir,
+    Ok(binary_index_subdir(dir, feed))
+}
+
+fn binary_index_subdir(dir: PathBuf, feed: &MetadataFeed) -> PathBuf {
+    match &feed.repo {
+        RepoId::Cran if feed.allpackages_url == MetadataFeed::cran().allpackages_url => dir,
+        RepoId::Cran => dir.join(format!(
+            "cran-{}",
+            crate::utils::calculate_hash(&feed.allpackages_url)
+        )),
         RepoId::Bioc(v) => dir.join(format!("bioc-{}", v)),
         // A CRAN-like repository has no per-package binary indices, its
         // binaries are in its `PACKAGES` files instead.
         RepoId::Cranlike { url, .. } => {
             dir.join(format!("cranlike-{}", crate::utils::calculate_hash(url)))
         }
-    })
+    }
 }
 
 /// Reject anything that is not a plain R package name.
@@ -441,10 +450,11 @@ fn store_index(
     etag: Option<String>,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut rows = parse_binaries_tsv(tsv)?;
-    // The blob holds full URLs, relative ones are relative to the index.
+    // The blob holds full URLs, relative ones are relative to the index,
+    // e.g. `../2026-11-21+.../src/contrib/cli_3.6.6.tar.gz` from PPM.
     let index_url = binary_index_url_in(feed, package);
     for row in rows.iter_mut() {
-        row.url = crate::repos::feed::resolve_download_url(&index_url, &row.url);
+        row.url = resolve_download_url(&index_url, &row.url);
     }
     let built = blob::build(package, &rows)?;
     debug!(
@@ -1457,6 +1467,40 @@ impl PpmStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn binary_index_urls_are_relative_to_the_index() {
+        let feed = MetadataFeed::at(RepoId::Cran, "http://localhost:4242/all");
+        let index = binary_index_url_in(&feed, "cli");
+        assert_eq!(index, "http://localhost:4242/all/binaries/cli.tsv.zst");
+        assert_eq!(
+            resolve_download_url(&index, "../2026-11-21+abc/src/contrib/cli_3.6.6.tar.gz"),
+            "http://localhost:4242/all/2026-11-21+abc/src/contrib/cli_3.6.6.tar.gz"
+        );
+        assert_eq!(
+            resolve_download_url(&index, "https://p3m.dev/cran/x.tgz"),
+            "https://p3m.dev/cran/x.tgz"
+        );
+    }
+
+    #[test]
+    fn cran_feeds_have_separate_index_dirs() {
+        let dir = PathBuf::from("binaries");
+        let p3m = MetadataFeed::cran();
+        assert_eq!(binary_index_subdir(dir.clone(), &p3m), dir);
+
+        let all = MetadataFeed::at(RepoId::Cran, "http://localhost:4242/all");
+        let cran = MetadataFeed::at(RepoId::Cran, "http://localhost:4242/cran");
+        let all_dir = binary_index_subdir(dir.clone(), &all);
+        let cran_dir = binary_index_subdir(dir.clone(), &cran);
+        assert_ne!(all_dir, dir);
+        assert_ne!(all_dir, cran_dir);
+        assert!(all_dir
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("cran-"));
+    }
 
     fn fixture(name: &str) -> Vec<u8> {
         fs::read(PathBuf::from("tests/fixtures/binaries").join(name)).unwrap()

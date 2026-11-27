@@ -262,6 +262,7 @@ expression: packages
         system_requirements: None,
         os_type: None,
         policy: None,
+        ppm_source: None,
     },
     Package {
         name: "dplyr",
@@ -684,6 +685,7 @@ expression: packages
         system_requirements: None,
         os_type: None,
         policy: None,
+        ppm_source: None,
     },
     Package {
         name: "rlang",
@@ -924,5 +926,6 @@ expression: packages
         system_requirements: None,
         os_type: None,
         policy: None,
+        ppm_source: None,
     },
 ]

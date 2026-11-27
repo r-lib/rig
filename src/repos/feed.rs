@@ -210,11 +210,14 @@ pub struct MetadataFeed {
     /// without a trailing `/`. Source packages are downloaded from here
     /// first, see [`MetadataFeed::with_mirror`].
     pub mirror: Option<String>,
+    /// The name of the configured repository of the feed, if it is not one
+    /// of the built-in feeds, see [`MetadataFeed::with_name`].
+    pub name: Option<String>,
 }
 
-/// The mirror is not part of a feed's identity: two feeds with the same
-/// metadata are the same repository, wherever their files are downloaded
-/// from.
+/// The mirror and the name are not part of a feed's identity: two feeds with
+/// the same metadata are the same repository, wherever their files are
+/// downloaded from.
 impl PartialEq for MetadataFeed {
     fn eq(&self, other: &MetadataFeed) -> bool {
         self.repo == other.repo
@@ -249,6 +252,7 @@ impl MetadataFeed {
             .trim_end_matches('/')
             .to_string(),
             mirror: None,
+            name: None,
         }
     }
 
@@ -256,6 +260,17 @@ impl MetadataFeed {
     pub fn with_mirror(self, mirror: &str) -> MetadataFeed {
         MetadataFeed {
             mirror: Some(mirror.trim_end_matches('/').to_string()),
+            ..self
+        }
+    }
+
+    /// This feed, of the configured repository `name`. The lock file names
+    /// this repository for the versions of a CRAN feed that do not come from
+    /// CRAN, e.g. the GitHub packages of a PPM repository that has both, see
+    /// [`crate::dcf::is_cran_source`].
+    pub fn with_name(self, name: &str) -> MetadataFeed {
+        MetadataFeed {
+            name: Some(name.to_string()),
             ..self
         }
     }
@@ -302,6 +317,7 @@ impl MetadataFeed {
             archived_url: format!("{}/ARCHIVEDPACKAGES.zst", base),
             binaries_url: format!("{}/binaries", base),
             mirror: None,
+            name: None,
         }
     }
 

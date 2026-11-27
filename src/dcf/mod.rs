@@ -454,6 +454,16 @@ pub struct Package {
     // vulnerabilities, from a repository's extended metadata. `None` if
     // there is nothing to say.
     pub policy: Option<crate::repos::policy::VersionPolicy>,
+    // the `PPMSource` field of a Posit Package Manager feed: the source of
+    // this version, as `<source-type>::<source-name>`, e.g. `cran::cran` or
+    // `git::github`. `None` if the repository does not say.
+    pub ppm_source: Option<String>,
+}
+
+/// Whether a version with the `PPMSource` field `ppm_source` comes from
+/// CRAN: if its source is a CRAN source, or the repository does not say.
+pub fn is_cran_source(ppm_source: Option<&str>) -> bool {
+    ppm_source.is_none_or(|s| s.starts_with("cran::"))
 }
 
 /// The two operating system families of the `OS_type` field of a package:
@@ -556,6 +566,7 @@ impl Package {
             system_requirements: None,
             os_type: None,
             policy: None,
+            ppm_source: None,
         }
     }
 
@@ -593,6 +604,10 @@ impl Package {
             .and_then(normalize_system_requirements);
         let os_type = pkg.get("OS_type").and_then(normalize_os_type);
         let policy = crate::repos::policy::VersionPolicy::from_fields(|name| pkg.get(name));
+        let ppm_source = pkg
+            .get("PPMSource")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
 
         Ok(Package {
             name,
@@ -615,6 +630,7 @@ impl Package {
             system_requirements,
             os_type,
             policy,
+            ppm_source,
         })
     }
 }
@@ -623,6 +639,29 @@ impl Package {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cran_source() {
+        assert!(is_cran_source(None));
+        assert!(is_cran_source(Some("cran::cran")));
+        assert!(is_cran_source(Some("cran::my-cran")));
+        assert!(!is_cran_source(Some("git::github")));
+        assert!(!is_cran_source(Some("curated-cran::curated-cran")));
+        assert!(!is_cran_source(Some("local::internal")));
+    }
+
+    #[test]
+    fn parse_ppm_source() {
+        let dcf = "Package: cli\nVersion: 3.6.6\nPPMSource: git::github\n";
+        let para = parse_dcf(dcf).unwrap().into_iter().next().unwrap();
+        let pkg = Package::from_dcf_paragraph(&para).unwrap();
+        assert_eq!(pkg.ppm_source.as_deref(), Some("git::github"));
+
+        let dcf = "Package: cli\nVersion: 3.6.6\n";
+        let para = parse_dcf(dcf).unwrap().into_iter().next().unwrap();
+        let pkg = Package::from_dcf_paragraph(&para).unwrap();
+        assert_eq!(pkg.ppm_source, None);
+    }
 
     /// A `DESCRIPTION` with CRLF line endings, as git checks it out on Windows
     /// by default, parses like the same file with LF line endings.

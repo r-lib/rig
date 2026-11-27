@@ -96,7 +96,10 @@ type = "cran"
   <https://ppm.r-pkg.org/v1>. It also says which versions the repository blocks,
   and their known vulnerabilities. rig never locks a blocked version, and it
   warns about a version with known vulnerabilities, see
-  [`rig audit`](audit.qmd).
+  [`rig audit`](audit.qmd). A Posit Package Manager repository with CRAN
+  and other sources, e.g. GitHub, is a CRAN repository (`ppm-cran`) if it
+  serves its own package history. `rproj.lock` records the name of the
+  repository for its packages that do not come from CRAN.
 * An r-universe (`r-universe`). rig reads its `PACKAGES` files, and records
   the git commit of each package in `rproj.lock`, from the r-universe API.
   r-universe replaces the files of a package when its git repository
