@@ -28,6 +28,9 @@
   package file, `rig proj sync` builds the package from git at the locked
   commit.
 
+* New `rig config delete` command, to remove an entry from the rig
+  configuration file.
+
 ## Posit Package Manager
 
 * A Posit Package Manager repository that has CRAN and other sources, e.g.

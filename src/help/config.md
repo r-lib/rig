@@ -131,4 +131,6 @@ configuration file takes precedence over rig's built-in default.
 
 `rig config list` lists the entries that are currently in the configuration
 file, which is typically fewer than the entries above, because rig only
-writes an entry once you set it.
+writes an entry once you set it. `rig config delete` removes an entry from
+the configuration file, so rig uses its built-in default for it again,
+unless the corresponding environment variable is set.

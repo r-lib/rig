@@ -128,6 +128,7 @@ pub fn sc_config(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn
         Some(("list", s)) => sc_config_list(s, mainargs),
         Some(("get", s)) => sc_config_get(s, mainargs),
         Some(("set", s)) => sc_config_set(s),
+        Some(("delete", s)) => sc_config_delete(s),
         _ => Ok(()),
     }
 }
@@ -322,6 +323,13 @@ fn sc_config_set(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         serde_json::Value::String(value.to_string()),
     );
     save_raw_config(&map)
+}
+
+fn sc_config_delete(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let key = args.get_one::<String>("key").unwrap();
+    // Deleting a key that is not in the file is not an error, and does
+    // not create or rewrite the file.
+    set_global_config_json(key, None)
 }
 
 fn sc_config_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {

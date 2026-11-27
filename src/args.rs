@@ -1572,6 +1572,14 @@ pub fn rig_app() -> Command {
                             .help("key=value pair to set")
                             .required(true),
                     ),
+            )
+            .subcommand(
+                Command::new("delete")
+                    .aliases(["rm", "del", "remove"])
+                    .about(ABOUT_CONFIG_DELETE)
+                    .long_about(HELP_CONFIG_DELETE)
+                    .display_order(0)
+                    .arg(Arg::new("key").help("config key to delete").required(true)),
             );
         rig = rig.subcommand(cmd_config);
     }
