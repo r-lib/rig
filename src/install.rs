@@ -954,35 +954,28 @@ where
     // compiled artifacts (`.o`/`.so`, a generated `src/Makevars`, `config.log`,
     // ...) behind, we want to build directories from a copy -- a copy of the
     // tracked sources for a git checkout, and a regular copy for anything else
-    // (a local directory, or an extracted `url::` archive in the cache).
+    // (a local directory, or an extracted `url::` archive in the cache). The
+    // copy goes into this build's own temporary directory, so that concurrent
+    // builds of the same source never share it.
     //
     // A tarball/zip or an already-built binary is unaffected -- R (or rig's
     // own unpacker) already extracts those into a throwaway location.
     let remote_type = pkg.remote.get(REMOTE_TYPE_FIELD).map(String::as_str);
-    let is_local = remote_type == Some("local");
     let is_git = matches!(remote_type, Some("git") | Some("github"));
     let package_path_abs = if package_path_abs.is_dir() {
-        let staged = if is_local {
-            crate::cache::local_pkg_build_dir(&package_path_abs)?
-        } else {
-            run_dir.path().join(package_name)
-        };
+        let staged = run_dir.path().join(package_name);
         debug!(
             "Staging package {} from {} to {} for an out-of-tree build",
             package_name,
             package_path_abs.display(),
             staged.display()
         );
-        // Removing the old copy, running git and copying the files all block,
-        // so do them off the async runtime, like the build below.
+        // Running git and copying the files block, so do them off the async
+        // runtime, like the build below.
         let copied = {
             let src = package_path_abs.clone();
             let dst = staged.clone();
             tokio::task::spawn_blocking(move || -> Result<(), String> {
-                if dst.exists() {
-                    std::fs::remove_dir_all(&dst)
-                        .map_err(|err| format!("cannot remove {}: {}", dst.display(), err))?;
-                }
                 let copied = if is_git {
                     stage_tracked_source(&src, &dst)
                 } else {
@@ -2403,6 +2396,34 @@ cp "$pkg/DESCRIPTION" "$lib/foo/DESCRIPTION"
 echo "$pkg" > "$lib/foo/built-from"
 echo "$o" > "$lib/foo/had-object""#,
         )
+    }
+
+    /// Every build of a local directory gets a copy of its own, so that
+    /// concurrent builds of the same directory cannot get in each other's
+    /// way, and nothing of a build is left behind.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_local_source_directory_is_built_from_a_copy_of_its_own() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = tmp.path().join("source");
+        std::fs::create_dir_all(source.join("src")).unwrap();
+        std::fs::write(source.join("DESCRIPTION"), DESC).unwrap();
+        std::fs::write(source.join("src/foo.c"), "").unwrap();
+        let (pkg, lib) = dir_source_setup(tmp.path(), &source, "local");
+        let r = fake_r_building_a_directory(tmp.path());
+
+        let mut built_from = vec![];
+        for _ in 0..2 {
+            r_cmd_install::<fn(&str)>(&pkg, &lib, &r, None)
+                .await
+                .unwrap();
+            let from = std::fs::read_to_string(lib.join("foo/built-from")).unwrap();
+            assert!(!Path::new(from.trim()).exists());
+            built_from.push(from);
+        }
+
+        assert!(!source.join("src/foo.o").exists());
+        assert_ne!(built_from[0], built_from[1]);
     }
 
     /// An extracted `url::` archive in the cache is shared by every build of
