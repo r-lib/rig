@@ -244,11 +244,82 @@ struct SsoStatus {
     valid: Option<bool>,
 }
 
+/// The Package Manager instance in `PACKAGEMANAGER_ADDRESS`, and the token in
+/// `PACKAGEMANAGER_TOKEN`, if any.
+#[derive(Serialize)]
+struct PpmEnvStatus {
+    address: String,
+    token: Option<String>,
+    issuer: Option<String>,
+    subject: Option<String>,
+    issued_at: Option<String>,
+    expires_at: Option<String>,
+    expired: bool,
+    valid: Option<bool>,
+}
+
 #[derive(Serialize)]
 struct AuthStatus {
     netrc: Option<String>,
     repositories: Vec<RepoAuthStatus>,
+    ppm_env: Option<PpmEnvStatus>,
     ppm_sso: Vec<SsoStatus>,
+}
+
+/// Whether the `url` argument of `rig auth status`, if any, is about the
+/// Package Manager instance at `address`.
+fn url_matches_address(url: Option<&String>, address: &str) -> bool {
+    match url {
+        Some(u) => under(&strip_userinfo(u), address) || under(address, &strip_userinfo(u)),
+        None => true,
+    }
+}
+
+fn ppm_env_status(url: Option<&String>, connect: bool) -> Option<PpmEnvStatus> {
+    let address = ppm_sso::ppm_address()?;
+    if !url_matches_address(url, &address) {
+        return None;
+    }
+    let token = std::env::var("PACKAGEMANAGER_TOKEN")
+        .ok()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty());
+    let Some(token) = token else {
+        return Some(PpmEnvStatus {
+            address,
+            token: None,
+            issuer: None,
+            subject: None,
+            issued_at: None,
+            expires_at: None,
+            expired: false,
+            valid: None,
+        });
+    };
+    let claims = ppm_sso::jwt_claims(&token).unwrap_or_default();
+    let valid = if connect {
+        ppm_sso::can_authenticate(&address, &token).ok()
+    } else {
+        None
+    };
+    Some(PpmEnvStatus {
+        token: Some(mask(&token)),
+        issuer: claims.iss,
+        subject: claims.sub,
+        issued_at: fmt_time(claims.iat),
+        expires_at: fmt_time(claims.exp),
+        expired: ppm_sso::is_expired(&token),
+        valid,
+        address,
+    })
+}
+
+fn fmt_expires(expires_at: &Option<String>, expired: bool) -> String {
+    match (expires_at, expired) {
+        (Some(t), true) => format!("{} (expired)", t),
+        (Some(t), false) => t.clone(),
+        (None, _) => "-".to_string(),
+    }
 }
 
 pub(crate) fn mask(token: &str) -> String {
@@ -328,12 +399,7 @@ fn sc_auth_status(
         .unwrap_or_default();
     let mut ppm_sso: Vec<SsoStatus> = ppm_sso::read_connections()
         .into_iter()
-        .filter(|c| match args.get_one::<String>("url") {
-            Some(u) => {
-                under(&strip_userinfo(u), &c.address) || under(&c.address, &strip_userinfo(u))
-            }
-            None => true,
-        })
+        .filter(|c| url_matches_address(args.get_one::<String>("url"), &c.address))
         .map(|c| {
             let claims = ppm_sso::jwt_claims(&c.token).unwrap_or_default();
             let valid = if connect {
@@ -361,6 +427,7 @@ fn sc_auth_status(
             .filter(|p| p.exists())
             .map(|p| p.display().to_string()),
         repositories,
+        ppm_env: ppm_env_status(args.get_one::<String>("url"), connect),
         ppm_sso,
     };
 
@@ -396,6 +463,35 @@ fn sc_auth_status(
     }
     print!("{}", tab);
 
+    let yesno_or_blank = |v: Option<bool>| v.map(|v| yesno(v).to_string()).unwrap_or_default();
+
+    if let Some(e) = &status.ppm_env {
+        println!();
+        println!("Package Manager (PACKAGEMANAGER_ADDRESS, PACKAGEMANAGER_TOKEN)");
+        let mut tab = Table::new("{:<}  {:<}  {:<}  {:<}  {:<}");
+        tab.add_row(
+            Row::new()
+                .with_cell("address")
+                .with_cell("token")
+                .with_cell("subject")
+                .with_cell("expires")
+                .with_cell(if connect && e.token.is_some() {
+                    "valid"
+                } else {
+                    ""
+                }),
+        );
+        tab.add_row(
+            Row::new()
+                .with_cell(&e.address)
+                .with_cell(e.token.as_deref().unwrap_or("none"))
+                .with_cell(e.subject.as_deref().unwrap_or("-"))
+                .with_cell(fmt_expires(&e.expires_at, e.expired))
+                .with_cell(yesno_or_blank(e.valid)),
+        );
+        print!("{}", tab);
+    }
+
     if !status.ppm_sso.is_empty() {
         println!();
         println!("PPM SSO tokens ({})", token_file);
@@ -409,22 +505,13 @@ fn sc_auth_status(
                 .with_cell(if connect { "valid" } else { "" }),
         );
         for s in &status.ppm_sso {
-            let expires = match (&s.expires_at, s.expired) {
-                (Some(t), true) => format!("{} (expired)", t),
-                (Some(t), false) => t.clone(),
-                (None, _) => "-".to_string(),
-            };
-            let valid = match s.valid {
-                Some(v) => yesno(v).to_string(),
-                None => "".to_string(),
-            };
             tab.add_row(
                 Row::new()
                     .with_cell(&s.address)
                     .with_cell(&s.token)
                     .with_cell(s.subject.as_deref().unwrap_or("-"))
-                    .with_cell(expires)
-                    .with_cell(valid),
+                    .with_cell(fmt_expires(&s.expires_at, s.expired))
+                    .with_cell(yesno_or_blank(s.valid)),
             );
         }
         print!("{}", tab);

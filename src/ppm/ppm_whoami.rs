@@ -124,6 +124,8 @@ pub fn sc_ppm_whoami(
     let color = crate::ppm::use_color();
     const W: usize = 14;
     print_field("server", &res.url, W, color);
+    // The fields of the user, to skip the same fields of the token below.
+    let mut printed: Vec<(String, String)> = vec![];
     match res.user.as_object() {
         Some(o) if !o.is_empty() => {
             for (k, v) in o {
@@ -132,10 +134,12 @@ pub fn sc_ppm_whoami(
                     other => other.to_string(),
                 };
                 print_field(k, &v, W, color);
+                printed.push((k.clone(), v));
             }
         }
         _ => print_field("user", "anonymous", W, color),
     }
+    let new_field = |k: &str, v: &str| !printed.iter().any(|(pk, pv)| pk == k && pv == v);
     match &res.token {
         None => print_field("token", "none (see `rig auth status`)", W, color),
         Some(t) => {
@@ -145,10 +149,10 @@ pub fn sc_ppm_whoami(
                 W,
                 color,
             );
-            if let Some(s) = &t.subject {
+            if let Some(s) = t.subject.as_deref().filter(|s| new_field("subject", s)) {
                 print_field("subject", s, W, color);
             }
-            if let Some(s) = &t.issuer {
+            if let Some(s) = t.issuer.as_deref().filter(|s| new_field("issuer", s)) {
                 print_field("issuer", s, W, color);
             }
             if !t.scopes.is_empty() {

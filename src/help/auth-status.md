@@ -9,12 +9,17 @@ it, and where. With a URL or a repository name, show only that.
 The `source` column tells where the credentials come from:
 
 * `url`: a password in the URL.
-* `env:RIG_REPO_<NAME>_PASSWORD`: an environment variable.
+* `env:RIG_REPO_<NAME>_PASSWORD`, `env:PACKAGEMANAGER_TOKEN`: an
+  environment variable.
 * `ppm-sso:<file>`: a PPM SSO token.
 * `netrc:<file>`: a netrc file.
 * `keyring:<backend>:<key>`: the system credential store.
 
 If rig found no credentials, this column says why, if it knows.
+
+If `PACKAGEMANAGER_ADDRESS` is set, rig then shows that Package Manager
+instance, and the token in `PACKAGEMANAGER_TOKEN`, if any, with its expiry
+time. rig uses this token for every repository of the instance.
 
 rig then lists the PPM SSO tokens, with their expiry times. With `--connect`,
 rig also asks each PPM instance whether it accepts the token.
