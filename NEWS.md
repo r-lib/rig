@@ -2,6 +2,13 @@
 
 ## New features
 
+* New `rig proj test` command to run the tests of a package or project
+  (testthat, tinytest, or plain `tests/*.R` files), and new `rig proj check` command to check a
+  package with `R CMD build` and `R CMD check`. They run in the project
+  environment, from the project directory, and also work for a package
+  with only a `DESCRIPTION` file. A project can replace them with its own
+  scripts, declared as `[[bin]]` entries named `test` and `check`.
+
 * New `rig proj scan` command: it finds the R packages that a project's
   code uses, in R scripts and in R Markdown, Quarto and Sweave documents.
   `--check` compares them with the dependencies in `rproj.toml` and exits

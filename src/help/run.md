@@ -171,6 +171,10 @@ like a path rather than a name are never script names: anything containing
 a slash or `::`, anything ending in `.R`, `.r`, `.Rmd` or `.qmd`, and `.` and `..`. Use
 `./name` to run an app in a directory whose name a script has taken.
 
+A script named `test` or `check` also replaces rig's own
+[`rig proj test`](proj.qmd#rig-proj-test) or
+[`rig proj check`](proj.qmd#rig-proj-check) task.
+
 ## Activation
 
 `rig run --activate` puts the selected R version's `bin` directory on `PATH` for
