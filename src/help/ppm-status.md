@@ -31,8 +31,8 @@ HTTP query.
 
 ## Which server
 
-`https://packagemanager.posit.co` by default, or the instance
-`PACKAGEMANAGER_ADDRESS` names. The report's first line shows the URL actually
+`https://p3m.dev` by default, or the instance `PACKAGEMANAGER_ADDRESS` or
+the `ppm-address` configuration entry names. The report's first line shows the URL actually
 used.
 
 ## Examples

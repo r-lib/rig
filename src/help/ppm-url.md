@@ -10,9 +10,10 @@ directly in a script:
 curl "$(rig ppm url)/__api__/repos"
 ```
 
-This is `https://packagemanager.posit.co` unless the `PACKAGEMANAGER_ADDRESS`
-environment variable is set, in which case it is that, with any trailing
-slash removed.
+This is `https://p3m.dev` unless the `PACKAGEMANAGER_ADDRESS` environment
+variable or the `ppm-address` configuration entry is set, in which case it
+is that, with any trailing slash removed. The environment variable takes
+precedence.
 
 ## Repository URLs
 

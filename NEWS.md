@@ -30,6 +30,16 @@
 
 ## Posit Package Manager
 
+* If `PACKAGEMANAGER_ADDRESS`, or the new `ppm-address` configuration entry,
+  names your own Posit Package Manager instance, then new R installations
+  use all R and Bioconductor repositories of that instance, and none of the
+  public repositories. On Linux rig uses the instance's binary URLs for your
+  distribution. `rig repos setup` switches installed R versions to it.
+  `PACKAGEMANAGER_ADDRESS` is now also kept when rig runs `sudo`.
+
+* rig now uses the shorter `https://p3m.dev` URL for the public P3M. It
+  still recognizes `https://packagemanager.posit.co` as the same instance.
+
 * A Posit Package Manager repository that has CRAN and other sources, e.g.
   CRAN and GitHub, now replaces CRAN if it serves its own package metadata,
   like a CRAN-only Package Manager repository does. rig reads the full

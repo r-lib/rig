@@ -119,6 +119,14 @@ configuration file takes precedence over rig's built-in default.
   downloads them at most once a day, and uses the copy built into rig if it
   cannot download them.
 
+- `ppm-address` (`PACKAGEMANAGER_ADDRESS`): the base URL of a Posit Package
+  Manager instance, e.g. `https://ppm.acme.com`. The [`rig ppm`](ppm.qmd) commands
+  query it, and new R installations use its repositories instead of the
+  public ones, see ["Your own Package Manager" in `rig repos
+  --help`](repos.qmd#rig-repos). Defaults to the public P3M,
+  `https://p3m.dev`. Unlike the environment variable, the configuration entry
+  also works when rig runs through `sudo`, or from the macOS menu bar app.
+
 - `positron-setup`: [user mode](../admin-vs-user-mode.qmd) only. Set it to `false` to stop rig from updating
   Positron's settings: adding its R installation root to
   `positron.r.customRootFolders`, and pointing

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::{get_global_config_json, set_global_config_json};
 use crate::hardcoded::*;
 
+use super::binaries::{ppm_is_public_instance, ppm_url};
 use super::detect::RepoType;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -15,7 +16,7 @@ pub enum Enabled {
     OnPlatforms { platforms: Vec<String> },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct RepoEntry {
     pub name: String,
     pub title: Option<String>,
@@ -36,6 +37,11 @@ pub struct RepoEntry {
     pub platforms: Option<Vec<String>>,
     pub archs: Option<Vec<String>>,
     pub rversions: Option<Vec<String>>,
+    /// Use this URL only for R versions whose Bioconductor version is one of
+    /// these. E.g. a curated Bioconductor repository of a Package Manager
+    /// serves only some Bioconductor versions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bioc_versions: Option<Vec<String>>,
     pub enabled: Option<Enabled>,
     /// Use this URL only if no other URL with the same `metadata` is set up,
     /// from any repository. E.g. P3M's source package URL is for the
@@ -103,6 +109,7 @@ impl CustomRepo {
                 platforms: None,
                 archs: None,
                 rversions: None,
+                bioc_versions: None,
                 enabled: None,
                 fallback: false,
             }],
@@ -114,7 +121,34 @@ impl CustomRepo {
 const CUSTOM_REPOS_KEY: &str = "repos";
 
 /// The built-in repositories, followed by the ones added with `rig repos add`.
+///
+/// If a private Package Manager instance is configured, with
+/// `PACKAGEMANAGER_ADDRESS` or the `ppm-address` config key, then the `PPM`
+/// group of its repositories comes first, and it is the only built-in group
+/// that is on by default, see [`super::instance`].
 pub fn get_repos_config() -> Result<Vec<Repository>, Box<dyn Error>> {
+    let mut config = vec![];
+    if ppm_is_public_instance() {
+        config.extend(HC_REPOS.iter().cloned());
+    } else {
+        let info = super::instance::load_instance_info()?;
+        config.push(super::instance::instance_group(&ppm_url(), &info));
+        config.extend(HC_REPOS.iter().cloned().map(|mut r| {
+            r.enabled = Enabled::Always(false);
+            for e in r.repos.iter_mut() {
+                e.enabled = None;
+            }
+            r
+        }));
+    }
+    config.extend(get_custom_repos()?.iter().map(|r| r.to_repository()));
+    Ok(config)
+}
+
+/// The built-in repositories and the custom ones, as they are without a
+/// private Package Manager instance. This is what an R installation set up
+/// before the instance was configured, by an older rig, was set up from.
+pub fn get_public_repos_config() -> Result<Vec<Repository>, Box<dyn Error>> {
     let mut config = HC_REPOS.to_vec();
     config.extend(get_custom_repos()?.iter().map(|r| r.to_repository()));
     Ok(config)

@@ -25,6 +25,7 @@ pub(crate) mod interpret_repos_args;
 mod repos_add;
 use repos_add::sc_repos_add;
 pub mod detect;
+pub mod instance;
 pub mod protocol;
 pub mod r_universe;
 pub mod repo_types;

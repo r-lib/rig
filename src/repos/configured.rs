@@ -38,6 +38,46 @@ impl ConfiguredRepos {
     }
 }
 
+/// Whether the enabled repositories of an installation include a repository
+/// of the Package Manager at `addr`.
+fn uses_instance(addr: &str, repos: &[RepoFileEntry]) -> bool {
+    let prefix = format!("{}/", addr.trim_end_matches('/'));
+    repos
+        .iter()
+        .any(|r| r.default && r.url.starts_with(&prefix))
+}
+
+/// Warn (once per run) if a private Package Manager is configured, but
+/// installation `rver` does not use it, typically because it was set up
+/// before `PACKAGEMANAGER_ADDRESS` or `ppm-address` was set. No warning if
+/// the `PPM` group was turned off for this installation on purpose.
+fn warn_if_instance_unused(rver: &str, repos: &[RepoFileEntry]) {
+    use crate::repos::binaries::{ppm_is_public_instance, ppm_url};
+    static WARNED: std::sync::Once = std::sync::Once::new();
+    if ppm_is_public_instance() {
+        return;
+    }
+    let addr = ppm_url();
+    if uses_instance(&addr, repos) {
+        return;
+    }
+    let disabled = crate::repos::state::get_setup_state(rver)
+        .ok()
+        .flatten()
+        .is_some_and(|s| s.excludes(crate::repos::instance::INSTANCE_GROUP));
+    if disabled {
+        return;
+    }
+    WARNED.call_once(|| {
+        crate::output::OUTPUT.warn(&format!(
+            "R {} does not use the Package Manager at {} (set by \
+             PACKAGEMANAGER_ADDRESS or the ppm-address config key). \
+             Run `rig repos setup --r-version {}` to switch to it.",
+            rver, addr, rver
+        ));
+    });
+}
+
 /// Read the repositories of an R installation.
 ///
 /// `r_version` is an installation name (or alias); `None` means the default
@@ -61,6 +101,7 @@ pub(crate) fn configured_repos(
         + &get_r_etc_path()?.replace("{}", &version_dir_key(&rver))
         + "/repositories";
     let mut repos = read_repositories_file(&repositories)?.data;
+    warn_if_instance_unused(&rver, &repos);
 
     if !all {
         repos.retain(|x| x.default);
@@ -102,4 +143,48 @@ pub(crate) fn resolve_bioc_vars(
         repo.url = repo.url.replace("%v", &biocver).replace("%bm", &biocmirror);
     }
     Ok(Some(ver))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(url: &str, default: bool) -> RepoFileEntry {
+        RepoFileEntry {
+            name: "x".to_string(),
+            description: String::new(),
+            url: url.to_string(),
+            default,
+            source: true,
+            win_binary: false,
+            mac_binary: false,
+        }
+    }
+
+    #[test]
+    fn instance_use_is_detected_from_enabled_urls() {
+        let addr = "https://ppm.acme.com";
+        assert!(uses_instance(
+            addr,
+            &[entry("https://ppm.acme.com/cran/latest", true)]
+        ));
+        assert!(uses_instance(
+            "https://ppm.acme.com/",
+            &[entry("https://ppm.acme.com/cran/latest", true)]
+        ));
+        // Only enabled entries count.
+        assert!(!uses_instance(
+            addr,
+            &[entry("https://ppm.acme.com/cran/latest", false)]
+        ));
+        assert!(!uses_instance(
+            addr,
+            &[entry("https://p3m.dev/cran/latest", true)]
+        ));
+        // Not a prefix of another host.
+        assert!(!uses_instance(
+            addr,
+            &[entry("https://ppm.acme.com.evil.org/cran/latest", true)]
+        ));
+    }
 }

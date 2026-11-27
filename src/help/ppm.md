@@ -10,10 +10,14 @@ publishing a package.
 
 ## PPM server
 
-By default rig reports on the public PPM instance at
-`https://packagemanager.posit.co`. Set the `PACKAGEMANAGER_ADDRESS` environment
-variable to the base URL of your own PPM instance to report on that
-instead. `rig ppm url` prints whichever one is in effect.
+By default rig reports on the public PPM instance at `https://p3m.dev`
+(also known as `https://packagemanager.posit.co`). Set the
+`PACKAGEMANAGER_ADDRESS` environment variable, or the `ppm-address`
+configuration entry, to the base URL of your own PPM instance to report on
+that instead. This also makes new R installations use the repositories of
+that instance, see ["Your own Package Manager" in `rig repos
+--help`](repos.qmd#rig-repos). `rig ppm url` prints whichever one is in
+effect.
 
 ## Authentication
 

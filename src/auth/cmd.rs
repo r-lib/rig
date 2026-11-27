@@ -28,7 +28,7 @@ fn target_url(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
         None => match ppm_sso::ppm_address() {
             Some(a) => a,
             None => bail!(
-                "No URL given, and PACKAGEMANAGER_ADDRESS is not set. Give the URL or name of a repository, or the URL of a Package Manager instance."
+                "No URL given, and neither PACKAGEMANAGER_ADDRESS nor the ppm-address config key is set. Give the URL or name of a repository, or the URL of a Package Manager instance."
             ),
         },
     };

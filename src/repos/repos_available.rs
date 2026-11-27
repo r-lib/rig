@@ -347,6 +347,7 @@ mod tests {
             platforms: None,
             archs: None,
             rversions: None,
+            bioc_versions: None,
             enabled: None,
             fallback: false,
         }

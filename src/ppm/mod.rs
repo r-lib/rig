@@ -30,7 +30,7 @@ mod ppm_downloads;
 mod ppm_packages;
 mod ppm_platforms;
 mod ppm_publish;
-mod ppm_repos;
+pub(crate) mod ppm_repos;
 mod ppm_status;
 mod ppm_vulns;
 mod ppm_whoami;

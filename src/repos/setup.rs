@@ -210,7 +210,7 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
         let rdata = get_r_data(&ver)?;
         debug!("Detected architecture {:?}", rdata);
 
-        let stored = stored_setup_state(&ver, &config, &rdata, &repositories, &orig)?;
+        let stored = stored_setup_state(&ver, &rdata, &repositories, &orig)?;
         let state = stored.merge(&setup);
         save_setup_state(&ver, Some(state.clone()))?;
         let setup = state.to_args();
@@ -260,9 +260,15 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
 
 // The stored repository choices of installation `ver`, or if there are none,
 // the ones worked out from its `repositories` file and the original one.
+//
+// rig stores the choices every time it sets up the repositories, so they are
+// only missing for an installation set up by an older rig, which knew
+// nothing about private Package Manager instances. So the choices are worked
+// out against the public catalog, not `config`: otherwise, with a private
+// instance, the public repositories would count as enabled and `PPM` as
+// disabled by the user, and `rig repos setup` would never switch to it.
 fn stored_setup_state(
     ver: &str,
-    config: &[Repository],
     rdata: &RData,
     repositories: &str,
     orig: &str,
@@ -272,7 +278,8 @@ fn stored_setup_state(
         None => {
             let current = read_repositories_file(repositories)?;
             let original = read_repositories_file(orig)?;
-            let state = infer_setup_state(&current, &original, config, rdata)?;
+            let public = super::config::get_public_repos_config()?;
+            let state = infer_setup_state(&current, &original, &public, rdata)?;
             debug!("Inferred repository setup for {}: {:?}", ver, state);
             state
         }
@@ -338,7 +345,7 @@ pub(crate) fn repos_with_setup(
     };
 
     let rdata = get_r_data(&ver)?;
-    let stored = stored_setup_state(&ver, &config, &rdata, &repositories, &orig)?;
+    let stored = stored_setup_state(&ver, &rdata, &repositories, &orig)?;
     let setup = stored.merge(setup).to_args();
     let rig_names = rig_entry_names(&config);
     let mut repos = build_repositories(&orig, &config, &rig_names, &rdata, &setup)?.data;
@@ -504,8 +511,8 @@ pub fn repos_not_applicable(ver: &str, names: &[String]) -> Result<Vec<String>, 
 // whether the URL is enabled by default; an entry's `enabled` (if present)
 // overrides the repo's, and it can depend on the installation's platform
 // (e.g. P3M-manylinux is a default only on manylinux). A fallback URL is
-// dropped if another selected URL has the same metadata, e.g. P3M's source
-// URL if P3M-manylinux is set up.
+// dropped if another selected URL has the same metadata or the same name,
+// e.g. P3M's source URL if P3M-manylinux is set up.
 fn selected_entries<'a>(
     config: &'a [Repository],
     rdata: &RData,
@@ -522,14 +529,19 @@ fn selected_entries<'a>(
             }
         }
     }
-    let specific: Vec<String> = selected
+    let specific: Vec<&RepoEntry> = selected
         .iter()
         .filter(|(_, e)| !e.fallback)
-        .filter_map(|(_, e)| e.metadata.clone())
+        .map(|(_, e)| *e)
         .collect();
+    let replaced = |fb: &RepoEntry| {
+        specific
+            .iter()
+            .any(|e| e.name == fb.name || (fb.metadata.is_some() && e.metadata == fb.metadata))
+    };
     Ok(selected
         .into_iter()
-        .filter(|(_, e)| !e.fallback || e.metadata.as_ref().is_none_or(|m| !specific.contains(m)))
+        .filter(|(_, e)| !e.fallback || !replaced(e))
         .collect())
 }
 
@@ -616,6 +628,19 @@ fn should_activate_repo(
             }
         }
         if !ok {
+            return Ok(false);
+        }
+    }
+
+    // if Bioconductor versions are present, then the current R version's
+    // Bioconductor version must be one of them
+    if let Some(biocs) = &entry.bioc_versions {
+        let biocver = super::r_version_to_bioc_version(&rdata.version).ok();
+        if !biocver.is_some_and(|b| biocs.contains(&b)) {
+            debug!(
+                "Repo '{}' does not serve the Bioconductor version of R {}, skipping",
+                repo.name, rdata.version
+            );
             return Ok(false);
         }
     }
@@ -785,6 +810,7 @@ mod tests {
             platforms: None,
             archs: None,
             rversions: None,
+            bioc_versions: None,
             enabled: None,
             fallback: false,
         }
@@ -1194,9 +1220,73 @@ mod tests {
             .map(|(_, e)| e.url.clone())
     }
 
+    fn instance_urls(rd: &RData) -> Vec<(String, String)> {
+        use crate::repos::instance::*;
+        let src = |t: &str, b: Option<&str>| InstanceSource {
+            source_type: t.to_string(),
+            bioc_version: b.map(|x| x.to_string()),
+        };
+        let repo = |n: &str, t: &str, s: Vec<InstanceSource>| InstanceRepo {
+            name: n.to_string(),
+            repo_type: t.to_string(),
+            description: None,
+            sources: Some(s),
+        };
+        let info = InstanceInfo {
+            repos: vec![
+                repo("cran", "R", vec![src("cran", None)]),
+                repo("local", "R", vec![src("local", None)]),
+                repo("old-bioc", "Bioconductor", vec![src("bioc", Some("3.10"))]),
+            ],
+            linux_targets: Some(vec!["noble".to_string(), "manylinux_2_28".to_string()]),
+        };
+        let config = vec![instance_group("https://ppm.acme.com", &info)];
+        selected_entries(&config, rd, |_, default| default)
+            .unwrap()
+            .into_iter()
+            .map(|(_, e)| (e.name.clone(), e.url.clone()))
+            .collect()
+    }
+
+    fn pairs(x: &[(&str, &str)]) -> Vec<(String, String)> {
+        x.iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn instance_repos_one_url_each() {
+        let src = pairs(&[
+            ("CRAN", "https://ppm.acme.com/cran/latest"),
+            ("local", "https://ppm.acme.com/local/latest"),
+        ]);
+        assert_eq!(
+            instance_urls(&rdata("aarch64-apple-darwin20", "aarch64", "4.5.1")),
+            src
+        );
+        assert_eq!(
+            instance_urls(&rdata("x86_64-w64-mingw32", "x86_64", "4.5.1")),
+            src
+        );
+        // P3M has no Windows arm64 binaries, the source URL is used.
+        assert_eq!(
+            instance_urls(&rdata("aarch64-w64-mingw32", "aarch64", "4.5.1")),
+            src
+        );
+        assert_eq!(
+            instance_urls(&linux_rdata("ubuntu", "24.04")),
+            pairs(&[
+                ("CRAN", "https://ppm.acme.com/cran/__linux__/noble/latest"),
+                ("local", "https://ppm.acme.com/local/__linux__/noble/latest"),
+            ])
+        );
+        // Not built by the instance: source.
+        assert_eq!(instance_urls(&linux_rdata("ubuntu", "22.04")), src);
+    }
+
     #[test]
     fn catalog_p3m_defaults() {
-        let latest = Some("https://packagemanager.posit.co/cran/latest".to_string());
+        let latest = Some("https://p3m.dev/cran/latest".to_string());
         // P3M only has x86_64 Windows binaries.
         assert_eq!(
             catalog_p3m_url(&rdata("aarch64-w64-mingw32", "aarch64", "4.5.1")),
@@ -1213,8 +1303,132 @@ mod tests {
         assert_eq!(catalog_p3m_url(&linux_rdata("fedora", "43")), latest);
         assert_eq!(
             catalog_p3m_url(&linux_rdata("ubuntu", "24.04")),
-            Some("https://packagemanager.posit.co/cran/__linux__/noble/latest".to_string())
+            Some("https://p3m.dev/cran/__linux__/noble/latest".to_string())
         );
+    }
+
+    // --- a private Package Manager, on an installation set up before ---
+
+    /// The catalog with a private instance: `PPM` first and on by default,
+    /// the public groups off, like `get_repos_config()` builds it.
+    fn private_config() -> Vec<Repository> {
+        use crate::repos::instance::*;
+        let info = InstanceInfo {
+            repos: vec![InstanceRepo {
+                name: "cran".to_string(),
+                repo_type: "R".to_string(),
+                description: None,
+                sources: Some(vec![InstanceSource {
+                    source_type: "cran".to_string(),
+                    bioc_version: None,
+                }]),
+            }],
+            linux_targets: None,
+        };
+        let mut config = vec![instance_group("https://ppm.acme.com", &info)];
+        config.extend(infer_config().into_iter().map(|mut r| {
+            r.enabled = Enabled::Always(false);
+            r
+        }));
+        config
+    }
+
+    /// The URLs a setup with `state` gives on macOS, with `private_config()`.
+    fn urls_for_state(state: &crate::repos::state::SetupState) -> Vec<String> {
+        let setup = state.to_args();
+        let config = private_config();
+        selected_entries(
+            &config,
+            &rdata("aarch64-apple-darwin20", "aarch64", "4.5.1"),
+            |repo, default| should_include_repo(&setup, &repo.name, default),
+        )
+        .unwrap()
+        .into_iter()
+        .map(|(_, e)| e.url.clone())
+        .collect()
+    }
+
+    /// The `repositories` file of an installation set up by an older rig,
+    /// with public P3M and CRAN, and no stored choices.
+    fn old_public_file() -> RepositoriesContents {
+        rig_file(vec![
+            file_entry("CRAN", "https://cloud.r-project.org", true),
+            file_entry("P3M", "https://p3m.dev/cran/latest", true),
+        ])
+    }
+
+    #[test]
+    fn old_installation_switches_to_the_instance() {
+        let rd = rdata("aarch64-apple-darwin20", "aarch64", "4.5.1");
+        // What `stored_setup_state()` does: infer against the public catalog.
+        let state =
+            infer_setup_state(&old_public_file(), &orig_file(), &infer_config(), &rd).unwrap();
+        assert!(state.enable.is_empty() && state.disable.is_empty());
+        // `rig repos setup` without options: only the instance.
+        let state = state.merge(&ReposSetupArgs::Default {
+            whitelist: vec![],
+            blacklist: vec![],
+        });
+        assert_eq!(
+            urls_for_state(&state),
+            vec!["https://ppm.acme.com/cran/latest"]
+        );
+        assert!(!state.excludes("PPM"));
+    }
+
+    #[test]
+    fn inferring_against_the_private_catalog_would_not_switch() {
+        // Why `stored_setup_state()` does not use the current catalog.
+        let rd = rdata("aarch64-apple-darwin20", "aarch64", "4.5.1");
+        let state =
+            infer_setup_state(&old_public_file(), &orig_file(), &private_config(), &rd).unwrap();
+        // The public repositories look like the user's own choice, so they
+        // would stay on next to the instance.
+        assert!(state.enable.contains(&"p3m".to_string()), "{:?}", state);
+    }
+
+    #[test]
+    fn disabling_ppm_is_remembered_and_silences_the_warning() {
+        let rd = rdata("aarch64-apple-darwin20", "aarch64", "4.5.1");
+        let state =
+            infer_setup_state(&old_public_file(), &orig_file(), &infer_config(), &rd).unwrap();
+        // `rig repos disable ppm`, names are lowercased by `repos_setup()`.
+        let off = state.merge(&ReposSetupArgs::Default {
+            whitelist: vec![],
+            blacklist: vec!["ppm".to_string()],
+        });
+        assert!(off.excludes("PPM"));
+        // Then a plain `rig repos setup` keeps it off.
+        let again = off.merge(&ReposSetupArgs::Default {
+            whitelist: vec![],
+            blacklist: vec![],
+        });
+        assert!(again.excludes("PPM"));
+        assert!(!urls_for_state(&again)
+            .iter()
+            .any(|u| u.starts_with("https://ppm.acme.com/")));
+        // Staying on the public repositories needs them enabled, too.
+        let public = state.merge(&ReposSetupArgs::Default {
+            whitelist: vec!["p3m".to_string(), "cran".to_string()],
+            blacklist: vec!["ppm".to_string()],
+        });
+        assert!(public.excludes("PPM"));
+        assert_eq!(
+            urls_for_state(&public),
+            vec!["https://cloud.r-project.org", "https://p3m.dev/cran/latest"]
+        );
+    }
+
+    #[test]
+    fn starting_from_no_repositories_excludes_ppm() {
+        let state = crate::repos::state::SetupState::default().merge(&ReposSetupArgs::Empty {
+            whitelist: vec!["cran".to_string()],
+        });
+        assert!(state.excludes("PPM"));
+        let state = crate::repos::state::SetupState::default().merge(&ReposSetupArgs::Empty {
+            whitelist: vec!["ppm".to_string()],
+        });
+        assert!(!state.excludes("PPM"));
     }
 
     // --- infer_setup_state ---

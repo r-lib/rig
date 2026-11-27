@@ -98,6 +98,17 @@ impl SetupState {
         }
     }
 
+    /// Whether these choices keep repository `name` off, whatever its
+    /// default: it was disabled, or the setup started from no repositories
+    /// and it was not enabled. Names are compared case insensitively.
+    pub fn excludes(&self, name: &str) -> bool {
+        let is = |x: &String| x.eq_ignore_ascii_case(name);
+        match self.base {
+            SetupBase::Default => self.disable.iter().any(is),
+            SetupBase::Empty => !self.enable.iter().any(is),
+        }
+    }
+
     /// Forget a repository, e.g. after `rig repos rm`. Returns whether it was
     /// mentioned at all.
     pub fn forget(&mut self, name: &str) -> bool {

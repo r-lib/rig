@@ -1031,19 +1031,48 @@ impl BinaryIndex {
 }
 
 /// The public P3M instance, and the base of the default status URL.
-const DEFAULT_PPM_URL: &str = "https://packagemanager.posit.co";
+const DEFAULT_PPM_URL: &str = "https://p3m.dev";
 
-/// Base URL of the Posit Package Manager instance rig reports on.
+/// Host names of the public P3M instance. `packagemanager.posit.co` is its
+/// older, longer name; both serve the same repositories.
+const PUBLIC_PPM_HOSTS: [&str; 2] = ["p3m.dev", "packagemanager.posit.co"];
+
+/// Base URL of the Posit Package Manager instance rig uses.
 ///
 /// `PACKAGEMANAGER_ADDRESS` is Posit's own variable for pointing a machine at a
 /// private P3M, so rig honors that rather than inventing a name for the same
-/// thing.
+/// thing. Because an environment variable is easy to lose (`sudo`, services,
+/// the menu bar app), the `ppm-address` key of the rig config file works,
+/// too.
 ///
 /// Note that this does *not* affect the binary index URLs of
 /// [`MetadataFeed`]: the per-package indices are rig's own derived data, and
 /// no P3M instance serves them.
 pub fn ppm_url() -> String {
-    ppm_url_from(std::env::var("PACKAGEMANAGER_ADDRESS").ok().as_deref())
+    let setting = crate::config::get_setting("PACKAGEMANAGER_ADDRESS", "ppm-address")
+        .ok()
+        .flatten();
+    ppm_url_from(setting.as_deref())
+}
+
+/// Whether [`ppm_url`] is the public P3M instance.
+pub fn ppm_is_public_instance() -> bool {
+    ppm_is_public(&ppm_url())
+}
+
+/// Whether `url` is the public P3M instance, under any of its names.
+pub fn ppm_is_public(url: &str) -> bool {
+    let rest = url
+        .trim()
+        .strip_prefix("https://")
+        .or_else(|| url.trim().strip_prefix("http://"));
+    let Some(rest) = rest else {
+        return false;
+    };
+    let rest = rest.trim_end_matches('/');
+    PUBLIC_PPM_HOSTS
+        .iter()
+        .any(|h| rest.eq_ignore_ascii_case(h))
 }
 
 /// URL of the status document of the instance [`ppm_url`] names.
@@ -1130,8 +1159,10 @@ impl PpmDistro {
 /// The public instance keeps the unsuffixed name, so the common case has a
 /// recognizable cache file and existing caches stay valid.
 fn status_cache_name(url: &str) -> String {
-    if url == format!("{}/__api__/status", DEFAULT_PPM_URL) {
-        return "p3m-status.json".to_string();
+    if let Some(base) = url.strip_suffix("/__api__/status") {
+        if ppm_is_public(base) {
+            return "p3m-status.json".to_string();
+        }
     }
     format!(
         "p3m-status-{}.json",
@@ -1926,6 +1957,19 @@ mod tests {
     // because `cargo test` runs the whole suite in one process and a test that
     // mutates the environment races every test that reads it.
     #[test]
+    fn ppm_is_public_recognizes_both_names() {
+        assert!(ppm_is_public("https://p3m.dev"));
+        assert!(ppm_is_public("https://p3m.dev/"));
+        assert!(ppm_is_public("https://packagemanager.posit.co"));
+        assert!(ppm_is_public("https://packagemanager.posit.co/"));
+        assert!(ppm_is_public("http://P3M.dev"));
+        assert!(!ppm_is_public("https://ppm.example.com"));
+        assert!(!ppm_is_public("http://localhost:4242"));
+        assert!(!ppm_is_public("https://p3m.dev.example.com"));
+        assert!(!ppm_is_public("https://p3m.dev/cran"));
+    }
+
+    #[test]
     fn ppm_url_defaults_and_overrides() {
         assert_eq!(ppm_url_from(None), DEFAULT_PPM_URL);
         assert_eq!(ppm_url_from(Some("")), DEFAULT_PPM_URL);
@@ -1945,6 +1989,11 @@ mod tests {
     fn status_cache_name_is_per_instance() {
         let public = format!("{}/__api__/status", DEFAULT_PPM_URL);
         assert_eq!(status_cache_name(&public), "p3m-status.json");
+        // The old name of the public instance shares its cache entry.
+        assert_eq!(
+            status_cache_name("https://packagemanager.posit.co/__api__/status"),
+            "p3m-status.json"
+        );
 
         // Two instances must not share a cache entry, or one would be resolved
         // against the other's build targets.

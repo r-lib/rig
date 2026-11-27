@@ -22,9 +22,11 @@ use serde::Deserialize;
 use crate::output::OUTPUT;
 use crate::utils::http_client;
 
-/// The PPM instance named by `PACKAGEMANAGER_ADDRESS`, without a trailing `/`.
+/// The PPM instance named by `PACKAGEMANAGER_ADDRESS`, or the `ppm-address`
+/// key of the rig config file, without a trailing `/`. `None` if neither is
+/// set.
 pub fn ppm_address() -> Option<String> {
-    let addr = std::env::var("PACKAGEMANAGER_ADDRESS").ok()?;
+    let addr = crate::config::get_setting("PACKAGEMANAGER_ADDRESS", "ppm-address").ok()??;
     let addr = addr.trim().trim_end_matches('/');
     if addr.is_empty() {
         None

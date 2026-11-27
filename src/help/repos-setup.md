@@ -15,6 +15,12 @@ repos setup` without options keeps your choices, `--with-repos=<names>` and
 `--without-repos=<names>` add to them, and `--without-repos` without names
 starts over with no repositories (plus the ones in `--with-repos`).
 
+If you have set up your own Posit Package Manager with
+`PACKAGEMANAGER_ADDRESS` or the `ppm-address` configuration key, then the
+default repositories are the repositories of that instance, see ["Your own
+Package Manager" in `rig repos --help`](#rig-repos). Run `rig repos setup`
+after changing the instance, to switch the installed R versions to it.
+
 rig updates the files of the R installation. If you cannot write them,
 which is typical in [admin mode](../admin-vs-user-mode.qmd) on Linux and Windows, rig asks for
 administrator rights, e.g. your password for `sudo`.
