@@ -408,7 +408,8 @@ impl Source {
     }
 }
 
-/// The names of PPM's source types, from the ppmtools R package.
+/// The names of PPM's source types. The numbers are PPM's `SourceType`
+/// constants.
 pub(crate) fn source_type_name(t: i64) -> &'static str {
     match t {
         0 => "local",
@@ -422,7 +423,13 @@ pub(crate) fn source_type_name(t: i64) -> &'static str {
         8 => "local-python",
         9 => "pypi",
         10 => "curated-pypi",
+        11 => "git-python",
+        12 => "local-vsx",
         13 => "openvsx",
+        14 => "curated-vsx",
+        15 => "curated-bioc",
+        16 => "local-plugin",
+        17 => "git-plugin",
         _ => "unknown",
     }
 }
@@ -847,6 +854,7 @@ mod tests {
             panic!()
         };
         assert_eq!(sources[0].type_name(), "local");
+        assert_eq!(source_type_name(15), "curated-bioc");
         assert_eq!(source_type_name(99), "unknown");
     }
 
